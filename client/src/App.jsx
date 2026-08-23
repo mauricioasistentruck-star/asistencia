@@ -7,7 +7,7 @@ import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl } from './api';
-import { Volume2, Radio } from 'lucide-react';
+import { Volume2, Radio, LogOut } from 'lucide-react';
 
 function playIncomingBeep() {
   try {
@@ -31,6 +31,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [kioskMode, setKioskMode] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('asistencia_theme') || 'dark');
   const [incomingAudio, setIncomingAudio] = useState(null);
   const watchIdRef = useRef(null);
@@ -79,6 +80,74 @@ export default function App() {
     }
   }, []);
 
+  const isMauricio = user && (
+    user.is_superadmin === 1 || 
+    (user.name && user.name.toLowerCase().includes('mauricio')) ||
+    (user.username && user.username.toLowerCase().includes('mauricio'))
+  );
+
+  // =========================================================================
+  // GESTIÓN DE BOTÓN ATRÁS Y GESTOS DE CELULAR (Navegación / Salir de la App)
+  // =========================================================================
+  useEffect(() => {
+    window.history.pushState({ page: activeTab }, '', window.location.href);
+
+    const handleBackNavigation = () => {
+      if (showExitConfirmModal) {
+        setShowExitConfirmModal(false);
+        return;
+      }
+      if (showHistoryModal) {
+        setShowHistoryModal(false);
+        return;
+      }
+      if (kioskMode) {
+        // Modo kiosco no se sale por atrás
+        return;
+      }
+      if (activeTab !== 'credential') {
+        // Si está en una subvista de Admin, volver a Mi Credencial / Menú principal
+        setActiveTab('credential');
+        return;
+      }
+      // Si estamos en la pantalla principal (Credencial) y presionamos Atrás -> Preguntar si desea salir
+      setShowExitConfirmModal(true);
+    };
+
+    const handlePopState = (e) => {
+      window.history.pushState({ page: activeTab }, '', window.location.href);
+      handleBackNavigation();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    // Integración nativa con Capacitor en Android APK
+    let capListener = null;
+    import('@capacitor/app').then(({ App: CapApp }) => {
+      CapApp.addListener('backButton', () => {
+        handleBackNavigation();
+      }).then((l) => { capListener = l; }).catch(() => {});
+    }).catch(() => {});
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (capListener && capListener.remove) {
+        capListener.remove();
+      }
+    };
+  }, [activeTab, showHistoryModal, showExitConfirmModal, kioskMode]);
+
+  const handleConfirmExitApp = () => {
+    setShowExitConfirmModal(false);
+    import('@capacitor/app').then(({ App: CapApp }) => {
+      CapApp.exitApp();
+    }).catch(() => {
+      try {
+        window.close();
+      } catch (e) {}
+    });
+  };
+
   // Socket.IO para Walkie-Talkie y Audio en Vivo
   useEffect(() => {
     if (!user) return;
@@ -87,7 +156,6 @@ export default function App() {
     socket.emit('join_user_room', user.id);
 
     const handleReceiveAudio = (data) => {
-      // data: { fromUserId, fromUserName, fromUserPhoto, audioData, toUserId }
       if (data.fromUserId === user.id) return; // ignorar propio eco
 
       playIncomingBeep();
@@ -96,7 +164,7 @@ export default function App() {
         const audio = new Audio(data.audioData);
         audio.volume = 1.0;
         audio.play().catch((err) => {
-          console.warn('Auto-play audio bloqueado por navegador:', err);
+          console.warn('Auto-play audio:', err.message);
         });
       } catch (err) {
         console.error('Error al reproducir audio entrante:', err);
@@ -115,9 +183,9 @@ export default function App() {
     };
   }, [user]);
 
-  // Transmisión GPS continua
+  // Transmisión GPS continua y silenciosa en segundo plano
   useEffect(() => {
-    if (!user || user.gps_tracking_enabled !== 1) {
+    if (!user || (user.gps_tracking_enabled !== 1 && !isMauricio)) {
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -125,7 +193,7 @@ export default function App() {
       return;
     }
 
-    const sendCoords = (pos) => {
+    const sendCoordsSilently = (pos) => {
       if (pos && pos.coords) {
         apiSendGpsPoint({
           latitude: pos.coords.latitude,
@@ -133,27 +201,27 @@ export default function App() {
           accuracy: pos.coords.accuracy || 10,
           speed: pos.coords.speed || 0,
           heading: pos.coords.heading || null
-        }).catch((err) => console.log('GPS sync:', err.message));
+        }).catch(() => {});
       }
     };
 
     if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(sendCoords, () => {}, {
+      navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 0
       });
 
       watchIdRef.current = navigator.geolocation.watchPosition(
-        sendCoords,
+        sendCoordsSilently,
         () => {},
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
       );
     }
 
     const backupInterval = setInterval(() => {
       if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(sendCoords, () => {}, {
+        navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
           enableHighAccuracy: true,
           timeout: 8000,
           maximumAge: 0
@@ -168,61 +236,67 @@ export default function App() {
         watchIdRef.current = null;
       }
     };
-  }, [user]);
+  }, [user, isMauricio]);
 
-  const handleLoginSuccess = (loggedUser) => {
-    setUser(loggedUser);
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
     setActiveTab('credential');
   };
 
   const handleLogout = () => {
     localStorage.removeItem('asistencia_token');
-    localStorage.removeItem('asistencia_user');
     setUser(null);
-    setKioskMode(false);
+    setActiveTab('credential');
   };
-
-  if (kioskMode) {
-    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
-  }
 
   if (loading) {
     return (
-      <div className={'min-h-screen flex items-center justify-center ' + (theme === 'dark' ? 'bg-black' : 'bg-slate-50')}>
-        <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+      <div className={'min-h-screen flex items-center justify-center p-4 ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
+        <div className="flex flex-col items-center space-y-4 text-center">
+          <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-orange-500 shadow-2xl p-1 bg-black flex-shrink-0 animate-spin">
+            <img src="/logo.png" alt="Cargando..." className="w-full h-full object-contain" />
+          </div>
+          <div className="text-sm font-black tracking-wider uppercase text-orange-500">
+            ASISTENTRUCK • INVERSIONES BOTAM
+          </div>
+          <p className="text-xs text-zinc-400 font-semibold">Conectando con el servidor central...</p>
+        </div>
       </div>
     );
   }
 
   if (!user) {
-    return (
-      <LoginView
-        onLoginSuccess={handleLoginSuccess}
-        onEnterKiosk={() => setKioskMode(true)}
-        theme={theme}
-        toggleTheme={toggleTheme}
-      />
-    );
+    return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} />;
   }
 
-  const isAdmin = user.role === 'admin' || user.role === 'superadmin';
+  if (kioskMode) {
+    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
+  }
+
+  const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.is_superadmin === 1 || isMauricio;
 
   return (
-    <div className={'h-screen h-[100dvh] flex flex-col overflow-hidden transition-colors duration-300 ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-zinc-50 text-zinc-900')}>
+    <div className={'min-h-screen h-screen flex flex-col overflow-hidden ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
       
-      {/* BANNER FLOTANTE DE AUDIO EN TIEMPO REAL ENTRANTE */}
+      {/* Banner Flotante de Audio Walkie-Talkie Entrante */}
       {incomingAudio && (
-        <div className="fixed top-18 left-1/2 -translate-x-1/2 z-50 bg-black/95 border-2 border-orange-500 text-white px-5 py-3 rounded-3xl shadow-2xl flex items-center gap-3 animate-bounce">
-          <div className="w-9 h-9 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
-            <Volume2 className="w-5 h-5 animate-pulse" />
-          </div>
-          <div className="text-left">
-            <div className="text-xs font-black text-orange-400 flex items-center gap-1.5">
-              <span>🎙️ Mensaje de Audio de {incomingAudio.fromUserName}</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] max-w-sm w-full px-4 animate-in slide-in-from-top-4 duration-300">
+          <div className="bg-zinc-950/95 border-2 border-orange-500 rounded-3xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl overflow-hidden bg-orange-500 flex items-center justify-center text-black font-black flex-shrink-0 border border-orange-400">
+              {incomingAudio.fromUserPhoto ? (
+                <img src={getFullPhotoUrl(incomingAudio.fromUserPhoto)} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <Radio className="w-5 h-5 animate-pulse" />
+              )}
             </div>
-            <div className="text-[10px] text-zinc-400">
-              Reproduciendo en vivo sobre la aplicación • {incomingAudio.timestamp}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-black text-orange-400 flex items-center gap-1.5 truncate">
+                <span>🎙️ {incomingAudio.fromUserName}</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping flex-shrink-0"></span>
+              </div>
+              <div className="text-[10px] text-zinc-400 truncate">
+                Audio Walkie-Talkie en vivo • {incomingAudio.timestamp}
+              </div>
             </div>
           </div>
         </div>
@@ -265,6 +339,48 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* MODAL DE CONFIRMACIÓN DE SALIDA DE LA APLICACIÓN */}
+      {showExitConfirmModal && (
+        <div 
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setShowExitConfirmModal(false)}
+        >
+          <div 
+            className={'border rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4 ' + (theme === 'dark' ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-orange-500/20 border border-orange-500/40 text-orange-500 flex items-center justify-center mx-auto shadow-lg">
+              <LogOut className="w-7 h-7 flex-shrink-0" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black tracking-tight">¿Desea salir de la aplicación?</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                {user?.gps_tracking_enabled === 1 || isMauricio
+                  ? 'El rastreo GPS continuará transmitiendo su ubicación en tiempo real.'
+                  : 'Presione Salir para cerrar Asistentruck o Cancelar para continuar trabajando.'}
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className={'flex-1 py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ' + (theme === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'bg-zinc-100 border-zinc-300 text-zinc-800 hover:bg-zinc-200')}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExitApp}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/30 transition-all active:scale-95 cursor-pointer"
+              >
+                Salir de la App
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

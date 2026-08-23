@@ -236,7 +236,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
 
       {/* MODAL / PANEL DE MIS MARCACIONES */}
       {isHistoryVisible && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
           <div className={'border rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl max-h-[90vh] flex flex-col ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
             
             <div className="flex items-center justify-between pb-3 border-b border-orange-500/20 mb-4">

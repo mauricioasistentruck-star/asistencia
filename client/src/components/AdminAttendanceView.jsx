@@ -195,31 +195,45 @@ export default function AdminAttendanceView({ user, theme }) {
             Filtro por Calendario:
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setDatePreset('today')}
-              className={'px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ' + (dateFrom === new Date().toISOString().split('T')[0] && dateTo === new Date().toISOString().split('T')[0] ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200'))}
-            >
-              Hoy
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('yesterday')}
-              className={'px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
-            >
-              Ayer
-            </button>
+            {(() => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const yest = new Date();
+              yest.setDate(yest.getDate() - 1);
+              const yestStr = yest.toISOString().split('T')[0];
+
+              const isToday = dateFrom === todayStr && dateTo === todayStr;
+              const isYesterday = dateFrom === yestStr && dateTo === yestStr;
+
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDatePreset('today')}
+                    className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isToday ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200'))}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDatePreset('yesterday')}
+                    className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isYesterday ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200'))}
+                  >
+                    Ayer
+                  </button>
+                </>
+              );
+            })()}
             <button
               type="button"
               onClick={() => setDatePreset('week')}
-              className={'px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
+              className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
             >
               Últimos 7 días
             </button>
             <button
               type="button"
               onClick={() => setDatePreset('month')}
-              className={'px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
+              className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
             >
               Este Mes
             </button>

@@ -63,22 +63,24 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
           }
         }
 
-        const audioInputs = devices.filter(d => d.kind === 'audioinput');
-        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+        // Filtrar estrictamente dispositivos de audio (descartar video, cámaras, pendrives y almacenamiento)
+        const audioDevices = devices.filter(d => {
+          if (d.kind !== 'audioinput' && d.kind !== 'audiooutput') return false;
+          const lbl = (d.label || '').toLowerCase();
+          if (/v[ií]deo|webcam|c[aá]mara|\bcam\b|storage|pendrive|flash|disk|drive|virtual|stereo mix|mezcla est[eé]reo|hdmi|displayport|realtek digital|nvidia/i.test(lbl)) {
+            return false;
+          }
+          return true;
+        });
 
-        // Buscar audífonos bluetooth
-        const bluetoothDevice = devices.find(d => 
-          /bluetooth|headset|handsfree|wireless|airpods|audifono|auricular|earbud|buds|freebuds|wh-|wf-|tune|live|bt/i.test(d.label || '')
+        // Buscar audífonos bluetooth explícitos
+        const bluetoothDevice = audioDevices.find(d => 
+          /bluetooth|airpods|galaxy buds|freebuds|earbuds|buds|wh-|wf-|tune|live|jbl|sony|bose|sennheiser|jabber|plantronics|hyperx|wireless headset|wireless audio/i.test(d.label || '')
         );
 
-        // Buscar audífonos alámbricos (jack 3.5mm, USB audio, wired headset)
-        const wiredDevice = devices.find(d => 
-          /wired|cable|headphone|auriculares|jack|usb audio|external mic|micrófono externo/i.test(d.label || '')
-        );
-
-        // Dispositivo externo genérico (no built-in)
-        const externalDevice = devices.find(d => 
-          d.label && !/default|internal|builtin|altavoces|speaker|micrófono interno|realtek audio/i.test(d.label)
+        // Buscar audífonos alámbricos explícitos (headset, headphones, auriculares, cable, jack)
+        const wiredDevice = audioDevices.find(d => 
+          /headphone|headset|auriculares|aud[ií]fonos|auricular|earphones|manos libres|handsfree|jack|cable|wired/i.test(d.label || '')
         );
 
         if (bluetoothDevice) {
@@ -92,18 +94,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
             connected: true,
             type: 'wired',
             label: wiredDevice.label || 'Audífonos Alámbricos'
-          });
-        } else if (externalDevice) {
-          setHeadsetInfo({
-            connected: true,
-            type: 'external',
-            label: externalDevice.label || 'Audífonos / Manos Libres'
-          });
-        } else if (audioInputs.length > 1 || audioOutputs.length > 1) {
-          setHeadsetInfo({
-            connected: true,
-            type: 'generic',
-            label: 'Audífonos Conectados'
           });
         } else {
           setHeadsetInfo({
@@ -368,7 +358,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-4" onClick={onClose}>
       <div
         className={'border rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl flex flex-col justify-between space-y-3.5 ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-orange-200 text-zinc-900')}
         onClick={(e) => e.stopPropagation()}
