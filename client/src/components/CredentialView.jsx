@@ -166,13 +166,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
           </div>
 
           <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-            {/* 1. Entrada */}
+            {/* Entrada */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.entry_time 
                 ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
                 : 'bg-orange-500/10 border-orange-500/40'
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">1. ENTRADA</span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">ENTRADA</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.entry_time 
                   ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
@@ -182,13 +182,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
               </span>
             </div>
 
-            {/* 2. Salida Colación */}
+            {/* Salida Colación */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.lunch_out_time 
                 ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
                 : 'bg-orange-500/10 border-orange-500/40'
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">2. SAL. COL.</span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">SAL. COL.</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.lunch_out_time 
                   ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
@@ -198,13 +198,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
               </span>
             </div>
 
-            {/* 3. Entrada Colación */}
+            {/* Entrada Colación */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.lunch_in_time 
                 ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
                 : 'bg-orange-500/10 border-orange-500/40'
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">3. ENT. COL.</span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">ENT. COL.</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.lunch_in_time 
                   ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
@@ -214,13 +214,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
               </span>
             </div>
 
-            {/* 4. Salida */}
+            {/* Salida */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.exit_time 
                 ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
                 : 'bg-orange-500/10 border-orange-500/40'
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">4. SALIDA</span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">SALIDA</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.exit_time 
                   ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
@@ -283,28 +283,28 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">1. Entrada</span>
+                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">Entrada</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.entry_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-amber-500 uppercase tracking-wider block mb-0.5">2. Sal. Colación</span>
+                <span className="text-[9px] font-black text-amber-500 uppercase tracking-wider block mb-0.5">Sal. Col.</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.lunch_out_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">3. Ent. Colación</span>
+                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">Ent. Col.</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.lunch_in_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-wider block mb-0.5">4. Salida</span>
+                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-wider block mb-0.5">Salida</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.exit_time || '--:--:--'}
                 </span>

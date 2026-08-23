@@ -360,10 +360,10 @@ export default function KioskView({ onExitKiosk, theme }) {
       {/* Pie de Página con Indicaciones de las 4 Marcaciones */}
       <div className="max-w-xl mx-auto w-full bg-black/80 border border-zinc-800 rounded-2xl p-3 text-center">
         <div className="grid grid-cols-4 gap-1.5 text-[10px] font-black">
-          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-400 py-1 rounded-xl">1. Entrada</div>
-          <div className="bg-amber-500/15 border border-amber-500/30 text-amber-400 py-1 rounded-xl">2. Sal. Colación</div>
-          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-400 py-1 rounded-xl">3. Ent. Colación</div>
-          <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 py-1 rounded-xl">4. Salida</div>
+          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-400 py-1 rounded-xl">Entrada</div>
+          <div className="bg-amber-500/15 border border-amber-500/30 text-amber-400 py-1 rounded-xl">Sal. Col.</div>
+          <div className="bg-orange-500/15 border border-orange-500/30 text-orange-400 py-1 rounded-xl">Ent. Col.</div>
+          <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 py-1 rounded-xl">Salida</div>
         </div>
       </div>
 

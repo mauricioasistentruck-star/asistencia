@@ -397,7 +397,7 @@ export default function AdminAttendanceView({ user, theme }) {
             <form onSubmit={handleSaveEdit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3 font-mono">
                 <div>
-                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">1. Entrada (HH:mm:ss):</label>
+                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">Entrada (HH:mm:ss):</label>
                   <input
                     type="text"
                     value={editForm.entry_time}
@@ -407,7 +407,7 @@ export default function AdminAttendanceView({ user, theme }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">2. Salida Colación:</label>
+                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">Sal. Colación:</label>
                   <input
                     type="text"
                     value={editForm.lunch_out_time}
@@ -417,7 +417,7 @@ export default function AdminAttendanceView({ user, theme }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">3. Entrada Colación:</label>
+                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">Ent. Colación:</label>
                   <input
                     type="text"
                     value={editForm.lunch_in_time}
@@ -427,7 +427,7 @@ export default function AdminAttendanceView({ user, theme }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">4. Salida Jornada:</label>
+                  <label className="block text-[10px] font-sans font-bold uppercase mb-1 text-orange-500">Salida Jornada:</label>
                   <input
                     type="text"
                     value={editForm.exit_time}
