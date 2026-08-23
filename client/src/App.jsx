@@ -178,8 +178,24 @@ export default function App() {
     window.addEventListener('touchstart', unlockAudio, { once: true });
 
     const handleReceiveAudio = (data) => {
+      if (!data) return;
       const senderId = data.sender_id || data.fromUserId;
-      if (senderId === user.id) return; // ignorar propio eco
+      if (senderId && String(senderId) === String(user.id)) return; // ignorar propio eco
+
+      // Verificar si el audio es para mí o para todos
+      let targetIds = [];
+      if (Array.isArray(data.targetUserIds)) targetIds = data.targetUserIds;
+      else if (data.receiver_ids) {
+        try { targetIds = JSON.parse(data.receiver_ids); } catch(e) { targetIds = [data.receiver_ids]; }
+      }
+
+      const isForMe = targetIds.length === 0 || 
+                      targetIds.includes('all') || 
+                      targetIds.includes(user.id) || 
+                      targetIds.includes(String(user.id)) ||
+                      data.receiver_ids === 'all';
+
+      if (!isForMe) return;
 
       playIncomingBeep();
 
@@ -203,6 +219,8 @@ export default function App() {
 
           const audio = new Audio(playUrl);
           audio.volume = 1.0;
+          audio.autoplay = true;
+          
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             playPromise.catch((err) => {

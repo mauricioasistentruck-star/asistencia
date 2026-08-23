@@ -26,9 +26,15 @@ function playRadioBeep(frequency = 880, duration = 0.08) {
 // Audio silencioso base64 de 1 segundo en loop para mantener el foco MediaSession activo en el sistema operativo
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/wD/';
 
-export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme }) {
+export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme, initialTab = 'walkie' }) {
   // Pestañas exactas: 'walkie' (Hablar en Vivo) o 'chat' (Chat de Audios)
-  const [activeTab, setActiveTab] = useState('walkie');
+  const [activeTab, setActiveTab] = useState(initialTab || 'walkie');
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || 'walkie');
+    }
+  }, [isOpen, initialTab]);
 
   // Destinatarios seleccionados
   const [selectedUserIds, setSelectedUserIds] = useState([]);
@@ -328,20 +334,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
       stopTalking();
     } else {
       startTalking();
-    }
-  };
-
-  // Soporte para Presionar y Mantener presionado (Hold-to-Talk)
-  const handleButtonDown = () => {
-    pressStartTimeRef.current = Date.now();
-    startTalking();
-  };
-
-  const handleButtonUp = () => {
-    const duration = Date.now() - pressStartTimeRef.current;
-    if (duration > 350) {
-      // Si mantuvo presionado por más de 350ms, soltar detiene la grabación inmediatamente
-      stopTalking();
     }
   };
 
@@ -794,16 +786,12 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
             )}
 
             {/* ========================================================================= */}
-            {/* BOTÓN CENTRAL HABLAR (1 CLIC / MANTENER PRESIONADO) */}
+            {/* BOTÓN CENTRAL HABLAR (1 CLIC = HABLAR / 2º CLIC = ENVIAR) */}
             {/* ========================================================================= */}
             <div className="flex flex-col items-center justify-center pt-2 space-y-2">
               <button
                 type="button"
                 onClick={toggleTalking}
-                onMouseDown={handleButtonDown}
-                onMouseUp={handleButtonUp}
-                onTouchStart={handleButtonDown}
-                onTouchEnd={handleButtonUp}
                 disabled={(!audioStatus.allowed && !isMauricio) || selectedUserIds.length === 0}
                 className={'w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 flex flex-col items-center justify-center transition-all transform active:scale-95 shadow-2xl ' + (
                   isRecording

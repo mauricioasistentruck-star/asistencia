@@ -976,11 +976,8 @@ io.on('connection', (socket) => {
       };
 
       // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL A LOS DISPOSITIVOS CONECTADOS
-      if (isGeneralChannel) {
-        // Enviar a todos los demás dispositivos conectados
-        socket.broadcast.emit('receive_voice_audio', instantPayload);
-      } else {
-        // Enviar a los usuarios específicos seleccionados
+      socket.broadcast.emit('receive_voice_audio', instantPayload);
+      if (!isGeneralChannel && targetUserIds.length > 0) {
         targetUserIds.forEach((tId) => {
           io.to('user_' + String(tId)).emit('receive_voice_audio', instantPayload);
         });

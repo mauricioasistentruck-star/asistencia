@@ -24,6 +24,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const [showWorkerMenu, setShowWorkerMenu] = useState(false);
   const [showNavDrawer, setShowNavDrawer] = useState(false);
   const [showWalkieTalkie, setShowWalkieTalkie] = useState(false);
+  const [walkieTab, setWalkieTab] = useState('walkie');
 
   // Estados de Ruta GPS (Mauricio / Admin)
   const [activeRoute, setActiveRoute] = useState(null);
@@ -276,12 +277,28 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
               
               {/* BOTÓN RÁPIDO WALKIE-TALKIE */}
               <button
-                onClick={() => setShowWalkieTalkie(true)}
+                onClick={() => {
+                  setWalkieTab('walkie');
+                  setShowWalkieTalkie(true);
+                }}
                 title="Audio en Tiempo Real"
                 className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black text-[11px] font-black px-2 py-1 rounded-lg shadow-sm flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
               >
                 <Radio className="w-3 h-3 animate-pulse" />
                 <span>Audio</span>
+              </button>
+
+              {/* BOTÓN RÁPIDO CHAT DE AUDIOS */}
+              <button
+                onClick={() => {
+                  setWalkieTab('chat');
+                  setShowWalkieTalkie(true);
+                }}
+                title="Historial de Audios y Chat"
+                className="bg-zinc-900 border border-zinc-800 hover:border-orange-500/50 text-white text-[11px] font-bold px-2 py-1 rounded-lg shadow-sm flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              >
+                <MessageSquare className="w-3 h-3 text-orange-400" />
+                <span className="hidden sm:inline">Chat</span>
               </button>
 
               {/* BOTÓN TRABAJADOR / PERFIL */}
@@ -574,6 +591,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
         onClose={() => setShowWalkieTalkie(false)}
         currentUser={user}
         theme={theme}
+        initialTab={walkieTab}
       />
 
       <IphoneModal
