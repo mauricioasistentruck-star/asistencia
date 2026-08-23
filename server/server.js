@@ -946,7 +946,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Transmisión de Audio / Voz en Tiempo Real con guardado persistente en disco y DB
+  // Transmisión de Audio / Voz en Tiempo Real Ultra Rápida con guardado persistente
   socket.on('send_voice_audio', (data) => {
     if (!data || !data.audioData) return;
 
@@ -954,13 +954,42 @@ io.on('connection', (socket) => {
       const fromUserId = data.fromUserId;
       const fromUserName = data.fromUserName || 'Usuario';
       const fromUserPhoto = data.fromUserPhoto || null;
-      const targetUserIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : (data.toUserId ? [data.toUserId] : []);
-      const targetUserNames = data.targetUserNames || (data.toUserName ? [data.toUserName] : ['Destinatario']);
+      let targetUserIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : (data.toUserId ? [data.toUserId] : []);
+      const isGeneralChannel = targetUserIds.length === 0 || targetUserIds.includes('all') || data.toUserId === 'all';
+      const targetUserNames = isGeneralChannel ? 'Canal General (Todos)' : (data.targetUserNames || (data.toUserName ? [data.toUserName] : ['Colaboradores']));
       const durationSeconds = Number(data.durationSeconds) || 0;
       const timeStr = getLocalTimeString().slice(0, 5);
 
-      // Extraer Base64 y guardar como archivo físico en uploads/audio
-      let audioUrl = null;
+      const instantPayload = {
+        id: Date.now(),
+        sender_id: fromUserId,
+        sender_name: fromUserName,
+        sender_photo: fromUserPhoto,
+        receiver_ids: isGeneralChannel ? 'all' : JSON.stringify(targetUserIds),
+        receiver_names: Array.isArray(targetUserNames) ? targetUserNames.join(', ') : String(targetUserNames),
+        targetUserIds: isGeneralChannel ? ['all'] : targetUserIds,
+        audio_url: null,
+        audioData: data.audioData,
+        duration_seconds: durationSeconds,
+        created_at: new Date().toISOString(),
+        timestamp: timeStr
+      };
+
+      // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL A LOS DISPOSITIVOS CONECTADOS
+      if (isGeneralChannel) {
+        // Enviar a todos los demás dispositivos conectados
+        socket.broadcast.emit('receive_voice_audio', instantPayload);
+      } else {
+        // Enviar a los usuarios específicos seleccionados
+        targetUserIds.forEach((tId) => {
+          io.to('user_' + String(tId)).emit('receive_voice_audio', instantPayload);
+        });
+      }
+
+      // Notificar al emisor para agregar a su chat inmediatamente
+      socket.emit('voice_audio_saved', instantPayload);
+
+      // 2. PERSISTENCIA EN SEGUNDO PLANO (Guardar archivo y registrar en BD)
       let matches = data.audioData.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
       let buffer = null;
       let ext = '.webm';
@@ -979,50 +1008,14 @@ io.on('connection', (socket) => {
       const filePath = path.join(audioUploadsDir, filename);
 
       fs.writeFile(filePath, buffer, (writeErr) => {
-        if (writeErr) {
-          console.error('Error guardando archivo de voz:', writeErr.message);
-        } else {
-          audioUrl = `/uploads/audio/${filename}`;
-        }
-
-        const receiverIdsJson = JSON.stringify(targetUserIds);
+        const audioUrl = writeErr ? '' : `/uploads/audio/${filename}`;
+        const receiverIdsJson = isGeneralChannel ? 'all' : JSON.stringify(targetUserIds);
         const receiverNamesStr = Array.isArray(targetUserNames) ? targetUserNames.join(', ') : String(targetUserNames);
 
-        // Guardar en la base de datos
         db.run(
           `INSERT INTO voice_messages (sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [fromUserId, fromUserName, fromUserPhoto, receiverIdsJson, receiverNamesStr, audioUrl || '', data.audioData, durationSeconds],
-          function (insertErr) {
-            const messageId = this ? this.lastID : Date.now();
-            const fullPayload = {
-              id: messageId,
-              sender_id: fromUserId,
-              sender_name: fromUserName,
-              sender_photo: fromUserPhoto,
-              receiver_ids: receiverIdsJson,
-              receiver_names: receiverNamesStr,
-              targetUserIds: targetUserIds,
-              audio_url: audioUrl,
-              audioData: data.audioData,
-              duration_seconds: durationSeconds,
-              created_at: new Date().toISOString(),
-              timestamp: timeStr
-            };
-
-            // Emitir a cada destinatario seleccionado
-            if (targetUserIds.length > 0) {
-              targetUserIds.forEach((tId) => {
-                io.to('user_' + tId).emit('receive_voice_audio', fullPayload);
-              });
-            } else {
-              // Si no hay destinatarios específicos, enviar a todos los conectados
-              socket.broadcast.emit('receive_voice_audio', fullPayload);
-            }
-
-            // Confirmación al emisor para que se agregue a su historial / chat
-            socket.emit('voice_audio_saved', fullPayload);
-          }
+          [fromUserId, fromUserName, fromUserPhoto, receiverIdsJson, receiverNamesStr, audioUrl, data.audioData, durationSeconds]
         );
       });
 

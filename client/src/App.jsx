@@ -148,12 +148,34 @@ export default function App() {
     });
   };
 
-  // Socket.IO para Walkie-Talkie y Audio en Vivo
+  // Socket.IO para Walkie-Talkie y Audio en Vivo Ultra Rápido
   useEffect(() => {
     if (!user) return;
 
     const socket = getSocket();
-    socket.emit('join_user_room', user.id);
+
+    const joinRooms = () => {
+      if (user && user.id) {
+        socket.emit('join_user_room', user.id);
+      }
+    };
+
+    joinRooms();
+    socket.on('connect', joinRooms);
+    socket.on('reconnect', joinRooms);
+
+    // Desbloquear audio en el primer toque del usuario en la pantalla
+    const unlockAudio = () => {
+      try {
+        const dummyAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/wD/');
+        dummyAudio.volume = 0.01;
+        dummyAudio.play().then(() => {
+          window.__audio_unlocked__ = true;
+        }).catch(() => {});
+      } catch (e) {}
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
 
     const handleReceiveAudio = (data) => {
       const senderId = data.sender_id || data.fromUserId;
@@ -166,9 +188,17 @@ export default function App() {
         if (audioSrc) {
           const audio = new Audio(audioSrc);
           audio.volume = 1.0;
-          audio.play().catch((err) => {
-            console.warn('Auto-play audio:', err.message);
-          });
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((err) => {
+              console.warn('Auto-play audio intento 1:', err.message);
+              // Si falla por interacción, intentar reproducir con AudioContext
+              try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (ctx.state === 'suspended') ctx.resume();
+              } catch (e) {}
+            });
+          }
         }
       } catch (err) {
         console.error('Error al reproducir audio entrante:', err);
@@ -183,6 +213,8 @@ export default function App() {
     socket.on('receive_voice_audio', handleReceiveAudio);
 
     return () => {
+      socket.off('connect', joinRooms);
+      socket.off('reconnect', joinRooms);
       socket.off('receive_voice_audio', handleReceiveAudio);
     };
   }, [user]);
