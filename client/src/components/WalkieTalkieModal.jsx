@@ -306,7 +306,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
     }
   };
 
-  // Escucha de teclas de hardware de audífonos cuando está vinculado
+  // Escucha de teclas de hardware de audífonos y eventos nativos
   useEffect(() => {
     if (!isOpen) return;
 
@@ -321,7 +321,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
         e.key === 'HeadsetHook' || 
         e.key === 'AudioVolumeMute';
 
-      if (isHeadsetBtn && isHeadsetLocked) {
+      if (isHeadsetBtn) {
         e.preventDefault();
         e.stopPropagation();
         if (isRecordingRef.current) {
@@ -332,10 +332,20 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
       }
     };
 
+    const handleNativeHeadset = () => {
+      if (isRecordingRef.current) {
+        if (stopTalkingRef.current) stopTalkingRef.current();
+      } else {
+        if (startTalkingRef.current) startTalkingRef.current();
+      }
+    };
+
     window.addEventListener('keydown', handleHardwareKeys, { capture: true });
+    window.addEventListener('headset_button_event', handleNativeHeadset);
 
     return () => {
       window.removeEventListener('keydown', handleHardwareKeys, { capture: true });
+      window.removeEventListener('headset_button_event', handleNativeHeadset);
     };
   }, [isOpen, isHeadsetLocked]);
 
