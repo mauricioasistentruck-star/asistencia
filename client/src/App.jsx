@@ -156,16 +156,20 @@ export default function App() {
     socket.emit('join_user_room', user.id);
 
     const handleReceiveAudio = (data) => {
-      if (data.fromUserId === user.id) return; // ignorar propio eco
+      const senderId = data.sender_id || data.fromUserId;
+      if (senderId === user.id) return; // ignorar propio eco
 
       playIncomingBeep();
 
       try {
-        const audio = new Audio(data.audioData);
-        audio.volume = 1.0;
-        audio.play().catch((err) => {
-          console.warn('Auto-play audio:', err.message);
-        });
+        const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
+        if (audioSrc) {
+          const audio = new Audio(audioSrc);
+          audio.volume = 1.0;
+          audio.play().catch((err) => {
+            console.warn('Auto-play audio:', err.message);
+          });
+        }
       } catch (err) {
         console.error('Error al reproducir audio entrante:', err);
       }
@@ -283,15 +287,15 @@ export default function App() {
         <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] max-w-sm w-full px-4 animate-in slide-in-from-top-4 duration-300">
           <div className="bg-zinc-950/95 border-2 border-orange-500 rounded-3xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl overflow-hidden bg-orange-500 flex items-center justify-center text-black font-black flex-shrink-0 border border-orange-400">
-              {incomingAudio.fromUserPhoto ? (
-                <img src={getFullPhotoUrl(incomingAudio.fromUserPhoto)} alt="Avatar" className="w-full h-full object-cover" />
+              {(incomingAudio.sender_photo || incomingAudio.fromUserPhoto) ? (
+                <img src={getFullPhotoUrl(incomingAudio.sender_photo || incomingAudio.fromUserPhoto)} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <Radio className="w-5 h-5 animate-pulse" />
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-black text-orange-400 flex items-center gap-1.5 truncate">
-                <span>🎙️ {incomingAudio.fromUserName}</span>
+                <span>🎙️ {incomingAudio.sender_name || incomingAudio.fromUserName}</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping flex-shrink-0"></span>
               </div>
               <div className="text-[10px] text-zinc-400 truncate">

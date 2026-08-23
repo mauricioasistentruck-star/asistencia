@@ -144,6 +144,8 @@ export const apiGetGpsRouteById = (id) => apiRequest('/api/gps/routes/' + id);
 export const apiDeleteGpsRoute = (id) => apiRequest('/api/gps/routes/' + id, { method: 'DELETE' });
 
 export const apiGetAudioStatus = () => apiRequest('/api/audio/status');
+export const apiGetVoiceMessages = () => apiRequest('/api/audio/messages');
+export const apiDeleteVoiceMessage = (id) => apiRequest('/api/audio/messages/' + id, { method: 'DELETE' });
 
 export async function apiVerifyAdminPassword(password) {
   const res = await fetch(`${getApiBaseUrl()}/api/auth/verify-admin-pass`, {

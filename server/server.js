@@ -24,8 +24,12 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 const uploadsDir = path.join(__dirname, 'uploads');
+const audioUploadsDir = path.join(uploadsDir, 'audio');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(audioUploadsDir)) {
+  fs.mkdirSync(audioUploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
 
@@ -872,6 +876,52 @@ app.get('/api/audio/status', authenticateToken, (req, res) => {
   res.json(status);
 });
 
+// Obtener historial de audios (Chat de Audios)
+app.get('/api/audio/messages', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const isSuper = req.user.is_superadmin === 1 || (req.user.name && req.user.name.toLowerCase().includes('mauricio'));
+
+  let query = '';
+  let params = [];
+
+  if (isSuper) {
+    query = 'SELECT * FROM voice_messages ORDER BY id DESC LIMIT 80';
+  } else {
+    query = `
+      SELECT * FROM voice_messages 
+      WHERE sender_id = ? 
+         OR receiver_ids LIKE ? 
+         OR receiver_ids = 'all'
+      ORDER BY id DESC LIMIT 80
+    `;
+    params = [userId, `%"${userId}"%`];
+  }
+
+  db.all(query, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Error al consultar historial de audios' });
+    res.json(rows || []);
+  });
+});
+
+// Eliminar un audio del historial
+app.delete('/api/audio/messages/:id', authenticateToken, (req, res) => {
+  const messageId = req.params.id;
+  const userId = req.user.id;
+  const isSuper = req.user.is_superadmin === 1 || (req.user.name && req.user.name.toLowerCase().includes('mauricio'));
+
+  let query = 'DELETE FROM voice_messages WHERE id = ?';
+  let params = [messageId];
+  if (!isSuper) {
+    query += ' AND sender_id = ?';
+    params.push(userId);
+  }
+
+  db.run(query, params, function (err) {
+    if (err) return res.status(500).json({ error: 'Error al eliminar audio' });
+    res.json({ success: true, message: 'Audio eliminado del historial' });
+  });
+});
+
 const clientDistDir = path.join(__dirname, '..', 'client', 'dist');
 const serverPublicDir = path.join(__dirname, 'public');
 const publicDir = fs.existsSync(clientDistDir) ? clientDistDir : serverPublicDir;
@@ -896,18 +946,88 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Transmisión de Audio / Voz en Tiempo Real
+  // Transmisión de Audio / Voz en Tiempo Real con guardado persistente en disco y DB
   socket.on('send_voice_audio', (data) => {
     if (!data || !data.audioData) return;
 
-    if (data.toUserId && data.toUserId !== 'all') {
-      // Enviar a un usuario específico
-      io.to('user_' + data.toUserId).emit('receive_voice_audio', data);
-      socket.emit('voice_audio_delivered', { success: true, toUserId: data.toUserId, toUserName: data.toUserName });
-    } else {
-      // Canal general (transmitir a todos los demás dispositivos conectados)
-      socket.broadcast.emit('receive_voice_audio', data);
-      socket.emit('voice_audio_delivered', { success: true, toUserId: 'all', toUserName: 'Canal General' });
+    try {
+      const fromUserId = data.fromUserId;
+      const fromUserName = data.fromUserName || 'Usuario';
+      const fromUserPhoto = data.fromUserPhoto || null;
+      const targetUserIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : (data.toUserId ? [data.toUserId] : []);
+      const targetUserNames = data.targetUserNames || (data.toUserName ? [data.toUserName] : ['Destinatario']);
+      const durationSeconds = Number(data.durationSeconds) || 0;
+      const timeStr = getLocalTimeString().slice(0, 5);
+
+      // Extraer Base64 y guardar como archivo físico en uploads/audio
+      let audioUrl = null;
+      let matches = data.audioData.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+      let buffer = null;
+      let ext = '.webm';
+
+      if (matches && matches.length === 3) {
+        const mime = matches[1];
+        if (mime.includes('mp4') || mime.includes('m4a')) ext = '.m4a';
+        else if (mime.includes('ogg')) ext = '.ogg';
+        else ext = '.webm';
+        buffer = Buffer.from(matches[2], 'base64');
+      } else {
+        buffer = Buffer.from(data.audioData, 'base64');
+      }
+
+      const filename = `voice_${Date.now()}_u${fromUserId}${ext}`;
+      const filePath = path.join(audioUploadsDir, filename);
+
+      fs.writeFile(filePath, buffer, (writeErr) => {
+        if (writeErr) {
+          console.error('Error guardando archivo de voz:', writeErr.message);
+        } else {
+          audioUrl = `/uploads/audio/${filename}`;
+        }
+
+        const receiverIdsJson = JSON.stringify(targetUserIds);
+        const receiverNamesStr = Array.isArray(targetUserNames) ? targetUserNames.join(', ') : String(targetUserNames);
+
+        // Guardar en la base de datos
+        db.run(
+          `INSERT INTO voice_messages (sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [fromUserId, fromUserName, fromUserPhoto, receiverIdsJson, receiverNamesStr, audioUrl || '', data.audioData, durationSeconds],
+          function (insertErr) {
+            const messageId = this ? this.lastID : Date.now();
+            const fullPayload = {
+              id: messageId,
+              sender_id: fromUserId,
+              sender_name: fromUserName,
+              sender_photo: fromUserPhoto,
+              receiver_ids: receiverIdsJson,
+              receiver_names: receiverNamesStr,
+              targetUserIds: targetUserIds,
+              audio_url: audioUrl,
+              audioData: data.audioData,
+              duration_seconds: durationSeconds,
+              created_at: new Date().toISOString(),
+              timestamp: timeStr
+            };
+
+            // Emitir a cada destinatario seleccionado
+            if (targetUserIds.length > 0) {
+              targetUserIds.forEach((tId) => {
+                io.to('user_' + tId).emit('receive_voice_audio', fullPayload);
+              });
+            } else {
+              // Si no hay destinatarios específicos, enviar a todos los conectados
+              socket.broadcast.emit('receive_voice_audio', fullPayload);
+            }
+
+            // Confirmación al emisor para que se agregue a su historial / chat
+            socket.emit('voice_audio_saved', fullPayload);
+          }
+        );
+      });
+
+    } catch (err) {
+      console.error('Error procesando send_voice_audio:', err.message);
     }
   });
 });

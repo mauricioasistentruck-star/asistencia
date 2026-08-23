@@ -5,9 +5,13 @@ const fs = require('fs');
 
 const dbPath = path.join(__dirname, 'asistencia.db');
 const uploadsDir = path.join(__dirname, 'uploads');
+const audioUploadsDir = path.join(uploadsDir, 'audio');
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(audioUploadsDir)) {
+  fs.mkdirSync(audioUploadsDir, { recursive: true });
 }
 
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -94,6 +98,23 @@ db.serialize(() => {
       status TEXT DEFAULT 'completed',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tabla para el Historial de Mensajes de Voz / Walkie-Talkie
+  db.run(`
+    CREATE TABLE IF NOT EXISTS voice_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id INTEGER NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_photo TEXT,
+      receiver_ids TEXT NOT NULL,
+      receiver_names TEXT NOT NULL,
+      audio_url TEXT,
+      audio_data TEXT,
+      duration_seconds INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
