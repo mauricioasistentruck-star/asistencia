@@ -80,11 +80,23 @@ export default function KioskView({ onExitKiosk, theme }) {
     enterImmersiveFullscreen();
     requestWakeLock();
 
+    // Activar Modo Kiosco Nativo en Android (LockTask y ocultar barras de notificación)
+    try {
+      if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.startKiosk) {
+        window.AndroidKiosk.startKiosk();
+      }
+    } catch (kioskErr) {
+      console.log('Native kiosk init:', kioskErr);
+    }
+
     // Re-adquirir WakeLock y Pantalla Completa si la app vuelve al frente
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         requestWakeLock();
         enterImmersiveFullscreen();
+        if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.startKiosk) {
+          window.AndroidKiosk.startKiosk();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -123,6 +135,11 @@ export default function KioskView({ onExitKiosk, theme }) {
         wakeLockRef.current.release().catch(() => {});
         wakeLockRef.current = null;
       }
+      try {
+        if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.stopKiosk) {
+          window.AndroidKiosk.stopKiosk();
+        }
+      } catch (e) {}
       exitImmersiveFullscreen();
     };
   }, []);
@@ -216,6 +233,11 @@ export default function KioskView({ onExitKiosk, theme }) {
 
     try {
       await apiVerifyAdminPassword(adminPassword);
+      try {
+        if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.stopKiosk) {
+          window.AndroidKiosk.stopKiosk();
+        }
+      } catch (e) {}
       setShowUnlockModal(false);
       exitImmersiveFullscreen();
       onExitKiosk();
