@@ -236,9 +236,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/mp4');
+        : (MediaRecorder.isTypeSupported('audio/webm') 
+            ? 'audio/webm' 
+            : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/ogg'));
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
@@ -249,8 +251,14 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
 
       recorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop());
-        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        const blobType = recorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
         
+        if (audioBlob.size === 0) {
+          console.warn('Audio grabado sin contenido');
+          return;
+        }
+
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
@@ -282,7 +290,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
         };
       };
 
-      recorder.start(250);
+      recorder.start(100);
       isRecordingRef.current = true;
       setIsRecording(true);
 
@@ -294,7 +302,18 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
 
   const stopTalking = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.requestData();
+        }
+      } catch (e) {}
+
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      }, 60);
+
       isRecordingRef.current = false;
       setIsRecording(false);
     }
@@ -454,14 +473,29 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
     if (!audioSource) return;
 
     try {
-      const audio = new Audio(audioSource);
+      let playUrl = audioSource;
+      if (audioSource.startsWith('data:audio')) {
+        const parts = audioSource.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
+        const byteCharacters = atob(parts[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mime });
+        playUrl = URL.createObjectURL(blob);
+      }
+
+      const audio = new Audio(playUrl);
       audio.volume = 1.0;
       activeAudioPlayerRef.current = audio;
       setCurrentPlayingId(msg.id);
 
       audio.play().then(() => {
         progressIntervalRef.current = setInterval(() => {
-          if (audio.duration) {
+          if (audio.duration && !isNaN(audio.duration)) {
             setAudioProgress((audio.currentTime / audio.duration) * 100);
           }
         }, 100);

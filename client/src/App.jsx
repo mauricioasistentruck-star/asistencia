@@ -186,16 +186,39 @@ export default function App() {
       try {
         const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
         if (audioSrc) {
-          const audio = new Audio(audioSrc);
+          let playUrl = audioSrc;
+          if (audioSrc.startsWith('data:audio')) {
+            const parts = audioSrc.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
+            const byteCharacters = atob(parts[1]);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mime });
+            playUrl = URL.createObjectURL(blob);
+          }
+
+          const audio = new Audio(playUrl);
           audio.volume = 1.0;
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             playPromise.catch((err) => {
-              console.warn('Auto-play audio intento 1:', err.message);
-              // Si falla por interacción, intentar reproducir con AudioContext
+              console.warn('Auto-play con Audio():', err.message);
               try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 if (ctx.state === 'suspended') ctx.resume();
+                fetch(playUrl)
+                  .then(r => r.arrayBuffer())
+                  .then(buf => ctx.decodeAudioData(buf))
+                  .then(decodedData => {
+                    const source = ctx.createBufferSource();
+                    source.buffer = decodedData;
+                    source.connect(ctx.destination);
+                    source.start(0);
+                  }).catch(() => {});
               } catch (e) {}
             });
           }

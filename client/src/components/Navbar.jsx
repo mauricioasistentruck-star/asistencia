@@ -40,6 +40,17 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const isDark = theme === 'dark';
   const isMauricio = user && (user.name?.toLowerCase().includes('mauricio') || user.is_superadmin === 1 || user.role === 'superadmin' || user.role === 'admin');
 
+  // Escucha global de botón de audífonos para abrir Walkie-Talkie automáticamente
+  useEffect(() => {
+    const handleGlobalHeadset = () => {
+      setShowWalkieTalkie(true);
+    };
+    window.addEventListener('headset_button_event', handleGlobalHeadset);
+    return () => {
+      window.removeEventListener('headset_button_event', handleGlobalHeadset);
+    };
+  }, []);
+
   // Comprobar ruta activa en segundo plano
   useEffect(() => {
     if (isMauricio) {
