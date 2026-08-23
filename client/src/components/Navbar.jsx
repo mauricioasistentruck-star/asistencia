@@ -263,23 +263,6 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
             {/* ACCIONES SUPERIORES MINIMALISTAS */}
             <div className="flex items-center space-x-1 sm:space-x-1.5">
               
-              {/* BOTÓN RÁPIDO RUTA GPS PARA MAURICIO */}
-              {isMauricio && (
-                <button
-                  onClick={handleToggleRoute}
-                  disabled={routeLoading}
-                  title={activeRoute ? "Terminar Ruta GPS" : "Iniciar Ruta GPS"}
-                  className={'text-[10px] font-black px-2 py-1 rounded-lg shadow-sm flex items-center gap-1 transition-all active:scale-95 cursor-pointer ' + (
-                    activeRoute 
-                      ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
-                      : (isDark ? 'bg-zinc-900 hover:bg-orange-500 hover:text-black text-orange-400 border border-orange-500/30' : 'bg-orange-100 hover:bg-orange-500 hover:text-black text-orange-950 border border-orange-300')
-                  )}
-                >
-                  <MapPin className="w-3 h-3 text-orange-500 flex-shrink-0" />
-                  <span>{activeRoute ? `${formatSeconds(routeTimer)}` : 'Mi Ruta'}</span>
-                </button>
-              )}
-
               {/* BOTÓN RÁPIDO WALKIE-TALKIE */}
               <button
                 onClick={() => setShowWalkieTalkie(true)}
@@ -349,45 +332,6 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Opción Especial Mauricio/Admin: Ruta GPS en Terreno */}
-            {isMauricio && (
-              <div className="p-2.5 rounded-2xl border border-orange-500/40 bg-orange-500/10 space-y-2 mb-2 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-orange-500 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" />
-                    Mi Ruta GPS Terreno (Mauricio)
-                  </span>
-                  {activeRoute && (
-                    <span className="text-[9px] font-mono font-black text-red-400 bg-red-500/20 px-2 py-0.5 rounded-full border border-red-500/30 animate-pulse">
-                      {formatSeconds(routeTimer)} | {routeDistance} km
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleToggleRoute}
-                  disabled={routeLoading}
-                  className={'w-full py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 transition-all shadow-md active:scale-95 cursor-pointer ' + (
-                    activeRoute
-                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/30 animate-pulse'
-                      : 'bg-orange-500 hover:bg-orange-600 text-black shadow-orange-500/30'
-                  )}
-                >
-                  {activeRoute ? (
-                    <>
-                      <Square className="w-3.5 h-3.5 fill-white" />
-                      <span>{routeLoading ? 'Guardando...' : `Terminar Mi Ruta (${formatSeconds(routeTimer)})`}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-black" />
-                      <span>{routeLoading ? 'Iniciando GPS...' : 'Iniciar Mi Ruta en Terreno'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
 
             {/* Lista de Secciones con Scroll Interno Seguro */}
             <div className="space-y-1.5 overflow-y-auto flex-1 pr-1 custom-scrollbar mb-2">
