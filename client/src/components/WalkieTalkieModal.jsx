@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, MicOff, Radio, Volume2, Users, User, X, Clock, ShieldCheck, CheckCircle2, 
   AlertTriangle, Headphones, Bluetooth, Sparkles, Lock, Unlock, RefreshCw, 
-  Play, Pause, RotateCcw, MessageSquare, Search, Trash2, Check, Globe
+  Play, Pause, RotateCcw, MessageSquare, Search, Trash2, Check, CheckCircle
 } from 'lucide-react';
 import { apiGetUsers, apiGetAudioStatus, apiGetVoiceMessages, apiDeleteVoiceMessage, getFullPhotoUrl, getSocket } from '../api';
 
@@ -27,8 +27,10 @@ function playRadioBeep(frequency = 880, duration = 0.08) {
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/wD/';
 
 export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme }) {
-  // Modal view: 'all_in_one'
-  const [targetMode, setTargetMode] = useState('all'); // 'all' (Canal General) o 'manual' (Personal específico)
+  // Pestañas exactas: 'walkie' (Hablar en Vivo) o 'chat' (Chat de Audios)
+  const [activeTab, setActiveTab] = useState('walkie');
+
+  // Destinatarios seleccionados
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +58,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
   const audioChunksRef = useRef([]);
   const timerRef = useRef(null);
   const isRecordingRef = useRef(false);
+  const pressStartTimeRef = useRef(0);
   const startTalkingRef = useRef(null);
   const stopTalkingRef = useRef(null);
   const toggleTalkingRef = useRef(null);
@@ -63,7 +66,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
   const activeAudioPlayerRef = useRef(null);
   const progressIntervalRef = useRef(null);
 
-  const isDark = theme === 'dark';
+  const isDark = theme === 'dark' || true; // Estilo oscuro premium con naranjo
   const isMauricio = currentUser && (currentUser.is_superadmin === 1 || (currentUser.name && currentUser.name.toLowerCase().includes('mauricio')));
 
   // Detección de dispositivos de audio
@@ -115,7 +118,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
           setHeadsetInfo({
             connected: false,
             type: 'none',
-            label: 'Micrófono del Dispositivo'
+            label: 'Micrófono por defecto'
           });
         }
       }
@@ -215,8 +218,8 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
       alert(audioStatus.reason || 'Canal de audio fuera de horario.');
       return;
     }
-    if (targetMode === 'manual' && selectedUserIds.length === 0) {
-      setStatusMsg('⚠️ Seleccione al menos un colaborador o active Canal General.');
+    if (selectedUserIds.length === 0) {
+      setStatusMsg('⚠️ Seleccione al menos un colaborador antes de hablar.');
       setTimeout(() => setStatusMsg(''), 4000);
       return;
     }
@@ -263,16 +266,16 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
           const base64Audio = reader.result;
-          const isGeneral = targetMode === 'all';
+          const isAllUsers = selectedUserIds.length === usersList.length;
           const targetUsers = usersList.filter(u => selectedUserIds.includes(u.id));
-          const targetNames = isGeneral ? ['Canal General (Todos)'] : targetUsers.map(u => u.name);
-          const targetIds = isGeneral ? ['all'] : selectedUserIds;
+          const targetNames = isAllUsers ? ['Canal General (Todos)'] : targetUsers.map(u => u.name);
+          const targetIds = isAllUsers ? ['all'] : selectedUserIds;
 
           const payload = {
             fromUserId: currentUser.id,
             fromUserName: currentUser.name,
             fromUserPhoto: currentUser.photo_url,
-            toUserId: isGeneral ? 'all' : undefined,
+            toUserId: isAllUsers ? 'all' : undefined,
             targetUserIds: targetIds,
             targetUserNames: targetNames,
             audioData: base64Audio,
@@ -284,8 +287,8 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
           socket.emit('send_voice_audio', payload);
           playRadioBeep(620, 0.09);
 
-          const destText = isGeneral ? 'Canal General (Todos los usuarios)' : (targetNames.length === 1 ? targetNames[0] : `${targetNames.length} colaboradores`);
-          setStatusMsg(`✅ Audio transmitido en vivo a ${destText}`);
+          const destText = isAllUsers ? 'Canal General (Todos)' : (targetNames.length === 1 ? targetNames[0] : `${targetNames.length} colaboradores`);
+          setStatusMsg(`✅ Audio enviado a ${destText}`);
           setTimeout(() => setStatusMsg(''), 4000);
         };
       };
@@ -325,6 +328,20 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
       stopTalking();
     } else {
       startTalking();
+    }
+  };
+
+  // Soporte para Presionar y Mantener presionado (Hold-to-Talk)
+  const handleButtonDown = () => {
+    pressStartTimeRef.current = Date.now();
+    startTalking();
+  };
+
+  const handleButtonUp = () => {
+    const duration = Date.now() - pressStartTimeRef.current;
+    if (duration > 350) {
+      // Si mantuvo presionado por más de 350ms, soltar detiene la grabación inmediatamente
+      stopTalking();
     }
   };
 
@@ -377,7 +394,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
 
       setIsHeadsetLocked(true);
       playRadioBeep(1150, 0.12);
-      setStatusMsg('🎧 Audífonos vinculados: 1 clic en botón central para hablar, 2do clic para enviar.');
+      setStatusMsg('🎧 Botón de audífonos vinculado: 1 clic para hablar, 2do clic para enviar.');
       setTimeout(() => setStatusMsg(''), 5000);
     } else {
       if ('mediaSession' in navigator) {
@@ -531,7 +548,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
     }
   };
 
-  // Gestión de selección manual de colaboradores
+  // Selección de personal
   const toggleUserSelection = (userId) => {
     setSelectedUserIds(prev => {
       if (prev.includes(userId)) {
@@ -559,304 +576,293 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-2.5 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[99999] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className={'border rounded-3xl max-w-lg w-full max-h-[95vh] p-3.5 sm:p-5 shadow-2xl flex flex-col justify-between space-y-2.5 overflow-hidden ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-orange-200 text-zinc-900')}
+        className="bg-zinc-950 border border-orange-500/30 rounded-[32px] max-w-[440px] w-full max-h-[94vh] p-5 shadow-2xl flex flex-col justify-between space-y-4 text-white overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Encabezado */}
-        <div className="flex items-center justify-between pb-2 border-b border-orange-500/20">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black shadow-lg shadow-orange-500/30 flex-shrink-0">
-              <Radio className="w-5 h-5 animate-pulse" />
+        {/* ========================================================================= */}
+        {/* ENCABEZADO EXACTO */}
+        {/* ========================================================================= */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 text-black flex items-center justify-center font-black shadow-lg shadow-orange-500/30 flex-shrink-0">
+              <Radio className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-base font-black tracking-tight flex items-center gap-1.5 leading-tight">
-                Walkie-Talkie & Chat de Voz
+              <h3 className="text-lg font-black tracking-tight text-white leading-tight">
+                Walkie-Talkie & Voz
               </h3>
-              <p className="text-[11px] text-orange-500 font-bold leading-tight">Transmisión en directo y repetición de audios</p>
+              <p className="text-xs text-orange-500 font-bold leading-tight mt-0.5">
+                Canal directo con personal en terreno
+              </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl hover:bg-orange-500/10 text-zinc-400 hover:text-orange-500 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5 flex-shrink-0" />
           </button>
         </div>
 
-        {/* Contenido desplazable */}
-        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[75vh]">
-          
-          {/* ========================================================================= */}
-          {/* BOTÓN VINCULACIÓN AUDÍFONO BLUETOOTH */}
-          {/* ========================================================================= */}
-          <div className="space-y-1">
-            <button
-              type="button"
-              onClick={toggleLockHeadset}
-              className={'w-full p-2.5 rounded-2xl border text-xs flex items-center justify-between gap-2.5 transition-all shadow-md active:scale-98 cursor-pointer ' + (
-                isHeadsetLocked
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-400 text-white shadow-emerald-500/25'
-                  : (headsetInfo.connected
-                      ? (isDark ? 'bg-blue-600/20 hover:bg-blue-600/30 border-blue-500 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-950')
-                      : (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-zinc-900'))
-              )}
-            >
-              <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
-                <div className={'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 font-bold ' + (
-                  isHeadsetLocked
-                    ? 'bg-black text-emerald-400 animate-pulse'
-                    : (headsetInfo.connected ? 'bg-blue-500 text-white' : 'bg-orange-500 text-black')
-                )}>
-                  {headsetInfo.type === 'bluetooth' ? <Bluetooth className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
+        {/* ========================================================================= */}
+        {/* PESTAÑAS: [Hablar en Vivo] y [Chat de Audios (N)] */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab('walkie')}
+            className={'py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ' + (
+              activeTab === 'walkie'
+                ? 'bg-orange-500 text-black shadow-md shadow-orange-500/30'
+                : 'text-zinc-400 hover:text-white'
+            )}
+          >
+            <Radio className="w-4 h-4" />
+            <span>Hablar en Vivo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('chat');
+              loadVoiceHistory();
+            }}
+            className={'py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ' + (
+              activeTab === 'chat'
+                ? 'bg-orange-500 text-black shadow-md shadow-orange-500/30'
+                : 'text-zinc-400 hover:text-white'
+            )}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Chat de Audios ({voiceMessages.length})</span>
+          </button>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* VISTA 1: HABLAR EN VIVO */}
+        {/* ========================================================================= */}
+        {activeTab === 'walkie' && (
+          <div className="flex-1 flex flex-col space-y-3.5 overflow-y-auto pr-0.5">
+            
+            {/* TARJETA 1: VINCULAR BOTÓN DE AUDÍFONOS */}
+            <div className="space-y-1.5">
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className={'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold ' + (
+                    isHeadsetLocked ? 'bg-emerald-500 text-black animate-pulse' : 'bg-orange-500 text-black'
+                  )}>
+                    <Headphones className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-black text-white truncate">
+                      Vincular Botón de Audífonos
+                    </div>
+                    <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                      {isHeadsetLocked ? '🎧 1 Clic: Hablar • 2do Clic: Enviar' : 'Toque para activar control por botón de audífono'}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="text-left min-w-0 flex-1 overflow-hidden pr-1">
-                  <div className="text-xs font-black truncate flex items-center gap-1.5 leading-tight">
-                    <span className="truncate">{headsetInfo.connected ? (headsetInfo.label || 'Audífonos Detectados') : 'Vincular Botón Central de Audífonos'}</span>
-                    {isHeadsetLocked && <span className="w-2 h-2 rounded-full bg-white animate-ping flex-shrink-0"></span>}
-                  </div>
-                  <div className={'text-[10px] leading-tight truncate mt-0.5 ' + (isHeadsetLocked ? 'text-emerald-100 font-bold' : (isDark ? 'text-zinc-400' : 'text-zinc-600'))}>
-                    {isHeadsetLocked
-                      ? '🎧 1 Clic en audífono: Hablar • 2do Clic: Enviar'
-                      : 'Presione para hablar directamente con el botón de su audífono'}
-                  </div>
-                </div>
-              </div>
-
-              <div className={'flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-xl flex-shrink-0 shadow-sm ml-auto ' + (
-                isHeadsetLocked
-                  ? 'bg-black text-emerald-400 border border-emerald-400/50'
-                  : 'bg-orange-500 text-black'
-              )}>
-                {isHeadsetLocked ? (
-                  <>
-                    <Unlock className="w-3 h-3 flex-shrink-0" />
-                    <span>Liberar</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-3 h-3 flex-shrink-0" />
-                    <span>Vincular</span>
-                  </>
-                )}
-              </div>
-            </button>
-
-            <div className="flex items-center justify-between px-1 text-[10px] text-zinc-400">
-              <span className="truncate flex items-center gap-1">
-                <span className={'w-1.5 h-1.5 rounded-full ' + (headsetInfo.connected ? 'bg-emerald-500' : 'bg-amber-500')}></span>
-                {headsetInfo.connected ? headsetInfo.label : 'Micrófono del teléfono/PC'}
-              </span>
-              <button
-                type="button"
-                onClick={scanAudioDevices}
-                className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer flex-shrink-0"
-              >
-                <RefreshCw className={'w-3 h-3 ' + (scanningDevices ? 'animate-spin' : '')} />
-                <span>Detectar</span>
-              </button>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SELECCIÓN DE CANAL: CANAL GENERAL (TODOS) O PERSONAL ESPECÍFICO */}
-          {/* ========================================================================= */}
-          <div className="space-y-1.5 p-2.5 rounded-2xl border border-orange-500/20 bg-orange-500/5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-black uppercase text-orange-500 tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>Transmitir a:</span>
-              </label>
-
-              <div className="flex items-center gap-1 text-[10px]">
                 <button
                   type="button"
-                  onClick={() => setTargetMode('all')}
-                  className={'px-2.5 py-1 rounded-lg font-black transition-all cursor-pointer flex items-center gap-1 ' + (
-                    targetMode === 'all'
-                      ? 'bg-orange-500 text-black shadow-sm'
-                      : (isDark ? 'bg-zinc-800 text-zinc-400 hover:text-white' : 'bg-zinc-200 text-zinc-700 hover:text-black')
+                  onClick={toggleLockHeadset}
+                  className={'px-3.5 py-2 rounded-xl text-[11px] font-black uppercase flex items-center gap-1.5 flex-shrink-0 transition-all shadow-md active:scale-95 cursor-pointer ' + (
+                    isHeadsetLocked
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-black'
+                      : 'bg-orange-500 hover:bg-orange-600 text-black'
                   )}
                 >
-                  <Globe className="w-3 h-3" />
-                  <span>Canal General (Todos)</span>
+                  {isHeadsetLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  <span>{isHeadsetLocked ? 'LIBERAR' : 'VINCULAR'}</span>
                 </button>
+              </div>
 
+              <div className="flex items-center justify-between px-1 text-[11px] text-zinc-400">
+                <span className="flex items-center gap-1.5">
+                  <span className={'w-2 h-2 rounded-full ' + (headsetInfo.connected ? 'bg-emerald-500' : 'bg-orange-500')}></span>
+                  <span>{headsetInfo.connected ? headsetInfo.label : 'Micrófono por defecto'}</span>
+                </span>
                 <button
                   type="button"
-                  onClick={() => setTargetMode('manual')}
-                  className={'px-2.5 py-1 rounded-lg font-black transition-all cursor-pointer flex items-center gap-1 ' + (
-                    targetMode === 'manual'
-                      ? 'bg-orange-500 text-black shadow-sm'
-                      : (isDark ? 'bg-zinc-800 text-zinc-400 hover:text-white' : 'bg-zinc-200 text-zinc-700 hover:text-black')
-                  )}
+                  onClick={scanAudioDevices}
+                  className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <Users className="w-3 h-3" />
-                  <span>Personal Específico ({selectedUserIds.length})</span>
+                  <RefreshCw className={'w-3 h-3 ' + (scanningDevices ? 'animate-spin' : '')} />
+                  <span>Detectar</span>
                 </button>
               </div>
             </div>
 
-            {/* Si está en modo Manual, mostrar selector con buscador */}
-            {targetMode === 'manual' && (
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between gap-1 text-[10px]">
-                  <div className="relative flex-1">
-                    <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                    <input
-                      type="text"
-                      placeholder="Filtrar colaborador por nombre..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={'w-full pl-7 pr-2 py-1 text-xs rounded-xl border outline-none ' + (
-                        isDark ? 'bg-zinc-900 border-zinc-800 text-white placeholder-zinc-500' : 'bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400'
-                      )}
-                    />
-                  </div>
+            {/* TARJETA 2: DESTINATARIOS */}
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-1.5">
+                  <Users className="w-4 h-4 flex-shrink-0" />
+                  <span>DESTINATARIOS ({selectedUserIds.length}):</span>
+                </label>
+
+                <div className="flex items-center gap-1.5 text-xs">
                   <button
                     type="button"
                     onClick={selectAllUsers}
-                    className="px-2 py-1 rounded-lg bg-orange-500/20 text-orange-400 font-bold hover:bg-orange-500/30 cursor-pointer"
+                    className="px-2.5 py-0.5 rounded-lg bg-orange-500/20 text-orange-400 font-bold hover:bg-orange-500/30 cursor-pointer"
                   >
-                    Marcar Todos
+                    Todos
                   </button>
                   <button
                     type="button"
                     onClick={deselectAllUsers}
-                    className="px-2 py-1 rounded-lg bg-zinc-700/50 text-zinc-300 font-bold hover:bg-zinc-700 cursor-pointer"
+                    className="px-2.5 py-0.5 rounded-lg bg-zinc-800 text-zinc-400 font-bold hover:bg-zinc-700 cursor-pointer"
                   >
                     Limpiar
                   </button>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-[110px] overflow-y-auto pr-1">
-                  {filteredUsers.map((u) => {
-                    const isSelected = selectedUserIds.includes(u.id);
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => toggleUserSelection(u.id)}
-                        className={'py-1.5 px-2 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ' + (
-                          isSelected
-                            ? 'bg-orange-500 text-black border-orange-500 font-black shadow-sm'
-                            : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-white border-zinc-200 text-zinc-800 hover:bg-orange-50')
-                        )}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-                          <div className="w-5 h-5 rounded-full overflow-hidden bg-black flex items-center justify-center border border-orange-500/50 flex-shrink-0">
-                            {u.photo_url ? (
-                              <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-[9px] text-orange-400 font-bold">{u.name.charAt(0)}</span>
-                            )}
-                          </div>
-                          <span className="truncate text-left text-[11px] leading-tight">{u.name}</span>
+              {/* Buscador */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar colaborador..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 text-white placeholder-zinc-500 pl-8 pr-3 py-1.5 text-xs rounded-xl outline-none focus:border-orange-500/50"
+                />
+              </div>
+
+              {/* Lista de Destinatarios (Grid exactamente como el diseño) */}
+              <div className="grid grid-cols-2 gap-1.5 max-h-[120px] overflow-y-auto pr-1">
+                {filteredUsers.map((u) => {
+                  const isSelected = selectedUserIds.includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => toggleUserSelection(u.id)}
+                      className={'py-2 px-2.5 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ' + (
+                        isSelected
+                          ? 'bg-orange-500 text-black border-orange-500 font-black shadow-sm'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                        <div className="w-6 h-6 rounded-full overflow-hidden bg-black flex items-center justify-center border border-black flex-shrink-0 font-bold text-[11px]">
+                          {u.photo_url ? (
+                            <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className={isSelected ? 'text-orange-400' : 'text-orange-500'}>
+                              {u.name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
                         </div>
-                        <div className={'w-3.5 h-3.5 rounded-md flex items-center justify-center flex-shrink-0 ml-1 border ' + (
-                          isSelected ? 'bg-black text-orange-400 border-black' : 'border-zinc-500'
-                        )}>
-                          {isSelected && <Check className="w-2.5 h-2.5" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                        <span className="truncate text-left leading-tight">{u.name}</span>
+                      </div>
+                      <div className={'w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 ml-1 border ' + (
+                        isSelected ? 'bg-black text-orange-400 border-black' : 'border-zinc-600'
+                      )}>
+                        {isSelected && <Check className="w-3 h-3" />}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {filteredUsers.length === 0 && (
+                  <div className="col-span-2 text-center text-xs text-zinc-500 py-3">
+                    No se encontraron colaboradores
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Mensajes de Estado */}
+            {statusMsg && (
+              <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs p-2 rounded-2xl flex items-center justify-center gap-2 font-bold animate-pulse text-center">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{statusMsg}</span>
               </div>
             )}
+
+            {micPermissionError && (
+              <div className="bg-red-500/15 border border-red-500/30 text-red-400 text-xs p-2.5 rounded-2xl flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>Permita el acceso al micrófono para hablar.</span>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* BOTÓN CENTRAL HABLAR (1 CLIC / MANTENER PRESIONADO) */}
+            {/* ========================================================================= */}
+            <div className="flex flex-col items-center justify-center pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={toggleTalking}
+                onMouseDown={handleButtonDown}
+                onMouseUp={handleButtonUp}
+                onTouchStart={handleButtonDown}
+                onTouchEnd={handleButtonUp}
+                disabled={(!audioStatus.allowed && !isMauricio) || selectedUserIds.length === 0}
+                className={'w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 flex flex-col items-center justify-center transition-all transform active:scale-95 shadow-2xl ' + (
+                  isRecording
+                    ? 'bg-red-600 border-white text-white shadow-[0_0_40px_rgba(239,68,68,0.8)] scale-105 animate-pulse'
+                    : (selectedUserIds.length === 0
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-600 cursor-not-allowed'
+                        : (audioStatus.allowed || isMauricio
+                            ? 'bg-orange-500 border-black hover:bg-orange-600 text-black shadow-[0_0_40px_rgba(249,115,22,0.6)] hover:scale-105 cursor-pointer'
+                            : 'bg-zinc-800 border-zinc-700 text-zinc-600 cursor-not-allowed'))
+                )}
+              >
+                {isRecording ? (
+                  <>
+                    <Volume2 className="w-8 h-8 sm:w-9 sm:h-9 animate-bounce flex-shrink-0" />
+                    <span className="text-[10px] font-black uppercase mt-1">ENVIAR (2º CLIC)</span>
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0" />
+                    <span className="text-[10px] font-black uppercase mt-1">HABLAR (1 CLIC)</span>
+                  </>
+                )}
+              </button>
+
+              <div className="text-center">
+                {isRecording ? (
+                  <div className="flex items-center justify-center gap-1.5 text-red-400 font-black text-xs">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                    <span>GRABANDO EN VIVO... ({recordSeconds}s)</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400">
+                    Presione 1 clic para hablar y otro para enviar (o mantenga presionado).
+                  </p>
+                )}
+              </div>
+            </div>
+
           </div>
+        )}
 
-          {/* Mensajes de Estado */}
-          {statusMsg && (
-            <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs p-2 rounded-2xl flex items-center justify-center gap-2 font-bold animate-pulse text-center">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>{statusMsg}</span>
-            </div>
-          )}
-
-          {micPermissionError && (
-            <div className="bg-red-500/15 border border-red-500/30 text-red-400 text-xs p-2 rounded-2xl flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>Permita el acceso al micrófono para hablar.</span>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* BOTÓN PUSH-TO-TALK / 1 CLIC PARA HABLAR EN VIVO */}
-          {/* ========================================================================= */}
-          <div className="flex flex-col items-center justify-center py-1 space-y-1.5">
-            <button
-              type="button"
-              onClick={toggleTalking}
-              onMouseDown={startTalking}
-              onMouseUp={stopTalking}
-              onTouchStart={startTalking}
-              onTouchEnd={stopTalking}
-              disabled={(!audioStatus.allowed && !isMauricio) || (targetMode === 'manual' && selectedUserIds.length === 0)}
-              className={'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 flex flex-col items-center justify-center transition-all transform active:scale-95 shadow-2xl ' + (
-                isRecording
-                  ? 'bg-red-600 border-red-300 text-white shadow-red-600/50 scale-105 animate-pulse'
-                  : ((targetMode === 'manual' && selectedUserIds.length === 0)
-                      ? 'bg-zinc-800 border-zinc-700 text-zinc-500 cursor-not-allowed'
-                      : (audioStatus.allowed || isMauricio
-                          ? 'bg-orange-500 border-black hover:bg-orange-600 text-black shadow-orange-500/40 hover:scale-105 cursor-pointer'
-                          : 'bg-zinc-800 border-zinc-700 text-zinc-600 cursor-not-allowed'))
-              )}
-            >
-              {isRecording ? (
-                <>
-                  <Volume2 className="w-8 h-8 sm:w-9 sm:h-9 animate-bounce flex-shrink-0" />
-                  <span className="text-[9px] font-black uppercase mt-0.5">Enviar (2º Clic)</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0" />
-                  <span className="text-[9px] font-black uppercase mt-0.5">Hablar (1 Clic)</span>
-                </>
-              )}
-            </button>
-
-            <div className="text-center space-y-0.5">
-              {isRecording ? (
-                <div className="flex items-center justify-center gap-1.5 text-red-400 font-black text-xs">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                  <span>TRANSMITIENDO EN VIVO... ({recordSeconds}s)</span>
-                </div>
-              ) : (
-                <p className="text-[11px] text-zinc-400">
-                  {isHeadsetLocked ? (
-                    <span className="text-emerald-400 font-bold">🎧 Audífono: 1 clic para hablar • 2do clic para enviar.</span>
-                  ) : (
-                    <span>Toca 1 vez para hablar y otra para enviar (o mantén presionado).</span>
-                  )}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SECCIÓN DIRECTA: CHAT DE AUDIOS / HISTORIAL DE MENSAJES DE VOZ */}
-          {/* ========================================================================= */}
-          <div className="space-y-2 pt-2 border-t border-orange-500/20">
-            <div className="flex items-center justify-between text-xs font-black text-orange-500 px-1">
-              <span className="flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Chat de Audios Recientes ({voiceMessages.length})</span>
-              </span>
+        {/* ========================================================================= */}
+        {/* VISTA 2: CHAT DE AUDIOS / HISTORIAL DE MENSAJES DE VOZ */}
+        {/* ========================================================================= */}
+        {activeTab === 'chat' && (
+          <div className="flex-1 flex flex-col space-y-3 overflow-hidden">
+            <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
+              <span>Mensajes de voz grabados (Toca para escuchar o repetir)</span>
               <button
                 type="button"
                 onClick={loadVoiceHistory}
-                className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer text-[10px]"
+                className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className={'w-3 h-3 ' + (loadingMessages ? 'animate-spin' : '')} />
                 <span>Actualizar</span>
               </button>
             </div>
 
-            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[360px]">
               {voiceMessages.map((msg) => {
                 const isMe = msg.sender_id === currentUser?.id;
                 const isPlaying = currentPlayingId === msg.id;
@@ -864,28 +870,26 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
                 return (
                   <div
                     key={msg.id}
-                    className={'p-2.5 rounded-2xl border transition-all ' + (
-                      isMe 
-                        ? (isDark ? 'bg-orange-500/10 border-orange-500/30' : 'bg-orange-50 border-orange-200')
-                        : (isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200')
+                    className={'p-3 rounded-2xl border transition-all ' + (
+                      isMe ? 'bg-orange-500/10 border-orange-500/30' : 'bg-zinc-900 border-zinc-800'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-6 h-6 rounded-full overflow-hidden bg-black flex items-center justify-center border border-orange-500/50 flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border border-orange-500/50 flex-shrink-0 font-bold text-[11px]">
                           {msg.sender_photo ? (
                             <img src={getFullPhotoUrl(msg.sender_photo)} alt={msg.sender_name} className="w-full h-full object-cover" />
                           ) : (
-                            <span className="text-[9px] text-orange-400 font-bold">{msg.sender_name ? msg.sender_name.charAt(0) : 'U'}</span>
+                            <span className="text-orange-400">{msg.sender_name ? msg.sender_name.charAt(0) : 'U'}</span>
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs font-black truncate flex items-center gap-1.5 leading-tight">
-                            <span>{isMe ? 'Tú (Enviado)' : msg.sender_name}</span>
+                          <div className="text-xs font-black truncate flex items-center gap-1.5">
+                            <span>{isMe ? 'Tú (Mensaje Enviado)' : msg.sender_name}</span>
                             <span className="text-[10px] font-mono font-normal text-zinc-400">{msg.timestamp || ''}</span>
                           </div>
-                          <div className="text-[10px] text-zinc-400 truncate leading-tight">
-                            {msg.receiver_names || 'Canal General'}
+                          <div className="text-[10px] text-zinc-400 truncate">
+                            Para: {msg.receiver_names || 'Colaboradores'}
                           </div>
                         </div>
                       </div>
@@ -897,45 +901,43 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
                           title="Eliminar audio"
                           className="p-1 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
 
                     {/* Controles de Reproducción y Repetición */}
-                    <div className="flex items-center gap-2 pt-0.5">
+                    <div className="flex items-center gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => playVoiceMessage(msg)}
-                        className={'p-1.5 rounded-xl flex items-center justify-center font-bold text-xs transition-all shadow-sm cursor-pointer ' + (
+                        className={'p-2 rounded-xl flex items-center justify-center font-bold text-xs transition-all shadow-sm cursor-pointer ' + (
                           isPlaying
                             ? 'bg-amber-500 text-black animate-pulse'
                             : 'bg-orange-500 text-black hover:bg-orange-600'
                         )}
                       >
-                        {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                       </button>
 
                       <button
                         type="button"
                         onClick={() => repeatVoiceMessage(msg)}
                         title="Volver a escuchar desde el inicio"
-                        className={'p-1.5 px-2 rounded-xl border flex items-center gap-1 text-[10px] font-bold transition-all cursor-pointer ' + (
-                          isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 border-zinc-300 text-zinc-800 hover:bg-zinc-200'
-                        )}
+                        className="p-2 rounded-xl border bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer"
                       >
-                        <RotateCcw className="w-3 h-3" />
+                        <RotateCcw className="w-3.5 h-3.5" />
                         <span>Repetir</span>
                       </button>
 
                       <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-zinc-700/40 overflow-hidden relative">
+                        <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden relative">
                           <div
                             className="h-full bg-orange-500 transition-all duration-100"
                             style={{ width: `${isPlaying ? audioProgress : 0}%` }}
                           ></div>
                         </div>
-                        <span className="text-[9px] font-mono text-zinc-400 flex-shrink-0">
+                        <span className="text-[10px] font-mono text-zinc-400 flex-shrink-0">
                           {msg.duration_seconds ? `${msg.duration_seconds}s` : 'Voz'}
                         </span>
                       </div>
@@ -946,15 +948,27 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
               })}
 
               {voiceMessages.length === 0 && !loadingMessages && (
-                <div className="text-center py-4 text-zinc-500 space-y-1">
-                  <MessageSquare className="w-6 h-6 mx-auto opacity-40 text-orange-500" />
+                <div className="text-center py-8 text-zinc-500 space-y-2">
+                  <MessageSquare className="w-8 h-8 mx-auto opacity-40 text-orange-500" />
                   <p className="text-xs">No hay mensajes de voz recientes en el chat.</p>
+                  <p className="text-[11px] text-zinc-400">Los audios enviados se guardarán aquí para repetirlos cuando desees.</p>
                 </div>
               )}
             </div>
-          </div>
 
-        </div>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('walkie')}
+                className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-black font-black text-xs rounded-xl shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Mic className="w-4 h-4" />
+                <span>Volver al Micrófono en Vivo</span>
+              </button>
+            </div>
+
+          </div>
+        )}
 
       </div>
     </div>
