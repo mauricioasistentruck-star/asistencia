@@ -2,21 +2,37 @@ import { io } from 'socket.io-client';
 
 export const DEFAULT_CLOUD_API = 'https://asistenciasistentruck.onrender.com';
 
+export const isNativeApp = () => {
+  if (typeof window === 'undefined') return false;
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return true;
+  if (window.location && window.location.protocol === 'capacitor:') return true;
+  if (typeof navigator !== 'undefined' && navigator.userAgent && /android/i.test(navigator.userAgent) && window.location.port === '' && (window.location.hostname === 'localhost' || window.location.hostname === '')) return true;
+  return false;
+};
+
 export const getApiBaseUrl = () => {
   const saved = localStorage.getItem('asistencia_api_url');
   if (saved && saved.trim() !== '') return saved.trim();
 
+  // Si corre dentro del APK nativo de Android, apuntar a Render central en la nube
+  if (isNativeApp()) {
+    return DEFAULT_CLOUD_API;
+  }
+
   if (typeof window !== 'undefined' && window.location) {
     const hostname = window.location.hostname;
-    // Si corre en localhost o IP local de red, conectar al servidor local en puerto 3001
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname === '') {
-      return `${window.location.protocol || 'http:'}//${hostname || 'localhost'}:3001`;
+    // Si corre en navegador web de PC en desarrollo local
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
+      if (window.location.port === '5173' || window.location.port === '5174') {
+        return `${window.location.protocol || 'http:'}//${hostname}:3001`;
+      }
+      return window.location.origin;
     }
-    // Si está desplegado en dominio público / nube
+    // Si está desplegado en Render / Nube
     return window.location.origin;
   }
 
-  return 'http://localhost:3001';
+  return DEFAULT_CLOUD_API;
 };
 
 export const setApiBaseUrl = (url) => {
