@@ -565,14 +565,14 @@ export default function AdminUsersView({ currentUser, theme }) {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">Rol Inicial:</label>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">Rol en el Sistema:</label>
                   <select
                     value={newUser.role}
                     onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
-                    <option value="worker">Trabajador</option>
-                    <option value="admin">Admin</option>
+                    <option value="worker">Trabajador (Solo Credencial y Horarios)</option>
+                    <option value="admin">Admin (Acceso a Gestión y GPS)</option>
                   </select>
                 </div>
               </div>
@@ -594,13 +594,13 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:bg-zinc-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:bg-zinc-800 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/25"
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/25 cursor-pointer"
                 >
                   Crear y Generar QR
                 </button>
@@ -612,7 +612,7 @@ export default function AdminUsersView({ currentUser, theme }) {
 
       {/* MODAL VER CÓDIGO QR */}
       {showQrModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
           <div className={'border rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
             <h3 className="text-base font-black mb-1">{showQrModal.name}</h3>
             <p className="text-xs text-orange-500 font-mono font-bold mb-1">Usuario: {showQrModal.username || showQrModal.name}</p>

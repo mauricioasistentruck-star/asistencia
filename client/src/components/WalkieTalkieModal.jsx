@@ -392,7 +392,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
           <button
             type="button"
             onClick={toggleLockHeadset}
-            className={'w-full p-3 rounded-2xl border text-xs flex items-center justify-between transition-all shadow-md active:scale-98 cursor-pointer ' + (
+            className={'w-full p-3 rounded-2xl border text-xs flex items-center justify-between gap-2.5 transition-all shadow-md active:scale-98 cursor-pointer ' + (
               isHeadsetLocked
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-400 text-white shadow-emerald-500/25'
                 : (headsetInfo.connected
@@ -400,8 +400,8 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
                     : (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-zinc-900'))
             )}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className={'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 font-bold ' + (
+            <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
+              <div className={'w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-bold ' + (
                 isHeadsetLocked
                   ? 'bg-black text-emerald-400 animate-pulse'
                   : (headsetInfo.connected ? 'bg-blue-500 text-white' : 'bg-orange-500 text-black')
@@ -413,34 +413,34 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme 
                 )}
               </div>
 
-              <div className="text-left min-w-0">
-                <div className="text-xs font-black truncate flex items-center gap-1.5">
-                  <span>{headsetInfo.connected ? (headsetInfo.label || 'Audífonos Detectados') : 'Reconocer Audífonos (Cable / Bluetooth)'}</span>
-                  {isHeadsetLocked && <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>}
+              <div className="text-left min-w-0 flex-1 overflow-hidden pr-1">
+                <div className="text-xs font-black truncate flex items-center gap-1.5 leading-tight">
+                  <span className="truncate">{headsetInfo.connected ? (headsetInfo.label || 'Audífonos Detectados') : 'Reconocer Audífonos (Cable / Bluetooth)'}</span>
+                  {isHeadsetLocked && <span className="w-2 h-2 rounded-full bg-white animate-ping flex-shrink-0"></span>}
                 </div>
-                <div className={'text-[10px] leading-tight truncate ' + (isHeadsetLocked ? 'text-emerald-100 font-bold' : (isDark ? 'text-zinc-400' : 'text-zinc-600'))}>
+                <div className={'text-[10px] leading-tight truncate mt-0.5 ' + (isHeadsetLocked ? 'text-emerald-100 font-bold' : (isDark ? 'text-zinc-400' : 'text-zinc-600'))}>
                   {isHeadsetLocked
-                    ? '🔒 Bloqueados para esta app • Botón de audífono exclusivo para hablar'
+                    ? '🔒 Bloqueados para app • Botón exclusivo'
                     : (headsetInfo.connected
-                        ? 'Toca aquí para bloquear botones para la app y pausar otros programas'
+                        ? 'Toca para vincular y bloquear botones'
                         : 'Conecta tus audífonos y presiona para activar')}
                 </div>
               </div>
             </div>
 
-            <div className={'flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1 rounded-xl flex-shrink-0 shadow-sm ' + (
+            <div className={'flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-xl flex-shrink-0 shadow-sm ml-auto ' + (
               isHeadsetLocked
                 ? 'bg-black text-emerald-400 border border-emerald-400/50'
                 : 'bg-orange-500 text-black'
             )}>
               {isHeadsetLocked ? (
                 <>
-                  <Unlock className="w-3 h-3" />
+                  <Unlock className="w-3 h-3 flex-shrink-0" />
                   <span>Liberar</span>
                 </>
               ) : (
                 <>
-                  <Lock className="w-3 h-3" />
+                  <Lock className="w-3 h-3 flex-shrink-0" />
                   <span>Vincular</span>
                 </>
               )}
