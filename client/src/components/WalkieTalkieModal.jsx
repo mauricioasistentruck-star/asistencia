@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, MicOff, Radio, Volume2, Users, User, X, Clock, ShieldCheck, CheckCircle2, 
   AlertTriangle, Headphones, Bluetooth, Sparkles, Lock, Unlock, RefreshCw, 
-  Play, Pause, RotateCcw, MessageSquare, Search, Trash2, Check, CheckCircle
+  Play, Pause, RotateCcw, MessageSquare, Search, Trash2, Check, ArrowLeft, Send
 } from 'lucide-react';
 import { apiGetUsers, apiGetAudioStatus, apiGetVoiceMessages, apiDeleteVoiceMessage, getFullPhotoUrl, getSocket } from '../api';
 
@@ -23,23 +23,18 @@ function playRadioBeep(frequency = 880, duration = 0.08) {
   } catch (e) {}
 }
 
-// Audio silencioso base64 de 1 segundo en loop para mantener el foco MediaSession activo en el sistema operativo
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/wD/';
 
 export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme, initialTab = 'walkie' }) {
-  // Pestañas exactas: 'walkie' (Hablar en Vivo) o 'chat' (Chat de Audios)
   const [activeTab, setActiveTab] = useState(initialTab || 'walkie');
 
-  useEffect(() => {
-    if (isOpen) {
-      setActiveTab(initialTab || 'walkie');
-    }
-  }, [isOpen, initialTab]);
-
-  // Destinatarios seleccionados
+  // Destinatarios seleccionados en Modo Hablar en Vivo
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Estado del canal de audio (Ocupado o Libre)
+  const [channelStatus, setChannelStatus] = useState({ isBusy: false, speakerId: null, speakerName: null });
 
   // Estado de horario y permisos
   const [audioStatus, setAudioStatus] = useState({ allowed: true });
@@ -53,8 +48,10 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const [isHeadsetLocked, setIsHeadsetLocked] = useState(false);
   const [scanningDevices, setScanningDevices] = useState(false);
 
-  // Historial / Chat de Audios
+  // Historial y Chats Separados por Usuario
   const [voiceMessages, setVoiceMessages] = useState([]);
+  const [selectedChatUser, setSelectedChatUser] = useState(null); // null = lista de usuarios, 'all' = canal general, objeto = usuario
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [currentPlayingId, setCurrentPlayingId] = useState(null);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -64,7 +61,8 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const audioChunksRef = useRef([]);
   const timerRef = useRef(null);
   const isRecordingRef = useRef(false);
-  const pressStartTimeRef = useRef(0);
+  const currentStreamIdRef = useRef(null);
+  const chunkIndexRef = useRef(0);
   const startTalkingRef = useRef(null);
   const stopTalkingRef = useRef(null);
   const toggleTalkingRef = useRef(null);
@@ -72,10 +70,70 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const activeAudioPlayerRef = useRef(null);
   const progressIntervalRef = useRef(null);
 
-  const isDark = theme === 'dark' || true; // Estilo oscuro premium con naranjo
   const isMauricio = currentUser && (currentUser.is_superadmin === 1 || (currentUser.name && currentUser.name.toLowerCase().includes('mauricio')));
 
-  // Detección de dispositivos de audio
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || 'walkie');
+      scanAudioDevices();
+      loadVoiceHistory();
+
+      apiGetUsers().then((users) => {
+        const otherUsers = users.filter(u => u.id !== currentUser?.id);
+        setUsersList(otherUsers);
+        if (selectedUserIds.length === 0 && otherUsers.length > 0) {
+          setSelectedUserIds(otherUsers.map(u => u.id));
+        }
+      }).catch(() => {});
+
+      apiGetAudioStatus().then((status) => {
+        setAudioStatus(status);
+      }).catch(() => {
+        setAudioStatus({ allowed: true });
+      });
+
+      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', scanAudioDevices);
+      }
+    }
+
+    return () => {
+      if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+        navigator.mediaDevices.removeEventListener('devicechange', scanAudioDevices);
+      }
+      stopAudioPlayback();
+    };
+  }, [isOpen, initialTab, currentUser]);
+
+  // Escuchar estado del canal y mensajes en tiempo real
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const socket = getSocket();
+
+    const handleChannelStatus = (status) => {
+      setChannelStatus(status || { isBusy: false });
+    };
+
+    const handleNewVoiceMessage = (msg) => {
+      setVoiceMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [msg, ...prev];
+      });
+    };
+
+    socket.on('audio_channel_status', handleChannelStatus);
+    socket.on('receive_voice_audio', handleNewVoiceMessage);
+    socket.on('voice_audio_saved', handleNewVoiceMessage);
+
+    return () => {
+      socket.off('audio_channel_status', handleChannelStatus);
+      socket.off('receive_voice_audio', handleNewVoiceMessage);
+      socket.off('voice_audio_saved', handleNewVoiceMessage);
+    };
+  }, [isOpen]);
+
+  // Escanear dispositivos
   const scanAudioDevices = async () => {
     setScanningDevices(true);
     try {
@@ -128,79 +186,21 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           });
         }
       }
-    } catch (e) {
-      console.log('Error escaneando dispositivos:', e.message);
-    } finally {
+    } catch (e) {} finally {
       setScanningDevices(false);
     }
   };
 
-  // Cargar lista de usuarios, historial de audios y estado
   const loadVoiceHistory = async () => {
     setLoadingMessages(true);
     try {
       const messages = await apiGetVoiceMessages();
       setVoiceMessages(messages || []);
     } catch (e) {
-      console.warn('Error cargando historial de audios:', e.message);
     } finally {
       setLoadingMessages(false);
     }
   };
-
-  useEffect(() => {
-    if (isOpen) {
-      scanAudioDevices();
-      loadVoiceHistory();
-
-      apiGetUsers().then((users) => {
-        const otherUsers = users.filter(u => u.id !== currentUser?.id);
-        setUsersList(otherUsers);
-        if (selectedUserIds.length === 0 && otherUsers.length > 0) {
-          setSelectedUserIds(otherUsers.map(u => u.id));
-        }
-      }).catch(() => {});
-
-      apiGetAudioStatus().then((status) => {
-        setAudioStatus(status);
-      }).catch(() => {
-        setAudioStatus({ allowed: true });
-      });
-
-      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-        navigator.mediaDevices.addEventListener('devicechange', scanAudioDevices);
-      }
-    }
-
-    return () => {
-      if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
-        navigator.mediaDevices.removeEventListener('devicechange', scanAudioDevices);
-      }
-      stopAudioPlayback();
-    };
-  }, [isOpen, currentUser]);
-
-  // Escucha en tiempo real de nuevos mensajes de audio vía Socket
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const socket = getSocket();
-
-    const handleNewVoiceMessage = (msg) => {
-      setVoiceMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev;
-        return [msg, ...prev];
-      });
-    };
-
-    socket.on('receive_voice_audio', handleNewVoiceMessage);
-    socket.on('voice_audio_saved', handleNewVoiceMessage);
-
-    return () => {
-      socket.off('receive_voice_audio', handleNewVoiceMessage);
-      socket.off('voice_audio_saved', handleNewVoiceMessage);
-    };
-  }, [isOpen]);
 
   // Temporizador de grabación
   useEffect(() => {
@@ -216,7 +216,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   }, [isRecording]);
 
   // =========================================================================
-  // FUNCIONES DE GRABACIÓN Y TRANSMISIÓN PTT
+  // TRANSMISIÓN EN VIVO (STREAMING) Y PUSH-TO-TALK
   // =========================================================================
   const startTalking = async () => {
     if (isRecordingRef.current) return;
@@ -242,6 +242,26 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
       playRadioBeep(940, 0.1);
       audioChunksRef.current = [];
+      const streamId = 'stream_' + Date.now() + '_' + currentUser.id;
+      currentStreamIdRef.current = streamId;
+      chunkIndexRef.current = 0;
+
+      const isAllUsers = selectedUserIds.length === usersList.length;
+      const targetUsers = usersList.filter(u => selectedUserIds.includes(u.id));
+      const targetNames = isAllUsers ? ['Canal General (Todos)'] : targetUsers.map(u => u.name);
+      const targetIds = isAllUsers ? ['all'] : selectedUserIds;
+
+      const socket = getSocket();
+
+      // 1. Notificar inicio de transmisión en vivo a los otros celulares
+      socket.emit('voice_stream_start', {
+        streamId,
+        fromUserId: currentUser.id,
+        fromUserName: currentUser.name,
+        fromUserPhoto: currentUser.photo_url,
+        targetUserIds: targetIds,
+        targetUserNames: targetNames
+      });
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -252,9 +272,25 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
 
+      // 2. Transmisión continua en trozos en tiempo real (Live Streaming)
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data);
+
+          // Enviar fragmento al vuelo para que suene de inmediato en el otro celular
+          const reader = new FileReader();
+          reader.readAsDataURL(e.data);
+          reader.onloadend = () => {
+            if (isRecordingRef.current) {
+              socket.emit('voice_stream_chunk', {
+                streamId: currentStreamIdRef.current,
+                chunkIndex: chunkIndexRef.current++,
+                chunkData: reader.result,
+                mimeType: recorder.mimeType || 'audio/webm',
+                targetUserIds: targetIds
+              });
+            }
+          };
         }
       };
 
@@ -263,21 +299,15 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         const blobType = recorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
         
-        if (audioBlob.size === 0) {
-          console.warn('Audio grabado sin contenido');
-          return;
-        }
+        if (audioBlob.size === 0) return;
 
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
           const base64Audio = reader.result;
-          const isAllUsers = selectedUserIds.length === usersList.length;
-          const targetUsers = usersList.filter(u => selectedUserIds.includes(u.id));
-          const targetNames = isAllUsers ? ['Canal General (Todos)'] : targetUsers.map(u => u.name);
-          const targetIds = isAllUsers ? ['all'] : selectedUserIds;
 
           const payload = {
+            streamId: currentStreamIdRef.current,
             fromUserId: currentUser.id,
             fromUserName: currentUser.name,
             fromUserPhoto: currentUser.photo_url,
@@ -289,17 +319,19 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
             timestamp: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
           };
 
-          const socket = getSocket();
+          // Guardar audio completo y liberar canal definitivamente
           socket.emit('send_voice_audio', payload);
+          socket.emit('voice_stream_end', { streamId: currentStreamIdRef.current, targetUserIds: targetIds });
           playRadioBeep(620, 0.09);
 
           const destText = isAllUsers ? 'Canal General (Todos)' : (targetNames.length === 1 ? targetNames[0] : `${targetNames.length} colaboradores`);
-          setStatusMsg(`✅ Audio enviado a ${destText}`);
+          setStatusMsg(`✅ Audio transmitido en vivo a ${destText}`);
           setTimeout(() => setStatusMsg(''), 4000);
         };
       };
 
-      recorder.start(100);
+      // Enviar paquetes pequeños cada 200ms para audio en vivo sin latencia
+      recorder.start(200);
       isRecordingRef.current = true;
       setIsRecording(true);
 
@@ -321,14 +353,14 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
         }
-      }, 60);
+      }, 50);
 
       isRecordingRef.current = false;
       setIsRecording(false);
     }
   };
 
-  // Alternar hablar/enviar con 1 clic (Toggle central button)
+  // Alternar hablar/enviar con 1 clic directo
   const toggleTalking = () => {
     if (isRecordingRef.current) {
       stopTalking();
@@ -341,9 +373,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   stopTalkingRef.current = stopTalking;
   toggleTalkingRef.current = toggleTalking;
 
-  // =========================================================================
-  // VINCULACIÓN Y BLOQUEO DEL BOTÓN DE AUDÍFONO BLUETOOTH (1 Clic = Hablar / 2do Clic = Enviar)
-  // =========================================================================
+  // Vinculación de Audífonos Bluetooth
   const toggleLockHeadset = async () => {
     if (!isHeadsetLocked) {
       try {
@@ -354,16 +384,14 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           silentAudioElementRef.current = audioEl;
         }
         await silentAudioElementRef.current.play();
-      } catch (e) {
-        console.warn('Silent audio play:', e.message);
-      }
+      } catch (e) {}
 
       if ('mediaSession' in navigator) {
         try {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: 'Walkie-Talkie Asistentruck [BOTÓN AUDÍFONO ACTIVO]',
             artist: '1 Clic: Hablar | 2 Clics: Enviar Audio',
-            album: 'Inversiones BOTAM SpA - Canal de Voz en Terreno'
+            album: 'Canal de Voz en Terreno'
           });
           navigator.mediaSession.playbackState = 'playing';
 
@@ -378,34 +406,17 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           navigator.mediaSession.setActionHandler('stop', handleHeadsetCentralButton);
           navigator.mediaSession.setActionHandler('previoustrack', handleHeadsetCentralButton);
           navigator.mediaSession.setActionHandler('nexttrack', handleHeadsetCentralButton);
-          navigator.mediaSession.setActionHandler('seekbackward', handleHeadsetCentralButton);
-          navigator.mediaSession.setActionHandler('seekforward', handleHeadsetCentralButton);
-          try { navigator.mediaSession.setActionHandler('togglemic', handleHeadsetCentralButton); } catch (e) {}
         } catch (e) {}
       }
 
       setIsHeadsetLocked(true);
       playRadioBeep(1150, 0.12);
-      setStatusMsg('🎧 Botón de audífonos vinculado: 1 clic para hablar, 2do clic para enviar.');
+      setStatusMsg('🎧 Audífonos vinculados: 1 clic para hablar, 2do clic para enviar.');
       setTimeout(() => setStatusMsg(''), 5000);
     } else {
-      if ('mediaSession' in navigator) {
-        try {
-          navigator.mediaSession.playbackState = 'none';
-          navigator.mediaSession.setActionHandler('play', null);
-          navigator.mediaSession.setActionHandler('pause', null);
-          navigator.mediaSession.setActionHandler('stop', null);
-          navigator.mediaSession.setActionHandler('previoustrack', null);
-          navigator.mediaSession.setActionHandler('nexttrack', null);
-        } catch (e) {}
-      }
-
       if (silentAudioElementRef.current) {
-        try {
-          silentAudioElementRef.current.pause();
-        } catch (e) {}
+        try { silentAudioElementRef.current.pause(); } catch (e) {}
       }
-
       setIsHeadsetLocked(false);
       playRadioBeep(520, 0.12);
       setStatusMsg('🔓 Botón de audífonos liberado');
@@ -413,7 +424,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     }
   };
 
-  // Escucha de eventos de hardware / teclas de audífonos
+  // Escucha de hardware y eventos de audífonos
   useEffect(() => {
     if (!isOpen) return;
 
@@ -426,9 +437,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         e.keyCode === 177 ||
         e.keyCode === 226 ||
         e.key === 'MediaPlayPause' || 
-        e.key === 'HeadsetHook' || 
-        e.key === 'AudioVolumeMute' ||
-        e.key === 'F8';
+        e.key === 'HeadsetHook';
 
       if (isHeadsetBtn) {
         e.preventDefault();
@@ -455,7 +464,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   }, [isOpen]);
 
   // =========================================================================
-  // REPRODUCCIÓN DEL HISTORIAL DE AUDIOS (REPETIR Y ESCUCHAR MENSAJES)
+  // REPRODUCCIÓN DEL HISTORIAL
   // =========================================================================
   const stopAudioPlayback = () => {
     if (activeAudioPlayerRef.current) {
@@ -509,17 +518,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           }
         }, 100);
       }).catch((err) => {
-        console.warn('Error al reproducir audio:', err.message);
         stopAudioPlayback();
       });
 
-      audio.onended = () => {
-        stopAudioPlayback();
-      };
-
-      audio.onerror = () => {
-        stopAudioPlayback();
-      };
+      audio.onended = () => stopAudioPlayback();
+      audio.onerror = () => stopAudioPlayback();
     } catch (e) {
       stopAudioPlayback();
     }
@@ -543,27 +546,63 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   // Selección de personal
   const toggleUserSelection = (userId) => {
     setSelectedUserIds(prev => {
-      if (prev.includes(userId)) {
-        return prev.filter(id => id !== userId);
-      } else {
-        return [...prev, userId];
-      }
+      if (prev.includes(userId)) return prev.filter(id => id !== userId);
+      return [...prev, userId];
     });
   };
 
-  const selectAllUsers = () => {
-    setSelectedUserIds(usersList.map(u => u.id));
-  };
-
-  const deselectAllUsers = () => {
-    setSelectedUserIds([]);
-  };
+  const selectAllUsers = () => setSelectedUserIds(usersList.map(u => u.id));
+  const deselectAllUsers = () => setSelectedUserIds([]);
 
   const filteredUsers = usersList.filter(u => 
     u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.rut?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.role?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // =========================================================================
+  // AGRUPACIÓN DE CHAT DE AUDIOS POR USUARIO
+  // =========================================================================
+  // Filtrar audios según el chat seleccionado
+  const getFilteredChatMessages = () => {
+    if (!selectedChatUser) return [];
+
+    if (selectedChatUser === 'all') {
+      // Mensajes de canal general
+      return voiceMessages.filter(m => {
+        let rIds = [];
+        try { rIds = JSON.parse(m.receiver_ids); } catch(e) { rIds = [m.receiver_ids]; }
+        return m.receiver_ids === 'all' || rIds.includes('all');
+      });
+    }
+
+    // Mensajes específicos entre el usuario actual y el colaborador seleccionado
+    const otherId = selectedChatUser.id;
+    return voiceMessages.filter(m => {
+      const isFromOther = m.sender_id === otherId;
+      let rIds = [];
+      try { rIds = JSON.parse(m.receiver_ids); } catch(e) { rIds = [m.receiver_ids]; }
+      const isToOther = rIds.includes(otherId) || rIds.includes(String(otherId));
+      return isFromOther || isToOther;
+    });
+  };
+
+  // Contador de audios por colaborador
+  const getAudioCountForUser = (userId) => {
+    return voiceMessages.filter(m => {
+      const isFromOther = m.sender_id === userId;
+      let rIds = [];
+      try { rIds = JSON.parse(m.receiver_ids); } catch(e) { rIds = [m.receiver_ids]; }
+      const isToOther = rIds.includes(userId) || rIds.includes(String(userId));
+      return isFromOther || isToOther;
+    }).length;
+  };
+
+  const generalAudiosCount = voiceMessages.filter(m => {
+    let rIds = [];
+    try { rIds = JSON.parse(m.receiver_ids); } catch(e) { rIds = [m.receiver_ids]; }
+    return m.receiver_ids === 'all' || rIds.includes('all');
+  }).length;
 
   if (!isOpen) return null;
 
@@ -574,15 +613,15 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         onClick={(e) => e.stopPropagation()}
       >
         {/* ========================================================================= */}
-        {/* ENCABEZADO EXACTO */}
+        {/* ENCABEZADO PRINCIPAL */}
         {/* ========================================================================= */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 text-black flex items-center justify-center font-black shadow-lg shadow-orange-500/30 flex-shrink-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 text-black flex items-center justify-center font-black shadow-lg shadow-orange-500/30 flex-shrink-0">
               <Radio className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-lg font-black tracking-tight text-white leading-tight">
+              <h3 className="text-base font-black tracking-tight text-white leading-tight">
                 Walkie-Talkie & Voz
               </h3>
               <p className="text-xs text-orange-500 font-bold leading-tight mt-0.5">
@@ -605,7 +644,10 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
           <button
             type="button"
-            onClick={() => setActiveTab('walkie')}
+            onClick={() => {
+              setActiveTab('walkie');
+              setSelectedChatUser(null);
+            }}
             className={'py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ' + (
               activeTab === 'walkie'
                 ? 'bg-orange-500 text-black shadow-md shadow-orange-500/30'
@@ -639,6 +681,25 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         {activeTab === 'walkie' && (
           <div className="flex-1 flex flex-col space-y-3.5 overflow-y-auto pr-0.5">
             
+            {/* ESTADO DEL CANAL EN VIVO */}
+            <div className="flex items-center justify-between px-1 text-[11px]">
+              {channelStatus.isBusy && channelStatus.speakerId !== currentUser?.id ? (
+                <span className="flex items-center gap-1.5 text-red-400 font-bold animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                  <span>Canal Ocupado ({channelStatus.speakerName} transmitiendo...)</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Canal de Audio Libre</span>
+                </span>
+              )}
+
+              <span className="text-zinc-400 font-mono text-[10px]">
+                {headsetInfo.connected ? headsetInfo.label : 'Altavoz / Micrófono'}
+              </span>
+            </div>
+
             {/* TARJETA 1: VINCULAR BOTÓN DE AUDÍFONOS */}
             <div className="space-y-1.5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 flex items-center justify-between gap-2.5">
@@ -669,21 +730,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
                 >
                   {isHeadsetLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                   <span>{isHeadsetLocked ? 'LIBERAR' : 'VINCULAR'}</span>
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between px-1 text-[11px] text-zinc-400">
-                <span className="flex items-center gap-1.5">
-                  <span className={'w-2 h-2 rounded-full ' + (headsetInfo.connected ? 'bg-emerald-500' : 'bg-orange-500')}></span>
-                  <span>{headsetInfo.connected ? headsetInfo.label : 'Micrófono por defecto'}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={scanAudioDevices}
-                  className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <RefreshCw className={'w-3 h-3 ' + (scanningDevices ? 'animate-spin' : '')} />
-                  <span>Detectar</span>
                 </button>
               </div>
             </div>
@@ -726,7 +772,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
                 />
               </div>
 
-              {/* Lista de Destinatarios (Grid exactamente como el diseño) */}
+              {/* Lista de Destinatarios */}
               <div className="grid grid-cols-2 gap-1.5 max-h-[120px] overflow-y-auto pr-1">
                 {filteredUsers.map((u) => {
                   const isSelected = selectedUserIds.includes(u.id);
@@ -761,12 +807,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
                     </button>
                   );
                 })}
-
-                {filteredUsers.length === 0 && (
-                  <div className="col-span-2 text-center text-xs text-zinc-500 py-3">
-                    No se encontraron colaboradores
-                  </div>
-                )}
               </div>
             </div>
 
@@ -786,7 +826,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
             )}
 
             {/* ========================================================================= */}
-            {/* BOTÓN CENTRAL HABLAR (1 CLIC = HABLAR / 2º CLIC = ENVIAR) */}
+            {/* BOTÓN CENTRAL HABLAR (1 CLIC = HABLAR / 2º CLIC = ENVIAR Y LIBERAR) */}
             {/* ========================================================================= */}
             <div className="flex flex-col items-center justify-center pt-2 space-y-2">
               <button
@@ -820,7 +860,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
                 {isRecording ? (
                   <div className="flex items-center justify-center gap-1.5 text-red-400 font-black text-xs">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                    <span>GRABANDO EN VIVO... ({recordSeconds}s)</span>
+                    <span>TRANSMITIENDO EN VIVO... ({recordSeconds}s)</span>
                   </div>
                 ) : (
                   <p className="text-xs text-zinc-400">
@@ -834,115 +874,194 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         )}
 
         {/* ========================================================================= */}
-        {/* VISTA 2: CHAT DE AUDIOS / HISTORIAL DE MENSAJES DE VOZ */}
+        {/* VISTA 2: CHAT DE AUDIOS SEPARADO POR USUARIO */}
         {/* ========================================================================= */}
         {activeTab === 'chat' && (
           <div className="flex-1 flex flex-col space-y-3 overflow-hidden">
-            <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
-              <span>Mensajes de voz grabados (Toca para escuchar o repetir)</span>
-              <button
-                type="button"
-                onClick={loadVoiceHistory}
-                className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw className={'w-3 h-3 ' + (loadingMessages ? 'animate-spin' : '')} />
-                <span>Actualizar</span>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[360px]">
-              {voiceMessages.map((msg) => {
-                const isMe = msg.sender_id === currentUser?.id;
-                const isPlaying = currentPlayingId === msg.id;
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={'p-3 rounded-2xl border transition-all ' + (
-                      isMe ? 'bg-orange-500/10 border-orange-500/30' : 'bg-zinc-900 border-zinc-800'
-                    )}
+            
+            {/* Si no hay usuario seleccionado, mostrar LISTA DE CONTACTOS / CANALES */}
+            {!selectedChatUser ? (
+              <div className="flex-1 flex flex-col space-y-2.5 overflow-hidden">
+                <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
+                  <span>Seleccione un colaborador para ver sus audios:</span>
+                  <button
+                    type="button"
+                    onClick={loadVoiceHistory}
+                    className="text-orange-500 hover:text-orange-400 font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border border-orange-500/50 flex-shrink-0 font-bold text-[11px]">
-                          {msg.sender_photo ? (
-                            <img src={getFullPhotoUrl(msg.sender_photo)} alt={msg.sender_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-orange-400">{msg.sender_name ? msg.sender_name.charAt(0) : 'U'}</span>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-black truncate flex items-center gap-1.5">
-                            <span>{isMe ? 'Tú (Mensaje Enviado)' : msg.sender_name}</span>
-                            <span className="text-[10px] font-mono font-normal text-zinc-400">{msg.timestamp || ''}</span>
-                          </div>
-                          <div className="text-[10px] text-zinc-400 truncate">
-                            Para: {msg.receiver_names || 'Colaboradores'}
-                          </div>
-                        </div>
+                    <RefreshCw className={'w-3 h-3 ' + (loadingMessages ? 'animate-spin' : '')} />
+                    <span>Actualizar</span>
+                  </button>
+                </div>
+
+                {/* Buscador de Chats */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    type="text"
+                    placeholder="Buscar chat por nombre..."
+                    value={chatSearchQuery}
+                    onChange={(e) => setChatSearchQuery(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 text-white placeholder-zinc-500 pl-8 pr-3 py-1.5 text-xs rounded-xl outline-none focus:border-orange-500/50"
+                  />
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[320px]">
+                  {/* Opción 1: Canal General (Todos) */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChatUser('all')}
+                    className="w-full p-2.5 rounded-2xl bg-gradient-to-r from-orange-500/15 to-amber-500/10 border border-orange-500/30 hover:border-orange-500 text-left flex items-center justify-between transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
+                        <Radio className="w-4 h-4" />
                       </div>
-
-                      {(isMauricio || isMe) && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteMessage(msg.id, e)}
-                          title="Eliminar audio"
-                          className="p-1 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-white truncate">Canal General (Todos)</div>
+                        <div className="text-[10px] text-zinc-400 truncate">Mensajes de voz transmitidos al equipo</div>
+                      </div>
                     </div>
+                    <span className="px-2 py-0.5 rounded-lg bg-orange-500/20 text-orange-400 font-mono text-[11px] font-bold">
+                      {generalAudiosCount}
+                    </span>
+                  </button>
 
-                    {/* Controles de Reproducción y Repetición */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => playVoiceMessage(msg)}
-                        className={'p-2 rounded-xl flex items-center justify-center font-bold text-xs transition-all shadow-sm cursor-pointer ' + (
-                          isPlaying
-                            ? 'bg-amber-500 text-black animate-pulse'
-                            : 'bg-orange-500 text-black hover:bg-orange-600'
+                  {/* Lista de Colaboradores */}
+                  {usersList
+                    .filter(u => u.name?.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+                    .map((u) => {
+                      const count = getAudioCountForUser(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setSelectedChatUser(u)}
+                          className="w-full p-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-850 text-left flex items-center justify-between transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-xl overflow-hidden bg-black flex items-center justify-center border border-zinc-700 flex-shrink-0 font-black text-xs">
+                              {u.photo_url ? (
+                                <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-orange-500">{u.name ? u.name.charAt(0) : 'U'}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-black text-white truncate">{u.name}</div>
+                              <div className="text-[10px] text-zinc-400 truncate">{u.role === 'admin' ? 'Administrador' : 'Trabajador'}</div>
+                            </div>
+                          </div>
+                          <span className={'px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold ' + (
+                            count > 0 ? 'bg-orange-500/20 text-orange-400' : 'bg-zinc-800 text-zinc-500'
+                          )}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : (
+              /* CONVERSACIÓN ESPECÍFICA CON UN USUARIO */
+              <div className="flex-1 flex flex-col space-y-2 overflow-hidden">
+                {/* Cabecera del Chat con botón volver */}
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChatUser(null)}
+                    className="flex items-center gap-1.5 text-xs text-orange-400 hover:text-orange-300 font-bold cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Volver a Contactos</span>
+                  </button>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-xs font-black text-white truncate">
+                      {selectedChatUser === 'all' ? 'Canal General' : selectedChatUser.name}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de Mensajes del Chat Seleccionado */}
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[300px]">
+                  {getFilteredChatMessages().map((msg) => {
+                    const isMe = msg.sender_id === currentUser?.id;
+                    const isPlaying = currentPlayingId === msg.id;
+
+                    return (
+                      <div
+                        key={msg.id}
+                        className={'p-2.5 rounded-2xl border transition-all ' + (
+                          isMe ? 'bg-orange-500/10 border-orange-500/30 ml-4' : 'bg-zinc-900 border-zinc-800 mr-4'
                         )}
                       >
-                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      </button>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[11px] font-black truncate text-white">
+                              {isMe ? 'Tú (Enviado)' : msg.sender_name}
+                            </span>
+                            <span className="text-[9px] font-mono text-zinc-400">{msg.timestamp || ''}</span>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() => repeatVoiceMessage(msg)}
-                        title="Volver a escuchar desde el inicio"
-                        className="p-2 rounded-xl border bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Repetir</span>
-                      </button>
-
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden relative">
-                          <div
-                            className="h-full bg-orange-500 transition-all duration-100"
-                            style={{ width: `${isPlaying ? audioProgress : 0}%` }}
-                          ></div>
+                          {(isMauricio || isMe) && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteMessage(msg.id, e)}
+                              className="p-1 text-zinc-500 hover:text-red-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
-                        <span className="text-[10px] font-mono text-zinc-400 flex-shrink-0">
-                          {msg.duration_seconds ? `${msg.duration_seconds}s` : 'Voz'}
-                        </span>
+
+                        {/* Reproductor de Audio */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => playVoiceMessage(msg)}
+                            className={'p-1.5 rounded-xl flex items-center justify-center font-bold text-xs transition-all shadow-sm cursor-pointer ' + (
+                              isPlaying ? 'bg-amber-500 text-black animate-pulse' : 'bg-orange-500 text-black hover:bg-orange-600'
+                            )}
+                          >
+                            {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => repeatVoiceMessage(msg)}
+                            className="p-1.5 rounded-xl border bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Repetir</span>
+                          </button>
+
+                          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                            <div className="flex-1 h-2 rounded-full bg-zinc-800 overflow-hidden relative">
+                              <div
+                                className="h-full bg-orange-500 transition-all duration-100"
+                                style={{ width: `${isPlaying ? audioProgress : 0}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              {msg.duration_seconds ? `${msg.duration_seconds}s` : 'Voz'}
+                            </span>
+                          </div>
+                        </div>
+
                       </div>
+                    );
+                  })}
+
+                  {getFilteredChatMessages().length === 0 && (
+                    <div className="text-center py-8 text-zinc-500 space-y-1.5">
+                      <MessageSquare className="w-7 h-7 mx-auto opacity-30 text-orange-500" />
+                      <p className="text-xs">No hay audios registrados con este colaborador.</p>
                     </div>
-
-                  </div>
-                );
-              })}
-
-              {voiceMessages.length === 0 && !loadingMessages && (
-                <div className="text-center py-8 text-zinc-500 space-y-2">
-                  <MessageSquare className="w-8 h-8 mx-auto opacity-40 text-orange-500" />
-                  <p className="text-xs">No hay mensajes de voz recientes en el chat.</p>
-                  <p className="text-[11px] text-zinc-400">Los audios enviados se guardarán aquí para repetirlos cuando desees.</p>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="pt-1">
               <button
@@ -951,7 +1070,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
                 className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-black font-black text-xs rounded-xl shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Mic className="w-4 h-4" />
-                <span>Volver al Micrófono en Vivo</span>
+                <span>Volver a Hablar en Vivo</span>
               </button>
             </div>
 

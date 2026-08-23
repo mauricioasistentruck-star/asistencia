@@ -244,18 +244,68 @@ export default function App() {
       } catch (err) {
         console.error('Error al reproducir audio entrante:', err);
       }
-
-      setIncomingAudio(data);
-      setTimeout(() => {
-        setIncomingAudio(null);
-      }, 7000);
     };
 
+    // Live Audio Streaming en tiempo real (mientras el otro usuario está hablando)
+    const handleStreamStart = (data) => {
+      if (!data) return;
+      const senderId = data.fromUserId;
+      if (senderId && String(senderId) === String(user.id)) return;
+
+      let targetIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
+      const isForMe = targetIds.length === 0 || targetIds.includes('all') || targetIds.includes(user.id) || targetIds.includes(String(user.id));
+      if (!isForMe) return;
+
+      playIncomingBeep();
+      setIncomingAudio({
+        sender_name: data.fromUserName,
+        sender_photo: data.fromUserPhoto,
+        isLiveStream: true
+      });
+    };
+
+    const handleStreamChunk = (data) => {
+      if (!data || !data.chunkData) return;
+      const targetIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
+      const isForMe = targetIds.length === 0 || targetIds.includes('all') || targetIds.includes(user.id) || targetIds.includes(String(user.id));
+      if (!isForMe) return;
+
+      try {
+        const parts = data.chunkData.split(',');
+        if (parts.length === 2) {
+          const byteCharacters = atob(parts[1]);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: data.mimeType || 'audio/webm' });
+          const blobUrl = URL.createObjectURL(blob);
+
+          const tempAudio = new Audio(blobUrl);
+          tempAudio.volume = 1.0;
+          tempAudio.play().catch(() => {});
+        }
+      } catch (e) {}
+    };
+
+    const handleStreamEnd = () => {
+      setTimeout(() => {
+        setIncomingAudio(null);
+      }, 1500);
+    };
+
+    socket.on('voice_stream_start', handleStreamStart);
+    socket.on('voice_stream_chunk', handleStreamChunk);
+    socket.on('voice_stream_end', handleStreamEnd);
     socket.on('receive_voice_audio', handleReceiveAudio);
 
     return () => {
       socket.off('connect', joinRooms);
       socket.off('reconnect', joinRooms);
+      socket.off('voice_stream_start', handleStreamStart);
+      socket.off('voice_stream_chunk', handleStreamChunk);
+      socket.off('voice_stream_end', handleStreamEnd);
       socket.off('receive_voice_audio', handleReceiveAudio);
     };
   }, [user]);
@@ -357,22 +407,18 @@ export default function App() {
       
       {/* Banner Flotante de Audio Walkie-Talkie Entrante */}
       {incomingAudio && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] max-w-sm w-full px-4 animate-in slide-in-from-top-4 duration-300">
-          <div className="bg-zinc-950/95 border-2 border-orange-500 rounded-3xl p-3 shadow-2xl backdrop-blur-md flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl overflow-hidden bg-orange-500 flex items-center justify-center text-black font-black flex-shrink-0 border border-orange-400">
-              {(incomingAudio.sender_photo || incomingAudio.fromUserPhoto) ? (
-                <img src={getFullPhotoUrl(incomingAudio.sender_photo || incomingAudio.fromUserPhoto)} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <Radio className="w-5 h-5 animate-pulse" />
-              )}
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] max-w-sm w-[92%] bg-black/95 border border-orange-500/80 rounded-2xl p-3 shadow-2xl shadow-orange-500/20 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-orange-500 text-black flex items-center justify-center flex-shrink-0 animate-pulse font-black shadow-md shadow-orange-500/30">
+              <Radio className="w-5 h-5 animate-bounce" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-black text-orange-400 flex items-center gap-1.5 truncate">
+              <div className="text-xs font-black text-white flex items-center justify-between">
                 <span>🎙️ {incomingAudio.sender_name || incomingAudio.fromUserName}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping flex-shrink-0"></span>
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping flex-shrink-0"></span>
               </div>
-              <div className="text-[10px] text-zinc-400 truncate">
-                Audio Walkie-Talkie en vivo • {incomingAudio.timestamp}
+              <div className="text-[10px] text-orange-400 font-bold truncate">
+                {incomingAudio.isLiveStream ? '🔴 Transmitiendo audio en vivo...' : `Audio Walkie-Talkie • ${incomingAudio.timestamp || 'Ahora'}`}
               </div>
             </div>
           </div>

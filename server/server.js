@@ -946,7 +946,47 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Transmisión de Audio / Voz en Tiempo Real Ultra Rápida con guardado persistente
+  // Transmisión de Audio / Voz en Tiempo Real Streaming y Push-To-Talk
+  socket.on('voice_stream_start', (data) => {
+    if (!data) return;
+    try {
+      socket.broadcast.emit('voice_stream_start', data);
+      let targetUserIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
+      targetUserIds.forEach((tId) => {
+        if (tId !== 'all') {
+          io.to('user_' + String(tId)).emit('voice_stream_start', data);
+        }
+      });
+      io.emit('audio_channel_status', { isBusy: true, speakerId: data.fromUserId, speakerName: data.fromUserName });
+    } catch (e) {
+      console.error('Error voice_stream_start:', e);
+    }
+  });
+
+  socket.on('voice_stream_chunk', (data) => {
+    if (!data || !data.chunkData) return;
+    try {
+      socket.broadcast.emit('voice_stream_chunk', data);
+      let targetUserIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
+      targetUserIds.forEach((tId) => {
+        if (tId !== 'all') {
+          io.to('user_' + String(tId)).emit('voice_stream_chunk', data);
+        }
+      });
+    } catch (e) {
+      console.error('Error voice_stream_chunk:', e);
+    }
+  });
+
+  socket.on('voice_stream_end', (data) => {
+    try {
+      io.emit('audio_channel_status', { isBusy: false, speakerId: null, speakerName: null });
+      socket.broadcast.emit('voice_stream_end', data);
+    } catch (e) {
+      console.error('Error voice_stream_end:', e);
+    }
+  });
+
   socket.on('send_voice_audio', (data) => {
     if (!data || !data.audioData) return;
 
@@ -975,7 +1015,7 @@ io.on('connection', (socket) => {
         timestamp: timeStr
       };
 
-      // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL A LOS DISPOSITIVOS CONECTADOS
+      // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL
       socket.broadcast.emit('receive_voice_audio', instantPayload);
       if (!isGeneralChannel && targetUserIds.length > 0) {
         targetUserIds.forEach((tId) => {
@@ -983,10 +1023,13 @@ io.on('connection', (socket) => {
         });
       }
 
+      // Liberar canal de audio inmediatamente
+      io.emit('audio_channel_status', { isBusy: false, speakerId: null, speakerName: null });
+
       // Notificar al emisor para agregar a su chat inmediatamente
       socket.emit('voice_audio_saved', instantPayload);
 
-      // 2. PERSISTENCIA EN SEGUNDO PLANO (Guardar archivo y registrar en BD)
+      // 2. PERSISTENCIA EN SEGUNDO PLANO
       let matches = data.audioData.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
       let buffer = null;
       let ext = '.webm';
