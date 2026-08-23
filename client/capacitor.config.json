@@ -1,0 +1,9 @@
+{
+  "appId": "com.asistencia.qrcontrol",
+  "appName": "Registro Asistentruck",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true
+  }
+}

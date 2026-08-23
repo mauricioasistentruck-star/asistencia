@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+}
+
+/* ==========================================================================
+   MÁRGENES SEGUROS PARA CÁMARA NOTCH, ISLA DINÁMICA Y BARRAS GESTUALES
+   ========================================================================== */
+.safe-notch-header {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  padding-bottom: 0px;
+  padding-left: max(env(safe-area-inset-left, 0px), 8px);
+  padding-right: max(env(safe-area-inset-right, 0px), 8px);
+}
+
+.safe-notch-container {
+  padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+  padding-left: max(env(safe-area-inset-left, 0px), 16px);
+  padding-right: max(env(safe-area-inset-right, 0px), 16px);
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+}
+
+@keyframes scanLine {
+  0% { transform: translateY(0); opacity: 0.9; }
+  50% { transform: translateY(220px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0.9; }
+}
+
+.animate-scan-line {
+  animation: scanLine 2.2s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   CREDENCIALES
+   ========================================================================== */
+.credential-card-dark {
+  background: linear-gradient(135deg, #09090b 0%, #18181b 100%);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px 2px rgba(249, 115, 22, 0.25);
+  border: 2px solid rgba(249, 115, 22, 0.4);
+  color: #ffffff;
+}
+
+.credential-card-light {
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.12), 0 0 25px 2px rgba(249, 115, 22, 0.2) !important;
+  border: 2.5px solid #f97316 !important;
+}
+
+.security-watermark {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(249, 115, 22, 0.04) 0px,
+    rgba(249, 115, 22, 0.04) 15px,
+    transparent 15px,
+    transparent 30px
+  );
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+  z-index: 10;
+}
+
+/* ==========================================================================
+   ESTILOS DE CALENDARIO Y CONTROLES DE FORMULARIO
+   ========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  color-scheme: dark;
+}
+
+/* Indicador de calendario visual y activo para selector de fechas */
+input[type="date"] {
+  position: relative;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.9;
+  padding: 4px;
+  border-radius: 6px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+html.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) sepia(1) saturate(5) hue-rotate(345deg);
+}
+
+html:not(.dark) input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: sepia(1) saturate(5) hue-rotate(345deg);
+}
+
+/* Prevenir deformaciones en iconos svg y botones al escribir o redimensionar */
+svg {
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   ALTO CONTRASTE PARA TEMA BLANCO (LIGHT THEME)
+   ========================================================================== */
+html:not(.dark) {
+  color-scheme: light;
+}
+
+html:not(.dark) body {
+  background-color: #f8fafc !important;
+  color: #000000 !important;
+}
+
+/* Encabezados y títulos principales en negro puro */
+html:not(.dark) h1,
+html:not(.dark) h2,
+html:not(.dark) h3,
+html:not(.dark) h4,
+html:not(.dark) h5,
+html:not(.dark) h6 {
+  color: #000000 !important;
+  font-weight: 900 !important;
+}
+
+html:not(.dark) p,
+html:not(.dark) label,
+html:not(.dark) td,
+html:not(.dark) th {
+  color: #000000 !important;
+}
+
+/* Textos secundarios legibles */
+html:not(.dark) .text-zinc-400,
+html:not(.dark) .text-zinc-500,
+html:not(.dark) .text-zinc-600,
+html:not(.dark) .text-slate-400,
+html:not(.dark) .text-gray-400 {
+  color: #1e293b !important;
+  font-weight: 700;
+}
+
+html:not(.dark) .text-zinc-300,
+html:not(.dark) .text-zinc-200,
+html:not(.dark) .text-zinc-100 {
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+/* Tablas en Modo Blanco */
+html:not(.dark) table {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) th {
+  background-color: #ffedd5 !important;
+  color: #9a3412 !important;
+  border-bottom: 2px solid #fdba74 !important;
+  font-weight: 800 !important;
+}
+
+html:not(.dark) tr {
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) tr:hover {
+  background-color: #fff7ed !important;
+}
+
+/* Modales y Formularios en Modo Blanco */
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #cbd5e1 !important;
+  font-weight: 600 !important;
+}
+
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+/* Botones y bordes en modo claro */
+html:not(.dark) .border-zinc-800 {
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .text-zinc-700 {
+  color: #0f172a !important;
+}
