@@ -307,6 +307,15 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
       playIncomingBeep();
 
+      try {
+        const cached = localStorage.getItem('asistencia_voice_messages_cache');
+        const list = cached ? JSON.parse(cached) : [];
+        if (!list.some(m => m.id === data.id)) {
+          const updatedList = [data, ...list].slice(0, 300);
+          localStorage.setItem('asistencia_voice_messages_cache', JSON.stringify(updatedList));
+        }
+      } catch (e) {}
+
       const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
       if (audioSrc) {
         playLoudAudio(audioSrc, () => {

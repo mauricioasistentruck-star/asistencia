@@ -175,7 +175,16 @@ db.serialize(() => {
           );
         }
       }
-      console.log('Respaldo persistente de datos cargado correctamente.');
+      if (data && Array.isArray(data.voice_messages)) {
+        for (let v of data.voice_messages) {
+          db.run(
+            `INSERT OR IGNORE INTO voice_messages (id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [v.id, v.sender_id, v.sender_name, v.sender_photo, v.receiver_ids, v.receiver_names, v.audio_url, v.audio_data, v.duration_seconds || 0, v.created_at || new Date().toISOString()]
+          );
+        }
+      }
+      console.log('Respaldo persistente de datos y audios cargado correctamente.');
     } catch (e) {
       console.warn('Advertencia restaurando persistent backup:', e);
     }

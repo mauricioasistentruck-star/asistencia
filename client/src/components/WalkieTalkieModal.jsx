@@ -48,8 +48,15 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const [isHeadsetLocked, setIsHeadsetLocked] = useState(false);
   const [scanningDevices, setScanningDevices] = useState(false);
 
-  // Historial y Chats Separados por Usuario
-  const [voiceMessages, setVoiceMessages] = useState([]);
+  // Historial y Chats Separados por Usuario (Persistentes entre aperturas de la app)
+  const [voiceMessages, setVoiceMessages] = useState(() => {
+    try {
+      const cached = localStorage.getItem('asistencia_voice_messages_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [selectedChatUser, setSelectedChatUser] = useState(null); // null = lista de usuarios, 'all' = canal general, objeto = usuario
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -118,7 +125,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     const handleNewVoiceMessage = (msg) => {
       setVoiceMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
-        return [msg, ...prev];
+        const updated = [msg, ...prev].slice(0, 300);
+        try {
+          localStorage.setItem('asistencia_voice_messages_cache', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
       });
     };
 
@@ -195,8 +206,14 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     setLoadingMessages(true);
     try {
       const messages = await apiGetVoiceMessages();
-      setVoiceMessages(messages || []);
+      if (Array.isArray(messages)) {
+        setVoiceMessages(messages);
+        try {
+          localStorage.setItem('asistencia_voice_messages_cache', JSON.stringify(messages.slice(0, 300)));
+        } catch (e) {}
+      }
     } catch (e) {
+      console.warn('Error cargando historial de voz:', e);
     } finally {
       setLoadingMessages(false);
     }
@@ -628,7 +645,13 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     e.stopPropagation();
     try {
       await apiDeleteVoiceMessage(msgId);
-      setVoiceMessages(prev => prev.filter(m => m.id !== msgId));
+      setVoiceMessages(prev => {
+        const updated = prev.filter(m => m.id !== msgId);
+        try {
+          localStorage.setItem('asistencia_voice_messages_cache', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
     } catch (err) {
       alert('Error eliminando audio: ' + err.message);
     }

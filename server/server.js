@@ -50,16 +50,22 @@ function savePersistentBackup() {
     db.all('SELECT * FROM users', (uErr, users) => {
       if (uErr || !users) return;
       db.all('SELECT * FROM attendance', (aErr, att) => {
-        const data = {
-          users: users || [],
-          attendance: att || [],
-          saved_at: new Date().toISOString()
-        };
-        try {
-          fs.writeFileSync(persistentBackupPath, JSON.stringify(data, null, 2), 'utf8');
-        } catch (e) {
-          console.error('Error guardando persistent backup:', e);
-        }
+        db.all('SELECT * FROM voice_messages ORDER BY id DESC LIMIT 500', (vErr, voiceMsgs) => {
+          db.all('SELECT * FROM gps_routes ORDER BY id DESC LIMIT 100', (gErr, routes) => {
+            const data = {
+              users: users || [],
+              attendance: att || [],
+              voice_messages: voiceMsgs || [],
+              gps_routes: routes || [],
+              saved_at: new Date().toISOString()
+            };
+            try {
+              fs.writeFileSync(persistentBackupPath, JSON.stringify(data, null, 2), 'utf8');
+            } catch (e) {
+              console.error('Error guardando persistent backup:', e);
+            }
+          });
+        });
       });
     });
   }, 100);
@@ -1332,14 +1338,14 @@ app.get('/api/audio/messages', authenticateToken, (req, res) => {
   let params = [];
 
   if (isSuper) {
-    query = 'SELECT * FROM voice_messages ORDER BY id DESC LIMIT 80';
+    query = 'SELECT * FROM voice_messages ORDER BY id DESC LIMIT 500';
   } else {
     query = `
       SELECT * FROM voice_messages 
       WHERE sender_id = ? 
          OR receiver_ids LIKE ? 
          OR receiver_ids = 'all'
-      ORDER BY id DESC LIMIT 80
+      ORDER BY id DESC LIMIT 500
     `;
     params = [userId, `%"${userId}"%`];
   }
@@ -1365,6 +1371,7 @@ app.delete('/api/audio/messages/:id', authenticateToken, (req, res) => {
 
   db.run(query, params, function (err) {
     if (err) return res.status(500).json({ error: 'Error al eliminar audio' });
+    savePersistentBackup();
     res.json({ success: true, message: 'Audio eliminado del historial' });
   });
 });
@@ -1503,7 +1510,10 @@ io.on('connection', (socket) => {
         db.run(
           `INSERT INTO voice_messages (sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [fromUserId, fromUserName, fromUserPhoto, receiverIdsJson, receiverNamesStr, audioUrl, data.audioData, durationSeconds]
+          [fromUserId, fromUserName, fromUserPhoto, receiverIdsJson, receiverNamesStr, audioUrl, data.audioData, durationSeconds],
+          () => {
+            savePersistentBackup();
+          }
         );
       });
 
