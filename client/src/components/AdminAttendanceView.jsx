@@ -26,6 +26,61 @@ export default function AdminAttendanceView({ user, theme }) {
 
   const isDark = theme === 'dark';
 
+  const parseTimeToMinutes = (t) => {
+    if (!t) return null;
+    const parts = t.trim().split(':').map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+    return parts[0] * 60 + parts[1] + (parts[2] ? parts[2] / 60 : 0);
+  };
+
+  const formatExactWorkedHours = (r) => {
+    if (!r) return '00H:00M';
+    const entryMin = parseTimeToMinutes(r.entry_time);
+    const exitMin = parseTimeToMinutes(r.exit_time);
+    if (entryMin === null || exitMin === null || exitMin < entryMin) {
+      if (r.total_hours) {
+        const mins = Math.round(r.total_hours * 60);
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${h}H:${m.toString().padStart(2, '0')}M`;
+      }
+      return '--:--';
+    }
+
+    let totalMins = exitMin - entryMin;
+    const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+    const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+    if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+      totalMins -= (lunchInMin - lunchOutMin);
+    }
+
+    totalMins = Math.max(0, Math.round(totalMins));
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    return `${h}H:${m.toString().padStart(2, '0')}M`;
+  };
+
+  const calculateTotalMinutes = (recordsList) => {
+    if (!recordsList || !recordsList.length) return 0;
+    let total = 0;
+    recordsList.forEach(r => {
+      const entryMin = parseTimeToMinutes(r.entry_time);
+      const exitMin = parseTimeToMinutes(r.exit_time);
+      if (entryMin !== null && exitMin !== null && exitMin >= entryMin) {
+        let dayMins = exitMin - entryMin;
+        const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+        const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+        if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+          dayMins -= (lunchInMin - lunchOutMin);
+        }
+        total += Math.max(0, Math.round(dayMins));
+      } else if (r.total_hours) {
+        total += Math.round(r.total_hours * 60);
+      }
+    });
+    return total;
+  };
+
   const setDatePreset = (preset) => {
     const today = new Date();
     const todayStr = getChileTodayString(today);
@@ -356,7 +411,7 @@ export default function AdminAttendanceView({ user, theme }) {
                     <td className="py-3 px-3 text-amber-400 font-bold">{r.lunch_out_time || '--:--:--'}</td>
                     <td className="py-3 px-3 text-orange-400 font-bold">{r.lunch_in_time || '--:--:--'}</td>
                     <td className="py-3 px-3 text-emerald-500 font-bold">{r.exit_time || '--:--:--'}</td>
-                    <td className="py-3 px-3 font-black">{r.total_hours || 0} hrs</td>
+                    <td className="py-3 px-3 font-black font-mono text-orange-400">{formatExactWorkedHours(r)}</td>
                     <td className="py-3 px-3 font-sans">
                       {r.modified_by_admin === 1 ? (
                         <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-bold border border-amber-500/30">
@@ -381,6 +436,27 @@ export default function AdminAttendanceView({ user, theme }) {
                 ))
               )}
             </tbody>
+            {records && records.length > 0 && (
+              <tfoot className={'font-black border-t-2 ' + (isDark ? 'bg-zinc-900 text-white border-orange-500/40' : 'bg-orange-100 text-zinc-900 border-orange-400')}>
+                <tr>
+                  <td colSpan={6} className="py-3.5 px-4 text-left font-black uppercase text-xs">
+                    <span className="text-orange-500 mr-2">TOTAL HORAS ACUMULADAS:</span>
+                    <span className="text-xs text-zinc-400 font-bold">({records.length} días/registros)</span>
+                  </td>
+                  <td className="py-3.5 px-3 text-left font-black text-sm text-orange-500 font-mono">
+                    {(() => {
+                      const totalM = calculateTotalMinutes(records);
+                      const h = Math.floor(totalM / 60);
+                      const m = totalM % 60;
+                      return `${h}H:${m.toString().padStart(2, '0')}M`;
+                    })()}
+                  </td>
+                  <td colSpan={2} className="py-3.5 px-4 text-right text-[11px] text-zinc-400 font-sans">
+                    Cálculo exacto restando colación
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

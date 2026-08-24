@@ -98,18 +98,42 @@ function getLocalTimeString(d = new Date()) {
   return `${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
-function calculateWorkHours(entry, lunchOut, lunchIn, exit) {
-  if (!entry || !exit) return 0;
-  const parseTime = (t) => {
-    const [h, m, s] = t.split(':').map(Number);
-    return h * 60 + m + (s ? s / 60 : 0);
-  };
-  let totalMinutes = parseTime(exit) - parseTime(entry);
-  if (lunchOut && lunchIn) {
-    const lunchMinutes = parseTime(lunchIn) - parseTime(lunchOut);
-    if (lunchMinutes > 0) totalMinutes -= lunchMinutes;
+function parseTimeToMinutes(t) {
+  if (!t || typeof t !== 'string') return null;
+  const parts = t.trim().split(':').map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+  const h = parts[0] || 0;
+  const m = parts[1] || 0;
+  const s = parts[2] || 0;
+  return h * 60 + m + (s ? s / 60 : 0);
+}
+
+function calculateWorkMinutes(entry, lunchOut, lunchIn, exit) {
+  const entryMin = parseTimeToMinutes(entry);
+  const exitMin = parseTimeToMinutes(exit);
+  if (entryMin === null || exitMin === null || exitMin < entryMin) return 0;
+
+  let totalMinutes = exitMin - entryMin;
+  const lunchOutMin = parseTimeToMinutes(lunchOut);
+  const lunchInMin = parseTimeToMinutes(lunchIn);
+  if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+    const lunchDuration = lunchInMin - lunchOutMin;
+    totalMinutes -= lunchDuration;
   }
-  return totalMinutes > 0 ? Number((totalMinutes / 60).toFixed(2)) : 0;
+  return totalMinutes > 0 ? Math.round(totalMinutes) : 0;
+}
+
+function formatMinutesToHoursMinutes(totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return '00H:00M';
+  const mins = Math.round(totalMinutes);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}H:${m.toString().padStart(2, '0')}M`;
+}
+
+function calculateWorkHours(entry, lunchOut, lunchIn, exit) {
+  const totalMins = calculateWorkMinutes(entry, lunchOut, lunchIn, exit);
+  return totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : 0;
 }
 
 // Health Checks para Railway / Nube
@@ -905,15 +929,15 @@ const handleAdminAttendanceEdit = (req, res) => {
 app.put('/api/attendance/admin/edit/:id', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 app.put('/api/attendance/:id/admin-edit', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 
-app.get('/api/attendance/admin/export-excel', (req, res) => {
+const handleExportExcel = (req, res) => {
   const { date_from, date_to, user_id } = req.query;
   let query = `
-    SELECT a.date as Fecha, u.name as Trabajador, u.rut as RUT,
-           a.entry_time as "1. Entrada", a.lunch_out_time as "2. Salida Colacion",
-           a.lunch_in_time as "3. Entrada Colacion", a.exit_time as "4. Salida Jornada",
-           a.total_hours as "Total Horas",
-           CASE WHEN a.modified_by_admin = 1 THEN 'Si (Admin)' ELSE 'No' END as "Editado por Admin",
-           a.admin_note as "Nota Auditoria"
+    SELECT a.date, u.name, u.rut,
+           a.entry_time, a.lunch_out_time,
+           a.lunch_in_time, a.exit_time,
+           a.total_hours,
+           a.modified_by_admin,
+           a.admin_note
     FROM attendance a
     JOIN users u ON a.user_id = u.id
     WHERE 1=1
@@ -934,13 +958,82 @@ app.get('/api/attendance/admin/export-excel', (req, res) => {
   query += ' ORDER BY a.date DESC, u.name ASC';
 
   db.all(query, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: 'Error al generar Excel' });
+    if (err) return res.status(500).json({ error: 'Error al generar Excel: ' + err.message });
 
-    const ws = XLSX.utils.json_to_sheet(rows);
+    let totalSumMinutes = 0;
+    const excelRows = [];
+
+    (rows || []).forEach(r => {
+      // Cálculo exacto de minutos trabajados restando colación
+      const workedMinutes = calculateWorkMinutes(r.entry_time, r.lunch_out_time, r.lunch_in_time, r.exit_time);
+      totalSumMinutes += workedMinutes;
+
+      const formattedHours = formatMinutesToHoursMinutes(workedMinutes);
+      const decimalHours = workedMinutes > 0 ? Number((workedMinutes / 60).toFixed(2)) : 0;
+
+      excelRows.push({
+        'Fecha': r.date,
+        'Trabajador': r.name,
+        'RUT': r.rut || 'Sin RUT',
+        '1. Entrada': r.entry_time || '--:--:--',
+        '2. Salida Colacion': r.lunch_out_time || '--:--:--',
+        '3. Entrada Colacion': r.lunch_in_time || '--:--:--',
+        '4. Salida Jornada': r.exit_time || '--:--:--',
+        'Total Horas Trabajadas (HH:MM)': formattedHours,
+        'Horas Decimales': decimalHours,
+        'Editado por Admin': r.modified_by_admin === 1 ? 'Si (Admin)' : 'No',
+        'Nota Auditoria': r.admin_note || ''
+      });
+    });
+
+    // Fila de separación
+    excelRows.push({
+      'Fecha': '---',
+      'Trabajador': '---',
+      'RUT': '---',
+      '1. Entrada': '---',
+      '2. Salida Colacion': '---',
+      '3. Entrada Colacion': '---',
+      '4. Salida Jornada': '---',
+      'Total Horas Trabajadas (HH:MM)': '---',
+      'Horas Decimales': '---',
+      'Editado por Admin': '---',
+      'Nota Auditoria': '---'
+    });
+
+    // Fila de TOTAL GENERAL / ACUMULADO
+    const totalAccumulatedFormatted = formatMinutesToHoursMinutes(totalSumMinutes);
+    const totalAccumulatedDecimal = totalSumMinutes > 0 ? Number((totalSumMinutes / 60).toFixed(2)) : 0;
+
+    excelRows.push({
+      'Fecha': 'TOTAL ACUMULADO',
+      'Trabajador': user_id ? (rows[0] ? rows[0].name : 'Trabajador Seleccionado') : 'TODOS LOS TRABAJADORES',
+      'RUT': `Total Registros: ${rows.length}`,
+      '1. Entrada': '',
+      '2. Salida Colacion': '',
+      '3. Entrada Colacion': '',
+      '4. Salida Jornada': 'SUMA TOTAL:',
+      'Total Horas Trabajadas (HH:MM)': totalAccumulatedFormatted, // Exacto: e.g. "42H:30M"
+      'Horas Decimales': totalAccumulatedDecimal,
+      'Editado por Admin': '',
+      'Nota Auditoria': `Suma total exacta: ${totalSumMinutes} minutos trabajados.`
+    });
+
+    const ws = XLSX.utils.json_to_sheet(excelRows);
     ws['!cols'] = [
-      { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 18 },
-      { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 30 }
+      { wch: 14 }, // Fecha
+      { wch: 26 }, // Trabajador
+      { wch: 16 }, // RUT
+      { wch: 16 }, // Entrada
+      { wch: 18 }, // Salida Colacion
+      { wch: 18 }, // Entrada Colacion
+      { wch: 18 }, // Salida Jornada
+      { wch: 30 }, // Total Horas (HH:MM)
+      { wch: 16 }, // Horas Decimales
+      { wch: 18 }, // Editado por Admin
+      { wch: 35 }  // Nota Auditoria
     ];
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Registro_Asistencia');
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -949,7 +1042,10 @@ app.get('/api/attendance/admin/export-excel', (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
   });
-});
+};
+
+app.get('/api/attendance/admin/export-excel', handleExportExcel);
+app.get('/api/attendance/export-excel', handleExportExcel);
 
 // Cálculo de distancia entre dos coordenadas geográficas (Fórmula Haversine en km)
 function calculateDistanceBetween(lat1, lon1, lat2, lon2) {
