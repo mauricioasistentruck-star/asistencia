@@ -172,3 +172,8 @@ export async function apiVerifyAdminPassword(password) {
   if (!res.ok) throw new Error(data.error || 'Contraseña incorrecta');
   return data;
 }
+
+export const apiChangeMyPassword = (newPassword) => apiRequest('/api/auth/change-my-password', {
+  method: 'POST',
+  body: JSON.stringify({ newPassword })
+});

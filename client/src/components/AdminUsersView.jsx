@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X } from 'lucide-react';
+import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { apiGetUsers, apiCreateUser, apiUpdateUser, apiDeleteUser, apiUploadPhoto, apiToggleGps, getFullPhotoUrl, getSocket } from '../api';
 
@@ -277,6 +277,14 @@ export default function AdminUsersView({ currentUser, theme }) {
                     <span className="font-sans text-[11px]">Correo:</span>
                     <span className="text-zinc-400 truncate max-w-[170px]">{u.email}</span>
                   </div>
+                  {isSuperAdmin && (
+                    <div className="flex items-center justify-between text-zinc-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/25 mt-1">
+                      <span className="font-sans text-[11px] font-bold text-amber-500 flex items-center gap-1">
+                        <Key className="w-3 h-3 flex-shrink-0" /> Clave:
+                      </span>
+                      <strong className="text-amber-400 font-mono font-black">{u.plain_password || '123'}</strong>
+                    </div>
+                  )}
                 </div>
               </div>
 

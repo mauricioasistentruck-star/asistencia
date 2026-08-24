@@ -192,10 +192,29 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // CRUD Usuarios
 app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
-  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar usuarios' });
     res.json(rows);
   });
+});
+
+app.post('/api/auth/change-my-password', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.trim().length < 1) {
+    return res.status(400).json({ error: 'La nueva contraseña no puede estar vacía' });
+  }
+  const cleanPass = newPassword.trim();
+  const hash = bcrypt.hashSync(cleanPass, 10);
+  db.run(
+    'UPDATE users SET password_hash = ?, plain_password = ? WHERE id = ?',
+    [hash, cleanPass, userId],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Error al cambiar contraseña: ' + err.message });
+      io.emit('user_updated', { id: userId });
+      res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+    }
+  );
 });
 
 app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
@@ -231,13 +250,13 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'El Nombre de Usuario, Correo o RUT ya está registrado en el sistema' });
     }
 
-    const query = 'INSERT INTO users (username, rut, name, email, password_hash, role, is_superadmin, qr_token, gps_tracking_enabled) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)';
-    db.run(query, [cleanUsername, cleanRut, cleanName, cleanEmail, password_hash, userRole, qr_token, gps_enabled], function (err) {
+    const query = 'INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)';
+    db.run(query, [cleanUsername, cleanRut, cleanName, cleanEmail, password_hash, rawPassword, userRole, qr_token, gps_enabled], function (err) {
       if (err) {
         return res.status(500).json({ error: 'Error al registrar usuario: ' + err.message });
       }
       const newId = this.lastID;
-      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
+      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
         io.emit('user_created', row);
         res.status(201).json({ message: 'Usuario creado exitosamente con código QR generado', user: row });
       });
@@ -292,6 +311,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     }
 
     const passwordHash = password && password.trim() !== '' ? bcrypt.hashSync(password, 10) : targetUser.password_hash;
+    const plainPassword = password && password.trim() !== '' ? password.trim() : targetUser.plain_password;
     const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role || targetUser.role);
     const assignedGps = gps_tracking_enabled !== undefined ? (gps_tracking_enabled ? 1 : 0) : targetUser.gps_tracking_enabled;
     const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || targetUser.name.toLowerCase().replace(/\s+/g, ''));
@@ -312,11 +332,11 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
       }
 
       db.run(
-        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, role = ?, gps_tracking_enabled = ? WHERE id = ?',
-        [finalUsername, finalRut, finalName, finalEmail, passwordHash, assignedRole, assignedGps, targetId],
+        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ? WHERE id = ?',
+        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, targetId],
         (upErr) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
-          db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
+          db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
             io.emit('user_updated', updatedUser);
             res.json({ message: 'Perfil actualizado exitosamente', user: updatedUser });
           });

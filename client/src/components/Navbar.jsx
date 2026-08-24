@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   UserCheck, QrCode, MapPin, Users, FileSpreadsheet, LogOut, Sun, Moon, 
-  Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle
+  Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key
 } from 'lucide-react';
-import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint } from '../api';
+import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword } from '../api';
 import IphoneModal from './IphoneModal.jsx';
 import WalkieTalkieModal from './WalkieTalkieModal.jsx';
 
@@ -25,6 +25,45 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const [showNavDrawer, setShowNavDrawer] = useState(false);
   const [showWalkieTalkie, setShowWalkieTalkie] = useState(false);
   const [walkieTab, setWalkieTab] = useState('walkie');
+
+  // Estados Cambio de Contraseña
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changePassError, setChangePassError] = useState('');
+  const [changePassSuccess, setChangePassSuccess] = useState('');
+  const [changePassLoading, setChangePassLoading] = useState(false);
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setChangePassError('');
+    setChangePassSuccess('');
+
+    if (!newPassword || newPassword.trim() === '') {
+      setChangePassError('Ingrese una contraseña válida');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangePassError('Las contraseñas no coinciden');
+      return;
+    }
+
+    setChangePassLoading(true);
+    try {
+      await apiChangeMyPassword(newPassword);
+      setChangePassSuccess('¡Contraseña actualizada con éxito!');
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        setChangePassSuccess('');
+      }, 1500);
+    } catch (err) {
+      setChangePassError(err.message || 'Error al cambiar contraseña');
+    } finally {
+      setChangePassLoading(false);
+    }
+  };
 
   // Estados de Ruta GPS (Mauricio / Admin)
   const [activeRoute, setActiveRoute] = useState(null);
@@ -531,7 +570,24 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 </span>
               </button>
 
-              {/* Opción 3: Link para iPhone */}
+              {/* Opción 3: Cambiar Mi Contraseña */}
+              <button
+                onClick={() => {
+                  setShowWorkerMenu(false);
+                  setShowChangePasswordModal(true);
+                }}
+                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')}
+              >
+                <div className="w-7 h-7 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500 flex-shrink-0">
+                  <Key className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Cambiar Contraseña</div>
+                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold')}>Actualizar clave personal</div>
+                </div>
+              </button>
+
+              {/* Opción 4: Link para iPhone */}
               <button
                 onClick={() => {
                   setShowWorkerMenu(false);
@@ -548,7 +604,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 </div>
               </button>
 
-              {/* Opción 4: Cerrar Sesión */}
+              {/* Opción 5: Cerrar Sesión */}
               <button
                 onClick={() => {
                   setShowWorkerMenu(false);
@@ -566,6 +622,89 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
               </button>
 
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CAMBIAR CONTRASEÑA */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999999] flex items-center justify-center p-4">
+          <div className={'border rounded-3xl max-w-sm w-full p-6 shadow-2xl transition-all ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+            <div className="flex items-center justify-between pb-3 border-b border-orange-500/20 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black">Cambiar Mi Contraseña</h3>
+                  <p className="text-[10px] text-zinc-400">{user?.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowChangePasswordModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-orange-500 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {changePassError && (
+              <div className="mb-3 bg-red-500/10 border border-red-500/30 rounded-xl p-2.5 text-red-400 text-xs font-bold">
+                {changePassError}
+              </div>
+            )}
+            {changePassSuccess && (
+              <div className="mb-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 text-emerald-400 text-xs font-bold">
+                {changePassSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
+                  Nueva Contraseña:
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Escribe tu nueva clave"
+                  className={'w-full rounded-xl px-3 py-2 text-xs font-mono border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
+                  Confirmar Contraseña:
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repite tu nueva clave"
+                  className={'w-full rounded-xl px-3 py-2 text-xs font-mono border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePasswordModal(false)}
+                  className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={changePassLoading}
+                  className="flex-1 py-2 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/20 cursor-pointer"
+                >
+                  {changePassLoading ? 'Guardando...' : 'Guardar Clave'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

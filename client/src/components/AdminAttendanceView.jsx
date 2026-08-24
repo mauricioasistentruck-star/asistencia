@@ -296,7 +296,7 @@ export default function AdminAttendanceView({ user, theme }) {
             >
               <option value="">Todos los trabajadores</option>
               {usersList.map(u => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name}</option>
               ))}
             </select>
           </div>
