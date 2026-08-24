@@ -137,6 +137,17 @@ export default function App() {
     };
   }, [activeTab, showHistoryModal, showExitConfirmModal, kioskMode]);
 
+  // Deshabilitar rotación en toda la app salvo el menú de kiosco QR
+  useEffect(() => {
+    if (window.AndroidKiosk && window.AndroidKiosk.setOrientation) {
+      if (kioskMode) {
+        window.AndroidKiosk.setOrientation('sensor');
+      } else {
+        window.AndroidKiosk.setOrientation('portrait');
+      }
+    }
+  }, [kioskMode]);
+
   const handleConfirmExitApp = () => {
     setShowExitConfirmModal(false);
     import('@capacitor/app').then(({ App: CapApp }) => {
