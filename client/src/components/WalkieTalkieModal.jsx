@@ -253,7 +253,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
       const socket = getSocket();
 
-      // 1. Notificar inicio de transmisión en vivo a los otros celulares
+      // 1. Notificar inicio de transmisión en vivo (Canal Ocupado)
       socket.emit('voice_stream_start', {
         streamId,
         fromUserId: currentUser.id,
@@ -272,25 +272,9 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
 
-      // 2. Transmisión continua en trozos en tiempo real (Live Streaming)
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data);
-
-          // Enviar fragmento al vuelo para que suene de inmediato en el otro celular
-          const reader = new FileReader();
-          reader.readAsDataURL(e.data);
-          reader.onloadend = () => {
-            if (isRecordingRef.current) {
-              socket.emit('voice_stream_chunk', {
-                streamId: currentStreamIdRef.current,
-                chunkIndex: chunkIndexRef.current++,
-                chunkData: reader.result,
-                mimeType: recorder.mimeType || 'audio/webm',
-                targetUserIds: targetIds
-              });
-            }
-          };
         }
       };
 
@@ -325,13 +309,12 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           playRadioBeep(620, 0.09);
 
           const destText = isAllUsers ? 'Canal General (Todos)' : (targetNames.length === 1 ? targetNames[0] : `${targetNames.length} colaboradores`);
-          setStatusMsg(`✅ Audio transmitido en vivo a ${destText}`);
+          setStatusMsg(`✅ Audio enviado a ${destText}`);
           setTimeout(() => setStatusMsg(''), 4000);
         };
       };
 
-      // Enviar paquetes pequeños cada 200ms para audio en vivo sin latencia
-      recorder.start(200);
+      recorder.start(100);
       isRecordingRef.current = true;
       setIsRecording(true);
 
@@ -506,23 +489,67 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         playUrl = URL.createObjectURL(blob);
       }
 
-      const audio = new Audio(playUrl);
-      audio.volume = 1.0;
-      activeAudioPlayerRef.current = audio;
-      setCurrentPlayingId(msg.id);
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
 
-      audio.play().then(() => {
-        progressIntervalRef.current = setInterval(() => {
-          if (audio.duration && !isNaN(audio.duration)) {
-            setAudioProgress((audio.currentTime / audio.duration) * 100);
-          }
-        }, 100);
-      }).catch((err) => {
-        stopAudioPlayback();
-      });
+      fetch(playUrl)
+        .then(res => res.arrayBuffer())
+        .then(buf => audioCtx.decodeAudioData(buf))
+        .then(audioBuf => {
+          const source = audioCtx.createBufferSource();
+          source.buffer = audioBuf;
 
-      audio.onended = () => stopAudioPlayback();
-      audio.onerror = () => stopAudioPlayback();
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(3.0, audioCtx.currentTime); // 300% de volumen
+
+          const compressor = audioCtx.createDynamicsCompressor();
+          compressor.threshold.setValueAtTime(-20, audioCtx.currentTime);
+          compressor.knee.setValueAtTime(25, audioCtx.currentTime);
+          compressor.ratio.setValueAtTime(10, audioCtx.currentTime);
+
+          source.connect(compressor);
+          compressor.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+
+          activeAudioPlayerRef.current = {
+            pause: () => {
+              try { source.stop(); } catch(e) {}
+              try { audioCtx.close(); } catch(e) {}
+            },
+            currentTime: 0
+          };
+
+          setCurrentPlayingId(msg.id);
+          const startTime = audioCtx.currentTime;
+          const duration = audioBuf.duration;
+
+          progressIntervalRef.current = setInterval(() => {
+            const elapsed = audioCtx.currentTime - startTime;
+            if (duration > 0) {
+              setAudioProgress(Math.min((elapsed / duration) * 100, 100));
+            }
+          }, 100);
+
+          source.onended = () => {
+            stopAudioPlayback();
+          };
+
+          source.start(0);
+        })
+        .catch(() => {
+          const audio = new Audio(playUrl);
+          audio.volume = 1.0;
+          activeAudioPlayerRef.current = audio;
+          setCurrentPlayingId(msg.id);
+          audio.play().then(() => {
+            progressIntervalRef.current = setInterval(() => {
+              if (audio.duration) setAudioProgress((audio.currentTime / audio.duration) * 100);
+            }, 100);
+          }).catch(() => stopAudioPlayback());
+          audio.onended = () => stopAudioPlayback();
+          audio.onerror = () => stopAudioPlayback();
+        });
+
     } catch (e) {
       stopAudioPlayback();
     }

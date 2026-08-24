@@ -177,6 +177,103 @@ export default function App() {
     window.addEventListener('click', unlockAudio, { once: true });
     window.addEventListener('touchstart', unlockAudio, { once: true });
 
+// Reproductor de Audio Potenciado con Amplificador de Ganancia y Compresor para Celulares
+function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    let fetchUrl = audioUrlOrBase64;
+    if (audioUrlOrBase64.startsWith('data:audio')) {
+      const parts = audioUrlOrBase64.split(',');
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
+      const byteCharacters = atob(parts[1]);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mime });
+      fetchUrl = URL.createObjectURL(blob);
+    }
+
+    fetch(fetchUrl)
+      .then(res => res.arrayBuffer())
+      .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
+      .then(audioBuffer => {
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+
+        // Amplificador de volumen (300% de ganancia para sonido potente en altavoces de celular)
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(3.0, audioCtx.currentTime);
+
+        // Compresor dinámico para evitar saturación y mantener voz clara
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-20, audioCtx.currentTime);
+        compressor.knee.setValueAtTime(25, audioCtx.currentTime);
+        compressor.ratio.setValueAtTime(10, audioCtx.currentTime);
+        compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+        compressor.release.setValueAtTime(0.2, audioCtx.currentTime);
+
+        source.connect(compressor);
+        compressor.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        source.onended = () => {
+          if (onEndedCallback) onEndedCallback();
+        };
+
+        source.start(0);
+      })
+      .catch((decodeErr) => {
+        console.warn('Fallback HTML5 Audio:', decodeErr);
+        const fallbackAudio = new Audio(fetchUrl);
+        fallbackAudio.volume = 1.0;
+        fallbackAudio.onended = () => {
+          if (onEndedCallback) onEndedCallback();
+        };
+        fallbackAudio.play().catch(() => {});
+      });
+  } catch (e) {
+    const fallbackAudio = new Audio(audioUrlOrBase64);
+    fallbackAudio.volume = 1.0;
+    fallbackAudio.onended = () => {
+      if (onEndedCallback) onEndedCallback();
+    };
+    fallbackAudio.play().catch(() => {});
+  }
+}
+
+    // 1. Notificación de inicio de transmisión en vivo (Canal Ocupado)
+    const handleStreamStart = (data) => {
+      if (!data) return;
+      const senderId = data.fromUserId;
+      if (senderId && String(senderId) === String(user.id)) return;
+
+      let targetIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
+      const isForMe = targetIds.length === 0 || targetIds.includes('all') || targetIds.includes(user.id) || targetIds.includes(String(user.id));
+      if (!isForMe) return;
+
+      playIncomingBeep();
+      setIncomingAudio({
+        sender_name: data.fromUserName,
+        sender_photo: data.fromUserPhoto,
+        isLiveStream: true
+      });
+    };
+
+    // 2. Notificación de fin de transmisión
+    const handleStreamEnd = () => {
+      setTimeout(() => {
+        setIncomingAudio(prev => prev?.isLiveStream ? null : prev);
+      }, 500);
+    };
+
+    // 3. Recepción y Reproducción de Audio Completo a Volumen Alto (Sin Duplicación)
     const handleReceiveAudio = (data) => {
       if (!data) return;
       const senderId = data.sender_id || data.fromUserId;
@@ -199,104 +296,22 @@ export default function App() {
 
       playIncomingBeep();
 
-      try {
-        const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
-        if (audioSrc) {
-          let playUrl = audioSrc;
-          if (audioSrc.startsWith('data:audio')) {
-            const parts = audioSrc.split(',');
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
-            const byteCharacters = atob(parts[1]);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: mime });
-            playUrl = URL.createObjectURL(blob);
-          }
-
-          const audio = new Audio(playUrl);
-          audio.volume = 1.0;
-          audio.autoplay = true;
-          
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((err) => {
-              console.warn('Auto-play con Audio():', err.message);
-              try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                if (ctx.state === 'suspended') ctx.resume();
-                fetch(playUrl)
-                  .then(r => r.arrayBuffer())
-                  .then(buf => ctx.decodeAudioData(buf))
-                  .then(decodedData => {
-                    const source = ctx.createBufferSource();
-                    source.buffer = decodedData;
-                    source.connect(ctx.destination);
-                    source.start(0);
-                  }).catch(() => {});
-              } catch (e) {}
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error al reproducir audio entrante:', err);
+      const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
+      if (audioSrc) {
+        playLoudAudio(audioSrc, () => {
+          setTimeout(() => setIncomingAudio(null), 1000);
+        });
       }
-    };
 
-    // Live Audio Streaming en tiempo real (mientras el otro usuario está hablando)
-    const handleStreamStart = (data) => {
-      if (!data) return;
-      const senderId = data.fromUserId;
-      if (senderId && String(senderId) === String(user.id)) return;
-
-      let targetIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
-      const isForMe = targetIds.length === 0 || targetIds.includes('all') || targetIds.includes(user.id) || targetIds.includes(String(user.id));
-      if (!isForMe) return;
-
-      playIncomingBeep();
       setIncomingAudio({
-        sender_name: data.fromUserName,
-        sender_photo: data.fromUserPhoto,
-        isLiveStream: true
+        sender_name: data.sender_name,
+        sender_photo: data.sender_photo,
+        timestamp: data.timestamp,
+        isLiveStream: false
       });
     };
 
-    const handleStreamChunk = (data) => {
-      if (!data || !data.chunkData) return;
-      const targetIds = Array.isArray(data.targetUserIds) ? data.targetUserIds : [];
-      const isForMe = targetIds.length === 0 || targetIds.includes('all') || targetIds.includes(user.id) || targetIds.includes(String(user.id));
-      if (!isForMe) return;
-
-      try {
-        const parts = data.chunkData.split(',');
-        if (parts.length === 2) {
-          const byteCharacters = atob(parts[1]);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: data.mimeType || 'audio/webm' });
-          const blobUrl = URL.createObjectURL(blob);
-
-          const tempAudio = new Audio(blobUrl);
-          tempAudio.volume = 1.0;
-          tempAudio.play().catch(() => {});
-        }
-      } catch (e) {}
-    };
-
-    const handleStreamEnd = () => {
-      setTimeout(() => {
-        setIncomingAudio(null);
-      }, 1500);
-    };
-
     socket.on('voice_stream_start', handleStreamStart);
-    socket.on('voice_stream_chunk', handleStreamChunk);
     socket.on('voice_stream_end', handleStreamEnd);
     socket.on('receive_voice_audio', handleReceiveAudio);
 
@@ -304,7 +319,6 @@ export default function App() {
       socket.off('connect', joinRooms);
       socket.off('reconnect', joinRooms);
       socket.off('voice_stream_start', handleStreamStart);
-      socket.off('voice_stream_chunk', handleStreamChunk);
       socket.off('voice_stream_end', handleStreamEnd);
       socket.off('receive_voice_audio', handleReceiveAudio);
     };
