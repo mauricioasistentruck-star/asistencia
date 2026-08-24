@@ -196,47 +196,65 @@ export default function AdminAttendanceView({ user, theme }) {
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {(() => {
-              const todayStr = new Date().toISOString().split('T')[0];
-              const yest = new Date();
+              const today = new Date();
+              const todayStr = getChileTodayString(today);
+              
+              const yest = new Date(today);
               yest.setDate(yest.getDate() - 1);
-              const yestStr = yest.toISOString().split('T')[0];
+              const yestStr = getChileTodayString(yest);
+
+              const dWeek = new Date(today);
+              dWeek.setDate(dWeek.getDate() - 6);
+              const weekFromStr = getChileTodayString(dWeek);
+
+              const monthFromStr = getChileTodayString(new Date(today.getFullYear(), today.getMonth(), 1));
 
               const isToday = dateFrom === todayStr && dateTo === todayStr;
               const isYesterday = dateFrom === yestStr && dateTo === yestStr;
+              const isWeek = dateFrom === weekFromStr && dateTo === todayStr;
+              const isMonth = dateFrom === monthFromStr && dateTo === todayStr;
+
+              const btnClass = (active) =>
+                'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' +
+                (active
+                  ? 'bg-orange-500 text-black shadow-md shadow-orange-500/25 scale-[1.02]'
+                  : (isDark
+                      ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 hover:border-orange-500/30'
+                      : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200 hover:border-orange-500/40'));
 
               return (
                 <>
                   <button
                     type="button"
                     onClick={() => setDatePreset('today')}
-                    className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isToday ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200'))}
+                    className={btnClass(isToday)}
                   >
                     Hoy
                   </button>
                   <button
                     type="button"
                     onClick={() => setDatePreset('yesterday')}
-                    className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isYesterday ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200'))}
+                    className={btnClass(isYesterday)}
                   >
                     Ayer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDatePreset('week')}
+                    className={btnClass(isWeek)}
+                  >
+                    Últimos 7 días
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDatePreset('month')}
+                    className={btnClass(isMonth)}
+                  >
+                    Este Mes
                   </button>
                 </>
               );
             })()}
-            <button
-              type="button"
-              onClick={() => setDatePreset('week')}
-              className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
-            >
-              Últimos 7 días
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('month')}
-              className={'px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800' : 'bg-orange-50 text-zinc-700 hover:text-black border border-orange-200')}
-            >
-              Este Mes
-            </button>
           </div>
         </div>
 
