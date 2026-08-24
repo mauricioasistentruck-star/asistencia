@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
-import { apiGetUserHistory, getFullPhotoUrl, getSocket } from '../api';
+import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
   const [historyRange, setHistoryRange] = useState('day');
@@ -60,7 +60,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getChileTodayString();
   const todayRecord = historyData.find(h => h.date === todayStr) || historyData[0];
 
   return (

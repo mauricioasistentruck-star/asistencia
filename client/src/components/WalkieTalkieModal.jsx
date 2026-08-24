@@ -217,9 +217,44 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
   const recordStartTimeRef = useRef(0);
   const lastToggleTimeRef = useRef(0);
+  const prewarmedStreamRef = useRef(null);
+  const silentCtxRef = useRef(null);
+
+  // Obtener o reutilizar stream de audio pre-calentado sin esperar
+  const getAudioStream = async () => {
+    if (prewarmedStreamRef.current && prewarmedStreamRef.current.active) {
+      const tracks = prewarmedStreamRef.current.getAudioTracks();
+      if (tracks.length > 0 && tracks[0].readyState === 'live') {
+        return prewarmedStreamRef.current;
+      }
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    prewarmedStreamRef.current = stream;
+    return stream;
+  };
+
+  // Pre-calentar el micrófono en segundo plano al abrir la ventana para respuesta inmediata
+  useEffect(() => {
+    if (isOpen) {
+      getAudioStream().catch(() => {});
+    } else {
+      if (prewarmedStreamRef.current) {
+        try {
+          prewarmedStreamRef.current.getTracks().forEach(t => t.stop());
+        } catch(e) {}
+        prewarmedStreamRef.current = null;
+      }
+    }
+  }, [isOpen]);
 
   // =========================================================================
-  // TRANSMISIÓN EN VIVO Y PUSH-TO-TALK
+  // TRANSMISIÓN EN VIVO Y PUSH-TO-TALK INSTANTÁNEO
   // =========================================================================
   const startTalking = async () => {
     if (isRecordingRef.current) return;
@@ -235,15 +270,9 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
     try {
       setMicPermissionError(false);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      const stream = await getAudioStream();
 
-      playRadioBeep(940, 0.1);
+      playRadioBeep(940, 0.08);
       audioChunksRef.current = [];
       const streamId = 'stream_' + Date.now() + '_' + currentUser.id;
       currentStreamIdRef.current = streamId;
@@ -283,7 +312,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
       };
 
       recorder.onstop = () => {
-        stream.getTracks().forEach(track => track.stop());
         const blobType = recorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
         
@@ -356,8 +384,8 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   // Alternar hablar/enviar con 1 clic directo protegido con debounce anti-rebote
   const toggleTalking = () => {
     const now = Date.now();
-    if (now - lastToggleTimeRef.current < 600) {
-      return; // Evitar disparos múltiples seguidos por audífonos Bluetooth
+    if (now - lastToggleTimeRef.current < 500) {
+      return;
     }
     lastToggleTimeRef.current = now;
 
@@ -372,24 +400,26 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   stopTalkingRef.current = stopTalking;
   toggleTalkingRef.current = toggleTalking;
 
-  // Vinculación de Audífonos Bluetooth
+  // Vinculación de Audífonos Bluetooth (MediaSession + Web Audio + Android Bridge)
   const toggleLockHeadset = async () => {
     if (!isHeadsetLocked) {
       try {
-        if (!silentAudioElementRef.current) {
-          const audioEl = new Audio(SILENT_WAV_BASE64);
-          audioEl.loop = true;
-          audioEl.volume = 0.01;
-          silentAudioElementRef.current = audioEl;
-        }
-        await silentAudioElementRef.current.play();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.0001; // Audio inaudible pero mantiene vivo el canal en Android
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        silentCtxRef.current = audioCtx;
       } catch (e) {}
 
       if ('mediaSession' in navigator) {
         try {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: 'Walkie-Talkie Asistentruck [BOTÓN AUDÍFONO ACTIVO]',
-            artist: '1 Clic: Hablar | 2 Clics: Enviar Audio',
+            artist: '1 Clic: Hablar | 2do Clic: Enviar Audio',
             album: 'Canal de Voz en Terreno'
           });
           navigator.mediaSession.playbackState = 'playing';
@@ -408,13 +438,21 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         } catch (e) {}
       }
 
+      if (window.AndroidKiosk && window.AndroidKiosk.activateHeadsetLink) {
+        try { window.AndroidKiosk.activateHeadsetLink(true); } catch(e){}
+      }
+
       setIsHeadsetLocked(true);
       playRadioBeep(1150, 0.12);
-      setStatusMsg('🎧 Audífonos vinculados: 1 clic para hablar, 2do clic para enviar.');
+      setStatusMsg('🎧 Botón de audífonos ACTIVO: 1 clic hablar, 2do clic enviar.');
       setTimeout(() => setStatusMsg(''), 5000);
     } else {
-      if (silentAudioElementRef.current) {
-        try { silentAudioElementRef.current.pause(); } catch (e) {}
+      if (silentCtxRef.current) {
+        try { silentCtxRef.current.close(); } catch (e) {}
+        silentCtxRef.current = null;
+      }
+      if (window.AndroidKiosk && window.AndroidKiosk.activateHeadsetLink) {
+        try { window.AndroidKiosk.activateHeadsetLink(false); } catch(e){}
       }
       setIsHeadsetLocked(false);
       playRadioBeep(520, 0.12);
@@ -425,8 +463,6 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
   // Escucha de hardware y eventos de audífonos
   useEffect(() => {
-    if (!isOpen) return;
-
     const handleHardwareHeadsetKeys = (e) => {
       const isHeadsetBtn = 
         e.keyCode === 179 || 
@@ -460,7 +496,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
       window.removeEventListener('keydown', handleHardwareHeadsetKeys, { capture: true });
       window.removeEventListener('headset_button_event', handleCustomHeadsetEvent);
     };
-  }, [isOpen]);
+  }, []);
 
   // =========================================================================
   // REPRODUCCIÓN DEL HISTORIAL

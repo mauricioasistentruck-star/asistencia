@@ -2,6 +2,21 @@ import { io } from 'socket.io-client';
 
 export const DEFAULT_CLOUD_API = 'https://asistenciasistentruck.onrender.com';
 
+export const getChileTodayString = (d = new Date()) => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Santiago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(d);
+  } catch (e) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+};
+
 export const isNativeApp = () => {
   if (typeof window === 'undefined') return false;
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return true;

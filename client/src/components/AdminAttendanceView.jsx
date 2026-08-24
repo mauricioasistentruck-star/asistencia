@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar } from 'lucide-react';
-import { apiGetAttendanceRecords, apiGetUsers, apiAdminEditAttendance, getExportExcelUrl, getSocket } from '../api';
+import { apiGetAttendanceRecords, apiGetUsers, apiAdminEditAttendance, getExportExcelUrl, getSocket, getChileTodayString } from '../api';
 
 export default function AdminAttendanceView({ user, theme }) {
   const [records, setRecords] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [dateFrom, setDateFrom] = useState(getChileTodayString());
+  const [dateTo, setDateTo] = useState(getChileTodayString());
   const [selectedUserId, setSelectedUserId] = useState('');
   
   const [editingRecord, setEditingRecord] = useState(null);
@@ -28,7 +28,7 @@ export default function AdminAttendanceView({ user, theme }) {
 
   const setDatePreset = (preset) => {
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getChileTodayString(today);
 
     if (preset === 'today') {
       setDateFrom(todayStr);
@@ -36,17 +36,17 @@ export default function AdminAttendanceView({ user, theme }) {
     } else if (preset === 'yesterday') {
       const yest = new Date(today);
       yest.setDate(yest.getDate() - 1);
-      const yestStr = yest.toISOString().split('T')[0];
+      const yestStr = getChileTodayString(yest);
       setDateFrom(yestStr);
       setDateTo(yestStr);
     } else if (preset === 'week') {
       const d = new Date(today);
       d.setDate(d.getDate() - 6);
-      setDateFrom(d.toISOString().split('T')[0]);
+      setDateFrom(getChileTodayString(d));
       setDateTo(todayStr);
     } else if (preset === 'month') {
       const d = new Date(today.getFullYear(), today.getMonth(), 1);
-      setDateFrom(d.toISOString().split('T')[0]);
+      setDateFrom(getChileTodayString(d));
       setDateTo(todayStr);
     }
   };

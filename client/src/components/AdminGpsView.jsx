@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight } from 'lucide-react';
-import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket } from '../api';
+import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 const WORKER_COLORS = [
   '#f97316', // Naranja
@@ -83,7 +83,7 @@ export default function AdminGpsView({ theme }) {
   const [viewMode, setViewMode] = useState('live'); // 'live' | 'saved_routes'
   const [trackedUsers, setTrackedUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null); // null = Todos los trabajadores
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getChileTodayString());
   const [routePoints, setRoutePoints] = useState([]);
   const [mapCenter, setMapCenter] = useState([-33.4489, -70.6693]);
   const [mapZoom, setMapZoom] = useState(13);
