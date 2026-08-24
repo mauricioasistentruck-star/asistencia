@@ -7,7 +7,18 @@ export default function IphoneModal({ isOpen, onClose, theme }) {
   
   if (!isOpen) return null;
 
-  const currentUrl = window.location.href;
+  // Garantizar que el enlace y código QR apunten siempre a la URL oficial en la nube y nunca a localhost
+  const getIphoneAppUrl = () => {
+    if (typeof window !== 'undefined' && window.location) {
+      const origin = window.location.origin;
+      if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') && !origin.startsWith('file:') && !origin.startsWith('capacitor:')) {
+        return origin;
+      }
+    }
+    return 'https://asistenciasistentruck.onrender.com';
+  };
+
+  const currentUrl = getIphoneAppUrl();
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentUrl);
