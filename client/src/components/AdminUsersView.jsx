@@ -89,9 +89,20 @@ export default function AdminUsersView({ currentUser, theme }) {
   const fetchUsers = async () => {
     try {
       const data = await apiGetUsers();
-      setUsers(data);
+      if (Array.isArray(data)) {
+        setUsers(data);
+        if (data.length > 0) {
+          localStorage.setItem('asistencia_users_cache', JSON.stringify(data));
+        }
+      }
     } catch (err) {
       setActionError('Error al cargar lista de usuarios');
+      try {
+        const cached = localStorage.getItem('asistencia_users_cache');
+        if (cached) {
+          setUsers(JSON.parse(cached));
+        }
+      } catch (e) {}
     }
   };
 

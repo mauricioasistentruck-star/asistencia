@@ -4,11 +4,12 @@ import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
 import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
-  const [historyRange, setHistoryRange] = useState('day');
+  const [historyRange, setHistoryRange] = useState('week');
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [screenshotAttempt, setScreenshotAttempt] = useState(false);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
+  const [currentDateStr, setCurrentDateStr] = useState(getChileTodayString());
 
   const isDark = theme === 'dark';
   const isHistoryVisible = showHistoryModal !== undefined ? showHistoryModal : localHistoryOpen;
@@ -16,6 +17,18 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
     if (setShowHistoryModal) setShowHistoryModal(val);
     setLocalHistoryOpen(val);
   };
+
+  // Timer para verificar cambio de día a las 00:00 hrs y limpiar la credencial automáticamente
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const newToday = getChileTodayString();
+      if (newToday !== currentDateStr) {
+        setCurrentDateStr(newToday);
+        fetchHistory();
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [currentDateStr]);
 
   const parseTimeToMinutes = (t) => {
     if (!t) return null;
@@ -72,6 +85,48 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
     return total;
   };
 
+  // Agrupación mensual en 4 semanas
+  const calculateMonthlyWeeksSummary = (recordsList) => {
+    const weeks = [
+      { name: 'Semana 1 (Días 1 al 7)', days: 0, totalMinutes: 0 },
+      { name: 'Semana 2 (Días 8 al 14)', days: 0, totalMinutes: 0 },
+      { name: 'Semana 3 (Días 15 al 21)', days: 0, totalMinutes: 0 },
+      { name: 'Semana 4 (Días 22 al fin de mes)', days: 0, totalMinutes: 0 }
+    ];
+
+    recordsList.forEach(r => {
+      if (!r.date) return;
+      const dayNum = parseInt(r.date.split('-')[2] || '1', 10);
+      let weekIdx = 0;
+      if (dayNum <= 7) weekIdx = 0;
+      else if (dayNum <= 14) weekIdx = 1;
+      else if (dayNum <= 21) weekIdx = 2;
+      else weekIdx = 3;
+
+      let dayMins = 0;
+      const entryMin = parseTimeToMinutes(r.entry_time);
+      const exitMin = parseTimeToMinutes(r.exit_time);
+      if (entryMin !== null && exitMin !== null && exitMin >= entryMin) {
+        dayMins = exitMin - entryMin;
+        const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+        const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+        if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+          dayMins -= (lunchInMin - lunchOutMin);
+        }
+        dayMins = Math.max(0, Math.round(dayMins));
+      } else if (r.total_hours) {
+        dayMins = Math.round(r.total_hours * 60);
+      }
+
+      if (r.entry_time || dayMins > 0) {
+        weeks[weekIdx].days += 1;
+        weeks[weekIdx].totalMinutes += dayMins;
+      }
+    });
+
+    return weeks;
+  };
+
   const fetchHistory = async () => {
     if (!user?.id) return;
     setLoadingHistory(true);
@@ -108,15 +163,9 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
     };
   }, [user, historyRange]);
 
-  const formatSeconds = (sec) => {
-    const hrs = Math.floor(sec / 3600);
-    const mins = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const todayStr = getChileTodayString();
-  const todayRecord = historyData.find(h => h.date === todayStr) || historyData[0];
+  // Solo mostrar registro de HOY si la fecha coincide exactamente con la fecha actual de Chile.
+  // A las 00:00 hrs la credencial se muestra 100% limpia sin marcaciones previas.
+  const todayRecord = historyData.find(h => h.date === currentDateStr) || null;
 
   return (
     <div className="w-full h-full max-w-md mx-auto select-none flex flex-col justify-between overflow-hidden">
@@ -203,13 +252,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
         </p>
 
         {/* ========================================================================= */}
-        {/* LAS 4 MARCACIONES DIARIAS EN FILA */}
+        {/* LAS 4 MARCACIONES DIARIAS EN FILA (SE LIMPIAN A LAS 00:00 HRS CADA NOCHE) */}
         {/* ========================================================================= */}
         <div className="w-full pt-1.5 border-t border-orange-500/30 flex-shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs sm:text-sm font-black uppercase text-orange-500 tracking-wider flex items-center gap-1.5">
               <Clock className="w-4 h-4" />
-              Marcaciones del Día
+              Marcaciones de Hoy
             </span>
             {todayRecord && todayRecord.total_hours > 0 && (
               <span className={'text-xs sm:text-sm font-mono font-black px-3 py-0.5 rounded-full border ' + (
@@ -289,7 +338,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
 
       </div>
 
-      {/* MODAL / PANEL DE MIS MARCACIONES */}
+      {/* MODAL / PANEL DE REVISAR MARCACIONES */}
       {isHistoryVisible && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
           <div className={'border rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl max-h-[90vh] flex flex-col ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
@@ -300,142 +349,202 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-black">Mis Marcaciones</h3>
-                  <p className="text-[11px] text-zinc-400">Registros de ingresos, salidas y horas</p>
+                  <h3 className="text-base sm:text-lg font-black">Revisar Marcaciones</h3>
+                  <p className="text-[11px] text-zinc-400">Historial de asistencia y jornadas</p>
                 </div>
               </div>
 
               <button
                 onClick={() => setIsHistoryVisible(false)}
-                className="p-1.5 rounded-xl hover:bg-orange-500/10 text-zinc-400 hover:text-orange-500 transition-colors"
+                className="p-1.5 rounded-xl hover:bg-orange-500/10 text-zinc-400 hover:text-orange-500 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex justify-end mb-4">
+            {/* Selector de Filtros: Solo Semana y Mes */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold text-orange-500 uppercase tracking-wider">
+                {historyRange === 'week' ? '📅 Desglose Día a Día' : '📊 Resumen por Semanas del Mes'}
+              </span>
+
               <div className={'flex p-1 rounded-xl border ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50 border-orange-200')}>
                 <button
-                  onClick={() => setHistoryRange('day')}
-                  className={'px-3 py-1 rounded-lg text-xs font-bold transition-all ' + (historyRange === 'day' ? 'bg-orange-500 text-black shadow' : 'text-zinc-400 hover:text-orange-500')}
-                >
-                  Hoy
-                </button>
-                <button
                   onClick={() => setHistoryRange('week')}
-                  className={'px-3 py-1 rounded-lg text-xs font-bold transition-all ' + (historyRange === 'week' ? 'bg-orange-500 text-black shadow' : 'text-zinc-400 hover:text-orange-500')}
+                  className={'px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ' + (historyRange === 'week' ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : 'text-zinc-400 hover:text-orange-500')}
                 >
                   Semana
                 </button>
                 <button
                   onClick={() => setHistoryRange('month')}
-                  className={'px-3 py-1 rounded-lg text-xs font-bold transition-all ' + (historyRange === 'month' ? 'bg-orange-500 text-black shadow' : 'text-zinc-400 hover:text-orange-500')}
+                  className={'px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ' + (historyRange === 'month' ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : 'text-zinc-400 hover:text-orange-500')}
                 >
                   Mes
                 </button>
               </div>
             </div>
 
+            {/* Resumen de las 4 Marcaciones de Hoy (permanecen hasta medianoche) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">Entrada</span>
+                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">1. Entrada</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.entry_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-amber-500 uppercase tracking-wider block mb-0.5">Sal. Col.</span>
+                <span className="text-[9px] font-black text-amber-500 uppercase tracking-wider block mb-0.5">2. Sal. Col.</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.lunch_out_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">Ent. Col.</span>
+                <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider block mb-0.5">3. Ent. Col.</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.lunch_in_time || '--:--:--'}
                 </span>
               </div>
 
               <div className={'border rounded-2xl p-2.5 text-center ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-wider block mb-0.5">Salida</span>
+                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-wider block mb-0.5">4. Salida</span>
                 <span className="text-sm font-black font-mono">
                   {todayRecord?.exit_time || '--:--:--'}
                 </span>
               </div>
             </div>
 
+            {/* TABLA PRINCIPAL: VISTA SEMANA (DÍA A DÍA) O VISTA MES (RESUMEN 4 SEMANAS) */}
             <div className={'flex-1 overflow-y-auto rounded-2xl border ' + (isDark ? 'border-zinc-800' : 'border-orange-200')}>
-              <table className="w-full text-left text-xs">
-                <thead className={'sticky top-0 uppercase font-bold text-[10px] tracking-wider border-b ' + (isDark ? 'bg-black text-zinc-400 border-zinc-800' : 'bg-orange-50 text-zinc-700 border-orange-200')}>
-                  <tr>
-                    <th className="py-2.5 px-3">Fecha</th>
-                    <th className="py-2.5 px-2">Entrada</th>
-                    <th className="py-2.5 px-2">Sal. Col.</th>
-                    <th className="py-2.5 px-2">Ent. Col.</th>
-                    <th className="py-2.5 px-2">Salida</th>
-                    <th className="py-2.5 px-2 text-right">Horas</th>
-                  </tr>
-                </thead>
-                <tbody className={'divide-y font-mono ' + (isDark ? 'divide-zinc-900 bg-zinc-950' : 'divide-orange-100 bg-white')}>
-                  {loadingHistory ? (
+              {historyRange === 'week' ? (
+                /* VISTA SEMANA: DÍA A DÍA */
+                <table className="w-full text-left text-xs">
+                  <thead className={'sticky top-0 uppercase font-bold text-[10px] tracking-wider border-b ' + (isDark ? 'bg-black text-zinc-400 border-zinc-800' : 'bg-orange-50 text-zinc-700 border-orange-200')}>
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-zinc-500 font-sans">
-                        Cargando historial de asistencia...
-                      </td>
+                      <th className="py-2.5 px-3">Fecha</th>
+                      <th className="py-2.5 px-2">Entrada</th>
+                      <th className="py-2.5 px-2">Sal. Col.</th>
+                      <th className="py-2.5 px-2">Ent. Col.</th>
+                      <th className="py-2.5 px-2">Salida</th>
+                      <th className="py-2.5 px-2 text-right">Horas</th>
                     </tr>
-                  ) : historyData.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="py-8 text-center text-zinc-500 font-sans">
-                        No hay registros en este período.
-                      </td>
-                    </tr>
-                  ) : (
-                    historyData.map((item) => (
-                      <tr key={item.id} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/60'}>
-                        <td className="py-2 px-3 font-bold font-sans">{item.date}</td>
-                        <td className="py-2 px-2 text-orange-400 font-bold">{item.entry_time || '-'}</td>
-                        <td className="py-2 px-2 text-amber-400 font-bold">{item.lunch_out_time || '-'}</td>
-                        <td className="py-2 px-2 text-orange-400 font-bold">{item.lunch_in_time || '-'}</td>
-                        <td className="py-2 px-2 text-emerald-500 font-bold">{item.exit_time || '-'}</td>
-                        <td className="py-2 px-2 text-right font-black font-mono text-orange-400">{formatExactWorkedHours(item)}</td>
+                  </thead>
+                  <tbody className={'divide-y font-mono ' + (isDark ? 'divide-zinc-900 bg-zinc-950' : 'divide-orange-100 bg-white')}>
+                    {loadingHistory ? (
+                      <tr>
+                        <td colSpan="6" className="py-8 text-center text-zinc-500 font-sans">
+                          Cargando historial de la semana...
+                        </td>
                       </tr>
-                    ))
+                    ) : historyData.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="py-8 text-center text-zinc-500 font-sans">
+                          No hay registros de marcación en esta semana.
+                        </td>
+                      </tr>
+                    ) : (
+                      historyData.map((item) => (
+                        <tr key={item.id} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/60'}>
+                          <td className="py-2 px-3 font-bold font-sans">{item.date}</td>
+                          <td className="py-2 px-2 text-orange-400 font-bold">{item.entry_time || '-'}</td>
+                          <td className="py-2 px-2 text-amber-400 font-bold">{item.lunch_out_time || '-'}</td>
+                          <td className="py-2 px-2 text-orange-400 font-bold">{item.lunch_in_time || '-'}</td>
+                          <td className="py-2 px-2 text-emerald-500 font-bold">{item.exit_time || '-'}</td>
+                          <td className="py-2 px-2 text-right font-black font-mono text-orange-400">{formatExactWorkedHours(item)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {historyData && historyData.length > 0 && (
+                    <tfoot className={'font-black border-t-2 font-mono text-xs ' + (isDark ? 'bg-zinc-900 text-white border-orange-500/40' : 'bg-orange-100 text-zinc-900 border-orange-400')}>
+                      <tr>
+                        <td colSpan={5} className="py-2.5 px-3 text-left font-black uppercase text-[10px] font-sans">
+                          <span className="text-orange-500 mr-1.5">TOTAL SEMANAL ACUMULADO:</span>
+                          ({historyData.length} días)
+                        </td>
+                        <td className="py-2.5 px-2 text-right font-black text-xs text-orange-500 font-mono">
+                          {(() => {
+                            const totalM = calculateTotalMinutes(historyData);
+                            const h = Math.floor(totalM / 60);
+                            const m = totalM % 60;
+                            return `${h}H:${m.toString().padStart(2, '0')}M`;
+                          })()}
+                        </td>
+                      </tr>
+                    </tfoot>
                   )}
-                </tbody>
-                {historyData && historyData.length > 0 && (
-                  <tfoot className={'font-black border-t-2 font-mono text-xs ' + (isDark ? 'bg-zinc-900 text-white border-orange-500/40' : 'bg-orange-100 text-zinc-900 border-orange-400')}>
+                </table>
+              ) : (
+                /* VISTA MES: RESUMEN DE LAS 4 SEMANAS DEL MES */
+                <table className="w-full text-left text-xs">
+                  <thead className={'sticky top-0 uppercase font-bold text-[10px] tracking-wider border-b ' + (isDark ? 'bg-black text-zinc-400 border-zinc-800' : 'bg-orange-50 text-zinc-700 border-orange-200')}>
                     <tr>
-                      <td colSpan={5} className="py-2.5 px-3 text-left font-black uppercase text-[10px] font-sans">
-                        <span className="text-orange-500 mr-1.5">TOTAL ACUMULADO:</span>
-                        ({historyData.length} marcaciones)
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-black text-xs text-orange-500 font-mono">
-                        {(() => {
-                          const totalM = calculateTotalMinutes(historyData);
-                          const h = Math.floor(totalM / 60);
-                          const m = totalM % 60;
-                          return `${h}H:${m.toString().padStart(2, '0')}M`;
-                        })()}
-                      </td>
+                      <th className="py-3 px-4">Semana del Mes</th>
+                      <th className="py-3 px-4 text-center">Días Asistidos</th>
+                      <th className="py-3 px-4 text-right">Horas Trabajadas</th>
                     </tr>
-                  </tfoot>
-                )}
-              </table>
+                  </thead>
+                  <tbody className={'divide-y font-mono ' + (isDark ? 'divide-zinc-900 bg-zinc-950' : 'divide-orange-100 bg-white')}>
+                    {loadingHistory ? (
+                      <tr>
+                        <td colSpan="3" className="py-8 text-center text-zinc-500 font-sans">
+                          Calculando resumen mensual de las 4 semanas...
+                        </td>
+                      </tr>
+                    ) : (
+                      (() => {
+                        const monthlyWeeks = calculateMonthlyWeeksSummary(historyData);
+                        return monthlyWeeks.map((wk, idx) => {
+                          const h = Math.floor(wk.totalMinutes / 60);
+                          const m = wk.totalMinutes % 60;
+                          return (
+                            <tr key={idx} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/60'}>
+                              <td className="py-3 px-4 font-bold font-sans">
+                                <div className="text-orange-500 font-black">{wk.name}</div>
+                              </td>
+                              <td className="py-3 px-4 text-center font-bold font-sans">
+                                <span className={'px-3 py-1 rounded-full text-xs font-black ' + (wk.days > 0 ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30' : 'text-zinc-500')}>
+                                  {wk.days} {wk.days === 1 ? 'día' : 'días'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right font-black text-sm text-emerald-400 font-mono">
+                                {h}H:{m.toString().padStart(2, '0')}M
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()
+                    )}
+                  </tbody>
+                  {historyData && historyData.length > 0 && (
+                    <tfoot className={'font-black border-t-2 font-mono text-xs ' + (isDark ? 'bg-zinc-900 text-white border-orange-500/40' : 'bg-orange-100 text-zinc-900 border-orange-400')}>
+                      <tr>
+                        <td className="py-3 px-4 text-left font-black uppercase text-xs font-sans">
+                          <span className="text-orange-500 mr-1.5">RESUMEN TOTAL MENSUAL:</span>
+                        </td>
+                        <td className="py-3 px-4 text-center font-black text-xs text-orange-500 font-sans">
+                          {historyData.length} días totales
+                        </td>
+                        <td className="py-3 px-4 text-right font-black text-sm text-orange-500 font-mono">
+                          {(() => {
+                            const totalM = calculateTotalMinutes(historyData);
+                            const h = Math.floor(totalM / 60);
+                            const m = totalM % 60;
+                            return `${h}H:${m.toString().padStart(2, '0')}M`;
+                          })()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between text-xs text-zinc-400 pt-2">
-              <button
-                onClick={fetchHistory}
-                className="text-orange-500 hover:text-orange-400 flex items-center gap-1.5 font-bold"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Actualizar
-              </button>
+            <div className="mt-4 flex items-center justify-end text-xs text-zinc-400 pt-2">
               <button
                 onClick={() => setIsHistoryVisible(false)}
-                className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-black font-extrabold text-xs shadow-md shadow-orange-500/20"
+                className="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-black font-extrabold text-xs shadow-md shadow-orange-500/20 cursor-pointer"
               >
                 Cerrar
               </button>

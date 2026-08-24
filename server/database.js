@@ -150,6 +150,36 @@ db.serialize(() => {
       db.run("UPDATE users SET username = 'mauricio' WHERE id = ? AND (username IS NULL OR username = '')", [row.id]);
     }
   });
+
+  // Restaurar respaldo persistente si existe al iniciar el servidor (Para evitar borrado en reinicios de Render)
+  const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
+  if (fs.existsSync(persistentBackupPath)) {
+    try {
+      const content = fs.readFileSync(persistentBackupPath, 'utf8');
+      const data = JSON.parse(content);
+      if (data && Array.isArray(data.users)) {
+        for (let u of data.users) {
+          db.run(
+            `INSERT OR IGNORE INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [u.id, u.username, u.rut, u.name, u.email, u.password_hash, u.plain_password || '123', u.role, u.is_superadmin ? 1 : 0, u.photo_url, u.qr_token, u.gps_tracking_enabled ? 1 : 0, u.created_at || new Date().toISOString()]
+          );
+        }
+      }
+      if (data && Array.isArray(data.attendance)) {
+        for (let a of data.attendance) {
+          db.run(
+            `INSERT OR IGNORE INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [a.id, a.user_id, a.date, a.entry_time, a.lunch_out_time, a.lunch_in_time, a.exit_time, a.total_hours || 0, a.modified_by_admin ? 1 : 0, a.admin_note, a.created_at, a.updated_at]
+          );
+        }
+      }
+      console.log('Respaldo persistente de datos cargado correctamente.');
+    } catch (e) {
+      console.warn('Advertencia restaurando persistent backup:', e);
+    }
+  }
 });
 
 module.exports = db;

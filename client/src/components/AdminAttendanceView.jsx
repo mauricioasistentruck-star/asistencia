@@ -281,13 +281,6 @@ export default function AdminAttendanceView({ user, theme }) {
                 <>
                   <button
                     type="button"
-                    onClick={() => setDatePreset('today')}
-                    className={btnClass(isToday)}
-                  >
-                    Hoy
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setDatePreset('yesterday')}
                     className={btnClass(isYesterday)}
                   >
@@ -298,14 +291,14 @@ export default function AdminAttendanceView({ user, theme }) {
                     onClick={() => setDatePreset('week')}
                     className={btnClass(isWeek)}
                   >
-                    Últimos 7 días
+                    Semana
                   </button>
                   <button
                     type="button"
                     onClick={() => setDatePreset('month')}
                     className={btnClass(isMonth)}
                   >
-                    Este Mes
+                    Mes
                   </button>
                 </>
               );

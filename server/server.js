@@ -43,6 +43,28 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
+const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
+
+function savePersistentBackup() {
+  setTimeout(() => {
+    db.all('SELECT * FROM users', (uErr, users) => {
+      if (uErr || !users) return;
+      db.all('SELECT * FROM attendance', (aErr, att) => {
+        const data = {
+          users: users || [],
+          attendance: att || [],
+          saved_at: new Date().toISOString()
+        };
+        try {
+          fs.writeFileSync(persistentBackupPath, JSON.stringify(data, null, 2), 'utf8');
+        } catch (e) {
+          console.error('Error guardando persistent backup:', e);
+        }
+      });
+    });
+  }, 100);
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -282,6 +304,7 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
       const newId = this.lastID;
       db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
         io.emit('user_created', row);
+        savePersistentBackup();
         res.status(201).json({ message: 'Usuario creado exitosamente con código QR generado', user: row });
       });
     });
@@ -295,6 +318,7 @@ app.post('/api/users/:id/photo', authenticateToken, requireAdmin, upload.single(
   db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photoUrl, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar foto' });
     io.emit('user_updated', { id: Number(userId), photo_url: photoUrl });
+    savePersistentBackup();
     res.json({ message: 'Foto actualizada exitosamente', photo_url: photoUrl });
   });
 });
@@ -312,6 +336,7 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
   db.run('UPDATE users SET gps_tracking_enabled = ? WHERE id = ?', [enabled ? 1 : 0, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar estado GPS' });
     io.emit('user_gps_toggled', { userId, gps_tracking_enabled: enabled ? 1 : 0 });
+    savePersistentBackup();
     res.json({ message: 'GPS ' + (enabled ? 'activado' : 'desactivado'), enabled: enabled ? 1 : 0 });
   });
 });
@@ -362,6 +387,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
           db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
             io.emit('user_updated', updatedUser);
+            savePersistentBackup();
             res.json({ message: 'Perfil actualizado exitosamente', user: updatedUser });
           });
         }
@@ -380,6 +406,7 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     db.run('DELETE FROM users WHERE id = ?', [targetId], (delErr) => {
       if (delErr) return res.status(500).json({ error: 'Error al eliminar usuario' });
       io.emit('user_deleted', { id: targetId });
+      savePersistentBackup();
       res.json({ message: 'Usuario eliminado exitosamente' });
     });
   });
@@ -705,6 +732,7 @@ app.post('/api/attendance/scan', (req, res) => {
           io.emit('attendance_marked', payload);
           io.emit('attendance_updated', payload);
           io.emit('scan_registered', payload);
+          savePersistentBackup();
           return res.json(payload);
         });
       } else {
@@ -716,6 +744,7 @@ app.post('/api/attendance/scan', (req, res) => {
             io.emit('attendance_marked', payload);
             io.emit('attendance_updated', payload);
             io.emit('scan_registered', payload);
+            savePersistentBackup();
             return res.json(payload);
           });
         } else if (!record.lunch_out_time) {
@@ -726,6 +755,7 @@ app.post('/api/attendance/scan', (req, res) => {
             io.emit('attendance_marked', payload);
             io.emit('attendance_updated', payload);
             io.emit('scan_registered', payload);
+            savePersistentBackup();
             return res.json(payload);
           });
         } else if (!record.lunch_in_time) {
@@ -736,6 +766,7 @@ app.post('/api/attendance/scan', (req, res) => {
             io.emit('attendance_marked', payload);
             io.emit('attendance_updated', payload);
             io.emit('scan_registered', payload);
+            savePersistentBackup();
             return res.json(payload);
           });
         } else if (!record.exit_time) {
@@ -747,6 +778,7 @@ app.post('/api/attendance/scan', (req, res) => {
             io.emit('attendance_marked', payload);
             io.emit('attendance_updated', payload);
             io.emit('scan_registered', payload);
+            savePersistentBackup();
             return res.json(payload);
           });
         } else {
