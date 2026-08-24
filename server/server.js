@@ -20,8 +20,8 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 const uploadsDir = path.join(__dirname, 'uploads');
 const audioUploadsDir = path.join(uploadsDir, 'audio');
@@ -359,6 +359,304 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
       res.json({ message: 'Usuario eliminado exitosamente' });
     });
   });
+});
+
+// =========================================================================
+// SISTEMA DE EXPORTACIÓN E IMPORTACIÓN MASIVA TOTAL (BACKUP & RESTORE)
+// Respalda: Usuarios, Contraseñas, Fotos (Base64), Marcaciones y Rutas GPS.
+// Excluye exclusivamente los audios de walkie-talkie.
+// =========================================================================
+
+app.get('/api/admin/backup/export', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const backup = {
+      app: 'ASISTENTRUCK',
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      exported_by: req.user.name || 'SuperAdmin',
+      users: [],
+      attendance: [],
+      gps_routes: [],
+      gps_logs: [],
+      audit_logs: []
+    };
+
+    // 1. Obtener Usuarios con fotos Base64
+    const users = await new Promise((resolve, reject) => {
+      db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    for (let u of users) {
+      const uCopy = { ...u };
+      if (u.photo_url) {
+        try {
+          const filename = path.basename(u.photo_url);
+          const photoPath = path.join(uploadsDir, filename);
+          if (fs.existsSync(photoPath)) {
+            const buf = fs.readFileSync(photoPath);
+            uCopy.photo_base64 = buf.toString('base64');
+            uCopy.photo_filename = filename;
+          }
+        } catch (e) {
+          console.error('Error leyendo foto para backup:', e);
+        }
+      }
+      backup.users.push(uCopy);
+    }
+
+    // 2. Obtener Historial de Asistencia y Marcaciones
+    backup.attendance = await new Promise((resolve, reject) => {
+      db.all('SELECT id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at FROM attendance ORDER BY date ASC, id ASC', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // 3. Obtener Rutas GPS
+    backup.gps_routes = await new Promise((resolve, reject) => {
+      db.all('SELECT id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at FROM gps_routes ORDER BY id ASC', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // 4. Obtener GPS Logs
+    backup.gps_logs = await new Promise((resolve, reject) => {
+      db.all('SELECT id, user_id, latitude, longitude, accuracy, speed, timestamp, date FROM gps_logs ORDER BY id ASC', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // 5. Obtener Logs de Auditoría
+    backup.audit_logs = await new Promise((resolve, reject) => {
+      db.all('SELECT id, admin_id, admin_name, action, details, created_at FROM audit_logs ORDER BY id ASC', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    backup.stats = {
+      users_count: backup.users.length,
+      attendance_count: backup.attendance.length,
+      routes_count: backup.gps_routes.length,
+      logs_count: backup.gps_logs.length
+    };
+
+    const chileDateStr = getLocalDateString();
+    const filename = `backup_asistentruck_${chileDateStr}_${Date.now()}.json`;
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json(backup);
+  } catch (error) {
+    console.error('Error al exportar backup:', error);
+    return res.status(500).json({ error: 'Error al generar la exportación masiva: ' + error.message });
+  }
+});
+
+app.post('/api/admin/backup/import', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const backup = req.body;
+    if (!backup || (!backup.users && !backup.attendance && !backup.gps_routes)) {
+      return res.status(400).json({ error: 'Formato de archivo de respaldo no válido o vacío.' });
+    }
+
+    let usersImported = 0;
+    let attendanceImported = 0;
+    let routesImported = 0;
+    let logsImported = 0;
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // 1. Restaurar Usuarios y Fotos
+      if (Array.isArray(backup.users)) {
+        const stmtUser = db.prepare(`
+          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            username = excluded.username,
+            rut = excluded.rut,
+            name = excluded.name,
+            email = excluded.email,
+            password_hash = excluded.password_hash,
+            plain_password = excluded.plain_password,
+            role = excluded.role,
+            is_superadmin = excluded.is_superadmin,
+            photo_url = excluded.photo_url,
+            qr_token = excluded.qr_token,
+            gps_tracking_enabled = excluded.gps_tracking_enabled
+        `);
+
+        for (let u of backup.users) {
+          let photoUrl = u.photo_url;
+          if (u.photo_base64) {
+            try {
+              const fname = u.photo_filename || `user_${u.id}_${Date.now()}.jpg`;
+              const filePath = path.join(uploadsDir, fname);
+              fs.writeFileSync(filePath, Buffer.from(u.photo_base64, 'base64'));
+              photoUrl = '/uploads/' + fname;
+            } catch (err) {
+              console.error('Error restaurando foto:', err);
+            }
+          }
+
+          stmtUser.run(
+            u.id || null,
+            u.username || (u.name ? u.name.toLowerCase().replace(/\s+/g, '') : 'user' + u.id),
+            u.rut || null,
+            u.name || 'Sin nombre',
+            u.email || ('user' + u.id + '@asistentruck.cl'),
+            u.password_hash || bcrypt.hashSync('123', 10),
+            u.plain_password || '123',
+            u.role || 'worker',
+            u.is_superadmin ? 1 : 0,
+            photoUrl || null,
+            u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase()),
+            u.gps_tracking_enabled ? 1 : 0,
+            u.created_at || new Date().toISOString()
+          );
+          usersImported++;
+        }
+        stmtUser.finalize();
+      }
+
+      // 2. Restaurar Asistencia
+      if (Array.isArray(backup.attendance)) {
+        const stmtAtt = db.prepare(`
+          INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, date) DO UPDATE SET
+            entry_time = excluded.entry_time,
+            lunch_out_time = excluded.lunch_out_time,
+            lunch_in_time = excluded.lunch_in_time,
+            exit_time = excluded.exit_time,
+            total_hours = excluded.total_hours,
+            modified_by_admin = excluded.modified_by_admin,
+            admin_note = excluded.admin_note,
+            updated_at = excluded.updated_at
+        `);
+
+        for (let a of backup.attendance) {
+          stmtAtt.run(
+            a.id || null,
+            a.user_id,
+            a.date,
+            a.entry_time || null,
+            a.lunch_out_time || null,
+            a.lunch_in_time || null,
+            a.exit_time || null,
+            a.total_hours || 0,
+            a.modified_by_admin ? 1 : 0,
+            a.admin_note || null,
+            a.created_at || new Date().toISOString(),
+            a.updated_at || new Date().toISOString()
+          );
+          attendanceImported++;
+        }
+        stmtAtt.finalize();
+      }
+
+      // 3. Restaurar Rutas GPS
+      if (Array.isArray(backup.gps_routes)) {
+        const stmtRoute = db.prepare(`
+          INSERT INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            user_id = excluded.user_id,
+            user_name = excluded.user_name,
+            name = excluded.name,
+            date = excluded.date,
+            start_time = excluded.start_time,
+            end_time = excluded.end_time,
+            start_lat = excluded.start_lat,
+            start_lng = excluded.start_lng,
+            end_lat = excluded.end_lat,
+            end_lng = excluded.end_lng,
+            total_distance_km = excluded.total_distance_km,
+            total_points = excluded.total_points,
+            points_json = excluded.points_json,
+            status = excluded.status
+        `);
+
+        for (let r of backup.gps_routes) {
+          stmtRoute.run(
+            r.id || null,
+            r.user_id,
+            r.user_name || 'Personal',
+            r.name || 'Ruta GPS',
+            r.date,
+            r.start_time,
+            r.end_time || null,
+            r.start_lat || 0,
+            r.start_lng || 0,
+            r.end_lat || null,
+            r.end_lng || null,
+            r.total_distance_km || 0,
+            r.total_points || 0,
+            r.points_json || '[]',
+            r.status || 'completed',
+            r.created_at || new Date().toISOString()
+          );
+          routesImported++;
+        }
+        stmtRoute.finalize();
+      }
+
+      // 4. Restaurar Logs GPS
+      if (Array.isArray(backup.gps_logs)) {
+        const stmtLog = db.prepare(`
+          INSERT INTO gps_logs (id, user_id, latitude, longitude, accuracy, speed, timestamp, date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO NOTHING
+        `);
+        for (let l of backup.gps_logs) {
+          stmtLog.run(
+            l.id || null,
+            l.user_id,
+            l.latitude,
+            l.longitude,
+            l.accuracy || null,
+            l.speed || null,
+            l.timestamp || new Date().toISOString(),
+            l.date
+          );
+          logsImported++;
+        }
+        stmtLog.finalize();
+      }
+
+      db.run('COMMIT', (commitErr) => {
+        if (commitErr) {
+          console.error('Error confirmando restauración de backup:', commitErr);
+          return res.status(500).json({ error: 'Error al confirmar la restauración: ' + commitErr.message });
+        }
+
+        io.emit('user_created');
+        io.emit('user_updated');
+        io.emit('attendance_updated');
+
+        return res.json({
+          success: true,
+          message: '¡Copia de seguridad restaurada exitosamente!',
+          stats: {
+            users: usersImported,
+            attendance: attendanceImported,
+            routes: routesImported,
+            logs: logsImported
+          }
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error en importación masiva:', error);
+    db.run('ROLLBACK', () => {});
+    return res.status(500).json({ error: 'Fallo al procesar archivo de respaldo: ' + error.message });
+  }
 });
 
 // Scanner 4 Marcaciones

@@ -177,3 +177,32 @@ export const apiChangeMyPassword = (newPassword) => apiRequest('/api/auth/change
   method: 'POST',
   body: JSON.stringify({ newPassword })
 });
+
+export const apiExportBackup = async () => {
+  const token = getToken();
+  const res = await fetch(`${getApiBaseUrl()}/api/admin/backup/export`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error al exportar la base de datos');
+  }
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backup_asistentruck_${getChileTodayString()}_${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return data;
+};
+
+export const apiImportBackup = (backupJson) => apiRequest('/api/admin/backup/import', {
+  method: 'POST',
+  body: JSON.stringify(backupJson)
+});

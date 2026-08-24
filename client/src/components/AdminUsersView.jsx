@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, Download, UploadCloud, Database, ShieldCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiGetUsers, apiCreateUser, apiUpdateUser, apiDeleteUser, apiUploadPhoto, apiToggleGps, getFullPhotoUrl, getSocket } from '../api';
+import { apiGetUsers, apiCreateUser, apiUpdateUser, apiDeleteUser, apiUploadPhoto, apiToggleGps, getFullPhotoUrl, getSocket, apiExportBackup, apiImportBackup } from '../api';
 
 export default function AdminUsersView({ currentUser, theme }) {
   const [users, setUsers] = useState([]);
@@ -38,6 +38,53 @@ export default function AdminUsersView({ currentUser, theme }) {
   });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // Estados de Backup Masivo (SuperAdmin)
+  const [backupLoading, setBackupLoading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleExportBackup = async () => {
+    setActionError('');
+    setActionSuccess('');
+    setBackupLoading(true);
+    try {
+      await apiExportBackup();
+      setActionSuccess('¡Exportación masiva descargada con éxito! Incluye usuarios, contraseñas, fotos, marcaciones y rutas GPS.');
+    } catch (err) {
+      setActionError(err.message || 'Error al generar la exportación');
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleImportFileChange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    if (!window.confirm('¿Desea restaurar esta copia de seguridad? Se importarán todos los trabajadores, contraseñas, fotos, marcaciones y rutas registradas.')) {
+      e.target.value = '';
+      return;
+    }
+
+    setActionError('');
+    setActionSuccess('');
+    setBackupLoading(true);
+
+    try {
+      const text = await file.text();
+      const backupJson = JSON.parse(text);
+      const res = await apiImportBackup(backupJson);
+      
+      const stats = res.stats || {};
+      setActionSuccess(`¡Restauración exitosa! (${stats.users || 0} trabajadores, ${stats.attendance || 0} marcaciones, ${stats.routes || 0} rutas GPS).`);
+      fetchUsers();
+    } catch (err) {
+      setActionError(err.message || 'Error al procesar archivo de copia de seguridad');
+    } finally {
+      setBackupLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -199,6 +246,63 @@ export default function AdminUsersView({ currentUser, theme }) {
           Registrar Nuevo Personal
         </button>
       </div>
+
+      {/* SECCIÓN SUPERADMIN: EXPORTACIÓN E IMPORTACIÓN MASIVA TOTAL */}
+      {isSuperAdmin && (
+        <div className={'border-2 rounded-3xl p-5 shadow-2xl transition-all relative overflow-hidden ' + (isDark ? 'bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border-orange-500/40 text-white' : 'bg-gradient-to-r from-orange-50 via-white to-orange-50 border-orange-400 text-zinc-900')}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-orange-500 text-black">
+                  <Database className="w-5 h-5" />
+                </span>
+                <h3 className="text-base font-black tracking-tight flex items-center gap-2">
+                  Copia de Seguridad Masiva (SuperAdmin)
+                  <span className="text-[10px] bg-orange-500/20 text-orange-500 border border-orange-500/30 px-2 py-0.5 rounded-full font-bold uppercase">
+                    Seguridad Total
+                  </span>
+                </h3>
+              </div>
+              <p className="text-xs text-zinc-400 max-w-2xl">
+                Exporta o restaura en 1 clic toda la información: <strong className="text-orange-400">usuarios, contraseñas, fotos de perfil, historial de marcaciones pasadas y rutas GPS</strong>. Ideal para respaldar o migrar sin perder ningún dato.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Botón Exportar */}
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                disabled={backupLoading}
+                className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-4 py-2.5 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>{backupLoading ? 'Procesando...' : 'Exportar Masivo (.json)'}</span>
+              </button>
+
+              {/* Botón Importar */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={backupLoading}
+                className={'active:scale-95 text-xs font-black px-4 py-2.5 rounded-xl border transition-all flex items-center gap-2 cursor-pointer ' + (isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700 hover:border-orange-500/40' : 'bg-white hover:bg-zinc-100 text-zinc-900 border-zinc-300 hover:border-orange-400')}
+              >
+                <UploadCloud className="w-4 h-4 text-orange-500" />
+                <span>Importar Masivo (.json)</span>
+              </button>
+
+              {/* Input de Archivo Oculto */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImportFileChange}
+                accept=".json"
+                className="hidden"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {actionError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 text-red-400 text-xs">
