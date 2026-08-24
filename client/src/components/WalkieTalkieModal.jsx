@@ -215,8 +215,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     return () => clearInterval(timerRef.current);
   }, [isRecording]);
 
+  const recordStartTimeRef = useRef(0);
+  const lastToggleTimeRef = useRef(0);
+
   // =========================================================================
-  // TRANSMISIÓN EN VIVO (STREAMING) Y PUSH-TO-TALK
+  // TRANSMISIÓN EN VIVO Y PUSH-TO-TALK
   // =========================================================================
   const startTalking = async () => {
     if (isRecordingRef.current) return;
@@ -245,6 +248,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
       const streamId = 'stream_' + Date.now() + '_' + currentUser.id;
       currentStreamIdRef.current = streamId;
       chunkIndexRef.current = 0;
+      recordStartTimeRef.current = Date.now();
 
       const isAllUsers = selectedUserIds.length === usersList.length;
       const targetUsers = usersList.filter(u => selectedUserIds.includes(u.id));
@@ -283,7 +287,13 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
         const blobType = recorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
         
-        if (audioBlob.size === 0) return;
+        if (audioBlob.size < 200) {
+          socket.emit('voice_stream_end', { streamId: currentStreamIdRef.current, targetUserIds: targetIds });
+          return;
+        }
+
+        const elapsedMs = Date.now() - recordStartTimeRef.current;
+        const actualDurationSeconds = Math.max(1, Math.round(elapsedMs / 1000));
 
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
@@ -299,7 +309,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
             targetUserIds: targetIds,
             targetUserNames: targetNames,
             audioData: base64Audio,
-            durationSeconds: recordSeconds || 1,
+            durationSeconds: actualDurationSeconds,
             timestamp: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
           };
 
@@ -309,7 +319,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
           playRadioBeep(620, 0.09);
 
           const destText = isAllUsers ? 'Canal General (Todos)' : (targetNames.length === 1 ? targetNames[0] : `${targetNames.length} colaboradores`);
-          setStatusMsg(`✅ Audio enviado a ${destText}`);
+          setStatusMsg(`✅ Audio (${actualDurationSeconds}s) enviado a ${destText}`);
           setTimeout(() => setStatusMsg(''), 4000);
         };
       };
@@ -343,8 +353,14 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     }
   };
 
-  // Alternar hablar/enviar con 1 clic directo
+  // Alternar hablar/enviar con 1 clic directo protegido con debounce anti-rebote
   const toggleTalking = () => {
+    const now = Date.now();
+    if (now - lastToggleTimeRef.current < 600) {
+      return; // Evitar disparos múltiples seguidos por audífonos Bluetooth
+    }
+    lastToggleTimeRef.current = now;
+
     if (isRecordingRef.current) {
       stopTalking();
     } else {

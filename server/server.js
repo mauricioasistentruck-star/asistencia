@@ -1015,9 +1015,10 @@ io.on('connection', (socket) => {
         timestamp: timeStr
       };
 
-      // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL
-      socket.broadcast.emit('receive_voice_audio', instantPayload);
-      if (!isGeneralChannel && targetUserIds.length > 0) {
+      // 1. TRANSMISIÓN INSTANTÁNEA EN TIEMPO REAL (Sin duplicación)
+      if (isGeneralChannel) {
+        socket.broadcast.emit('receive_voice_audio', instantPayload);
+      } else if (targetUserIds.length > 0) {
         targetUserIds.forEach((tId) => {
           io.to('user_' + String(tId)).emit('receive_voice_audio', instantPayload);
         });
