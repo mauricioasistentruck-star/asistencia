@@ -478,39 +478,17 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
     }
   };
 
-  // Escucha de hardware y eventos de audífonos
+  // Escucha de eventos de audífonos (Sin interceptar teclado del sistema)
   useEffect(() => {
-    const handleHardwareHeadsetKeys = (e) => {
-      const isHeadsetBtn = 
-        e.keyCode === 179 || 
-        e.keyCode === 79 || 
-        e.keyCode === 85 || 
-        e.keyCode === 176 || 
-        e.keyCode === 177 ||
-        e.keyCode === 226 ||
-        e.key === 'MediaPlayPause' || 
-        e.key === 'HeadsetHook';
-
-      if (isHeadsetBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (toggleTalkingRef.current) {
-          toggleTalkingRef.current();
-        }
-      }
-    };
-
     const handleCustomHeadsetEvent = () => {
       if (toggleTalkingRef.current) {
         toggleTalkingRef.current();
       }
     };
 
-    window.addEventListener('keydown', handleHardwareHeadsetKeys, { capture: true });
     window.addEventListener('headset_button_event', handleCustomHeadsetEvent);
 
     return () => {
-      window.removeEventListener('keydown', handleHardwareHeadsetKeys, { capture: true });
       window.removeEventListener('headset_button_event', handleCustomHeadsetEvent);
     };
   }, []);
