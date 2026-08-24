@@ -168,6 +168,12 @@ export default function App() {
     const joinRooms = () => {
       if (user && user.id) {
         socket.emit('join_user_room', user.id);
+        if (window.AndroidKiosk && window.AndroidKiosk.startBackgroundService) {
+          try { window.AndroidKiosk.startBackgroundService(); } catch (e) {}
+        }
+        if ('Notification' in window && Notification.permission === 'default') {
+          try { Notification.requestPermission(); } catch (e) {}
+        }
       }
     };
 
@@ -198,43 +204,47 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
     let fetchUrl = audioUrlOrBase64;
     if (audioUrlOrBase64.startsWith('data:audio')) {
-      const parts = audioUrlOrBase64.split(',');
-      const mimeMatch = parts[0].match(/:(.*?);/);
-      const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
-      const byteCharacters = atob(parts[1]);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      try {
+        const parts = audioUrlOrBase64.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
+        const byteCharacters = atob(parts[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mime });
+        fetchUrl = URL.createObjectURL(blob);
+      } catch (blobErr) {
+        fetchUrl = audioUrlOrBase64;
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mime });
-      fetchUrl = URL.createObjectURL(blob);
     }
 
     fetch(fetchUrl)
-      .then(res => res.arrayBuffer())
-      .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
-      .then(audioBuffer => {
+      .then((res) => res.arrayBuffer())
+      .then((buf) => audioCtx.decodeAudioData(buf))
+      .then((audioBuf) => {
         const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
+        source.buffer = audioBuf;
 
-        // Amplificador de volumen (300% de ganancia para sonido potente en altavoces de celular)
+        // Amplificador y limitador de audio
         const gainNode = audioCtx.createGain();
-        gainNode.gain.setValueAtTime(3.0, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(3.5, audioCtx.currentTime);
 
-        // Compresor dinámico para evitar saturación y mantener voz clara
         const compressor = audioCtx.createDynamicsCompressor();
-        compressor.threshold.setValueAtTime(-20, audioCtx.currentTime);
-        compressor.knee.setValueAtTime(25, audioCtx.currentTime);
-        compressor.ratio.setValueAtTime(10, audioCtx.currentTime);
+        compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+        compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+        compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
         compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
-        compressor.release.setValueAtTime(0.2, audioCtx.currentTime);
+        compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
 
-        source.connect(compressor);
-        compressor.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        source.connect(gainNode);
+        gainNode.connect(compressor);
+        compressor.connect(audioCtx.destination);
 
         source.onended = () => {
+          try { audioCtx.close(); } catch(e) {}
           if (onEndedCallback) onEndedCallback();
         };
 
@@ -284,7 +294,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       }, 500);
     };
 
-    // 3. Recepción y Reproducción de Audio Completo a Volumen Alto (Sin Duplicación)
+    // 3. Recepción y Reproducción de Audio de Emergencia (En vivo y en segundo plano)
     const handleReceiveAudio = (data) => {
       if (!data) return;
       const senderId = data.sender_id || data.fromUserId;
@@ -317,6 +327,17 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       } catch (e) {}
 
       const audioSrc = data.audio_url ? getFullPhotoUrl(data.audio_url) : data.audioData;
+
+      // Reproducir mediante servicio nativo de Android en segundo plano / pantalla apagada
+      if (window.AndroidKiosk && window.AndroidKiosk.playEmergencyAudioNative && audioSrc) {
+        try {
+          window.AndroidKiosk.playEmergencyAudioNative(audioSrc, data.sender_name);
+        } catch (e) {
+          console.warn('Fallo playEmergencyAudioNative:', e);
+        }
+      }
+
+      // Reproducción Web / WebView
       if (audioSrc) {
         playLoudAudio(audioSrc, () => {
           setTimeout(() => setIncomingAudio(null), 1000);
