@@ -31,6 +31,7 @@ if (!fs.existsSync(uploadsDir)) {
 if (!fs.existsSync(audioUploadsDir)) {
   fs.mkdirSync(audioUploadsDir, { recursive: true });
 }
+app.use('/uploads/audio', express.static(audioUploadsDir));
 app.use('/uploads', express.static(uploadsDir));
 
 const storage = multer.diskStorage({

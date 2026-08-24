@@ -486,85 +486,97 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
     stopAudioPlayback();
 
-    const audioSource = msg.audio_url ? getFullPhotoUrl(msg.audio_url) : (msg.audioData || msg.audio_data);
-    if (!audioSource) return;
+    // Priorizar datos Base64 permanentes de la BD sobre URLs de archivo
+    let audioSource = msg.audio_data || msg.audioData;
+    if (!audioSource && msg.audio_url) {
+      audioSource = getFullPhotoUrl(msg.audio_url);
+    }
+    if (!audioSource) {
+      console.warn('Audio no disponible en mensaje:', msg);
+      return;
+    }
 
     try {
       let playUrl = audioSource;
       if (audioSource.startsWith('data:audio')) {
-        const parts = audioSource.split(',');
-        const mimeMatch = parts[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
-        const byteCharacters = atob(parts[1]);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        try {
+          const parts = audioSource.split(',');
+          const mimeMatch = parts[0].match(/:(.*?);/);
+          const mime = mimeMatch ? mimeMatch[1] : 'audio/webm';
+          const byteCharacters = atob(parts[1]);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: mime });
+          playUrl = URL.createObjectURL(blob);
+        } catch (blobErr) {
+          playUrl = audioSource;
         }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: mime });
-        playUrl = URL.createObjectURL(blob);
       }
 
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const audio = new Audio(playUrl);
+      audio.volume = 1.0;
+      activeAudioPlayerRef.current = audio;
+      setCurrentPlayingId(msg.id);
 
-      fetch(playUrl)
-        .then(res => res.arrayBuffer())
-        .then(buf => audioCtx.decodeAudioData(buf))
-        .then(audioBuf => {
-          const source = audioCtx.createBufferSource();
-          source.buffer = audioBuf;
+      audio.play().then(() => {
+        progressIntervalRef.current = setInterval(() => {
+          if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
+            setAudioProgress((audio.currentTime / audio.duration) * 100);
+          }
+        }, 100);
+      }).catch((err) => {
+        console.warn('Fallo HTML5 Audio, intentando Web Audio API:', err);
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+          fetch(playUrl)
+            .then(res => res.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf))
+            .then(audioBuf => {
+              const source = audioCtx.createBufferSource();
+              source.buffer = audioBuf;
 
-          const gainNode = audioCtx.createGain();
-          gainNode.gain.setValueAtTime(3.0, audioCtx.currentTime); // 300% de volumen
+              const gainNode = audioCtx.createGain();
+              gainNode.gain.setValueAtTime(3.0, audioCtx.currentTime);
 
-          const compressor = audioCtx.createDynamicsCompressor();
-          compressor.threshold.setValueAtTime(-20, audioCtx.currentTime);
-          compressor.knee.setValueAtTime(25, audioCtx.currentTime);
-          compressor.ratio.setValueAtTime(10, audioCtx.currentTime);
+              source.connect(gainNode);
+              gainNode.connect(audioCtx.destination);
 
-          source.connect(compressor);
-          compressor.connect(gainNode);
-          gainNode.connect(audioCtx.destination);
+              activeAudioPlayerRef.current = {
+                pause: () => {
+                  try { source.stop(); } catch(e) {}
+                  try { audioCtx.close(); } catch(e) {}
+                },
+                currentTime: 0
+              };
 
-          activeAudioPlayerRef.current = {
-            pause: () => {
-              try { source.stop(); } catch(e) {}
-              try { audioCtx.close(); } catch(e) {}
-            },
-            currentTime: 0
-          };
+              const startTime = audioCtx.currentTime;
+              const duration = audioBuf.duration;
 
-          setCurrentPlayingId(msg.id);
-          const startTime = audioCtx.currentTime;
-          const duration = audioBuf.duration;
+              progressIntervalRef.current = setInterval(() => {
+                const elapsed = audioCtx.currentTime - startTime;
+                if (duration > 0) {
+                  setAudioProgress(Math.min((elapsed / duration) * 100, 100));
+                }
+              }, 100);
 
-          progressIntervalRef.current = setInterval(() => {
-            const elapsed = audioCtx.currentTime - startTime;
-            if (duration > 0) {
-              setAudioProgress(Math.min((elapsed / duration) * 100, 100));
-            }
-          }, 100);
+              source.onended = () => stopAudioPlayback();
+              source.start(0);
+            })
+            .catch(() => stopAudioPlayback());
+        } catch (e) {
+          stopAudioPlayback();
+        }
+      });
 
-          source.onended = () => {
-            stopAudioPlayback();
-          };
-
-          source.start(0);
-        })
-        .catch(() => {
-          const audio = new Audio(playUrl);
-          audio.volume = 1.0;
-          activeAudioPlayerRef.current = audio;
-          setCurrentPlayingId(msg.id);
-          audio.play().then(() => {
-            progressIntervalRef.current = setInterval(() => {
-              if (audio.duration) setAudioProgress((audio.currentTime / audio.duration) * 100);
-            }, 100);
-          }).catch(() => stopAudioPlayback());
-          audio.onended = () => stopAudioPlayback();
-          audio.onerror = () => stopAudioPlayback();
-        });
+      audio.onended = () => stopAudioPlayback();
+      audio.onerror = () => {
+        console.error('Error al reproducir audio');
+        stopAudioPlayback();
+      };
 
     } catch (e) {
       stopAudioPlayback();
