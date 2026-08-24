@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Lock, ShieldAlert, CheckCircle2, QrCode, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield } from 'lucide-react';
+import { Lock, ShieldAlert, CheckCircle2, QrCode, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield, Camera, FlipHorizontal, RefreshCw } from 'lucide-react';
 import { apiScanQr, apiVerifyAdminPassword, getFullPhotoUrl } from '../api';
 
 export default function KioskView({ onExitKiosk, theme }) {
@@ -11,6 +11,10 @@ export default function KioskView({ onExitKiosk, theme }) {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('es-CL'));
   const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Selector de Cámara Frontal / Trasera (Recordado en dispositivo)
+  const [cameraFacingMode, setCameraFacingMode] = useState(() => localStorage.getItem('kiosk_camera_facing') || 'environment');
+  const [switchingCamera, setSwitchingCamera] = useState(false);
   
   // Modal de desbloqueo admin
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -144,13 +148,22 @@ export default function KioskView({ onExitKiosk, theme }) {
     };
   }, []);
 
-  // Inicializar lector de cámara para Kiosco
+  // Inicializar lector de cámara para Kiosco (Frontal o Trasera)
   useEffect(() => {
     let html5QrCode = null;
     const scannerId = "kiosk-reader-element";
 
     const startCamera = async () => {
+      setSwitchingCamera(true);
       try {
+        if (scannerRef.current) {
+          try {
+            if (scannerRef.current.isScanning) {
+              await scannerRef.current.stop();
+            }
+          } catch(e) {}
+        }
+
         html5QrCode = new Html5Qrcode(scannerId);
         scannerRef.current = html5QrCode;
 
@@ -161,7 +174,7 @@ export default function KioskView({ onExitKiosk, theme }) {
         };
 
         await html5QrCode.start(
-          { facingMode: "environment" },
+          { facingMode: cameraFacingMode },
           config,
           (decodedText) => {
             if (!isProcessingRef.current) {
@@ -173,10 +186,13 @@ export default function KioskView({ onExitKiosk, theme }) {
           }
         );
         setIsScanning(true);
+        setCameraError('');
       } catch (err) {
         console.error("Error al iniciar cámara:", err);
-        setCameraError("No se pudo acceder a la cámara. Verifique permisos.");
+        setCameraError("No se pudo acceder a la cámara seleccionada. Verifique permisos.");
         setIsScanning(false);
+      } finally {
+        setSwitchingCamera(false);
       }
     };
 
@@ -187,7 +203,13 @@ export default function KioskView({ onExitKiosk, theme }) {
         scannerRef.current.stop().catch(console.error);
       }
     };
-  }, []);
+  }, [cameraFacingMode]);
+
+  const toggleCameraFacing = (mode) => {
+    if (cameraFacingMode === mode) return;
+    setCameraFacingMode(mode);
+    localStorage.setItem('kiosk_camera_facing', mode);
+  };
 
   const handleQrDetected = async (token) => {
     if (isProcessingRef.current) return;
@@ -377,6 +399,43 @@ export default function KioskView({ onExitKiosk, theme }) {
           <QrCode className="w-4 h-4 animate-pulse flex-shrink-0" />
           Acerque su Credencial Virtual al Lector
         </p>
+
+        {/* Selector de Cámara: Frontal vs Trasera */}
+        <div className="flex items-center gap-2 mt-2.5 z-20">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCameraFacing('environment');
+            }}
+            disabled={switchingCamera}
+            className={'px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ' + (
+              cameraFacingMode === 'environment'
+                ? 'bg-orange-500 text-black border border-orange-400 shadow-orange-500/30'
+                : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+            )}
+          >
+            <Camera className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Cámara Trasera</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCameraFacing('user');
+            }}
+            disabled={switchingCamera}
+            className={'px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ' + (
+              cameraFacingMode === 'user'
+                ? 'bg-orange-500 text-black border border-orange-400 shadow-orange-500/30'
+                : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+            )}
+          >
+            <FlipHorizontal className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Cámara Frontal</span>
+          </button>
+        </div>
       </div>
 
       {/* Pie de Página con Indicaciones de las 4 Marcaciones */}
