@@ -206,3 +206,150 @@ export const apiImportBackup = (backupJson) => apiRequest('/api/admin/backup/imp
   method: 'POST',
   body: JSON.stringify(backupJson)
 });
+
+export const apiSyncVault = (vaultData) => apiRequest('/api/sync/vault', {
+  method: 'POST',
+  body: JSON.stringify(vaultData)
+});
+
+// =========================================================================
+// SISTEMA DE BÓVEDA MAESTRA PERSISTENTE (MASTER VAULT)
+// Protege todos los trabajadores, fotos, contraseñas y marcaciones contra reinicios de Render
+// =========================================================================
+
+export const getMasterVault = () => {
+  try {
+    const raw = localStorage.getItem('asistencia_master_vault');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          users: Array.isArray(parsed.users) ? parsed.users : [],
+          attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
+          voice_messages: Array.isArray(parsed.voice_messages) ? parsed.voice_messages : []
+        };
+      }
+    }
+  } catch (e) {}
+
+  // Fallback migración desde cachés anteriores
+  let users = [];
+  try {
+    const uCache = localStorage.getItem('asistencia_users_cache');
+    if (uCache) users = JSON.parse(uCache) || [];
+  } catch (e) {}
+
+  let voice_messages = [];
+  try {
+    const vCache = localStorage.getItem('asistencia_voice_messages_cache');
+    if (vCache) voice_messages = JSON.parse(vCache) || [];
+  } catch (e) {}
+
+  return { users, attendance: [], voice_messages };
+};
+
+export const saveMasterVault = (vault) => {
+  try {
+    const safeVault = {
+      users: Array.isArray(vault?.users) ? vault.users : [],
+      attendance: Array.isArray(vault?.attendance) ? vault.attendance.slice(0, 500) : [],
+      voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : []
+    };
+    localStorage.setItem('asistencia_master_vault', JSON.stringify(safeVault));
+    if (safeVault.users.length > 0) {
+      localStorage.setItem('asistencia_users_cache', JSON.stringify(safeVault.users));
+    }
+  } catch (e) {
+    console.warn('Error guardando master vault:', e);
+  }
+};
+
+export const mergeUsersToVault = (incomingUsers) => {
+  if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) return getMasterVault().users;
+  const vault = getMasterVault();
+  const currentMap = new Map();
+  vault.users.forEach(u => currentMap.set(String(u.id || u.rut || u.username), u));
+
+  incomingUsers.forEach(u => {
+    const key = String(u.id || u.rut || u.username);
+    if (currentMap.has(key)) {
+      currentMap.set(key, { ...currentMap.get(key), ...u });
+    } else {
+      currentMap.set(key, u);
+    }
+  });
+
+  vault.users = Array.from(currentMap.values());
+  saveMasterVault(vault);
+  return vault.users;
+};
+
+export const removeUserFromVault = (userId) => {
+  const vault = getMasterVault();
+  vault.users = vault.users.filter(u => String(u.id) !== String(userId));
+  saveMasterVault(vault);
+  return vault.users;
+};
+
+export const mergeAttendanceToVault = (incomingRecords) => {
+  if (!Array.isArray(incomingRecords) || incomingRecords.length === 0) return getMasterVault().attendance;
+  const vault = getMasterVault();
+  const map = new Map();
+  vault.attendance.forEach(a => map.set(`${a.user_id}_${a.date}`, a));
+
+  incomingRecords.forEach(a => {
+    const key = `${a.user_id}_${a.date}`;
+    if (map.has(key)) {
+      map.set(key, { ...map.get(key), ...a });
+    } else {
+      map.set(key, a);
+    }
+  });
+
+  vault.attendance = Array.from(map.values()).slice(0, 500);
+  saveMasterVault(vault);
+  return vault.attendance;
+};
+
+// Sincronización Automática con el Servidor (Auto-Restauración de Render)
+let isSyncingVault = false;
+export const autoRestoreAndSyncWithServer = async () => {
+  if (isSyncingVault) return getMasterVault().users;
+  isSyncingVault = true;
+
+  try {
+    const vault = getMasterVault();
+    const serverUsers = await apiGetUsers().catch(() => null);
+
+    // Caso 1: El servidor en Render reinició de cero y solo tiene a Mauricio (o 0 usuarios),
+    // pero la Bóveda Maestra local tiene a los trabajadores registrados.
+    if (Array.isArray(serverUsers) && serverUsers.length <= 1 && vault.users.length > 1) {
+      console.log('Detectado reinicio en Render. Auto-restaurando Bóveda Maestra al servidor...');
+      try {
+        await apiSyncVault(vault);
+        const refreshedUsers = await apiGetUsers().catch(() => null);
+        if (Array.isArray(refreshedUsers) && refreshedUsers.length > 0) {
+          isSyncingVault = false;
+          return mergeUsersToVault(refreshedUsers);
+        }
+      } catch (syncErr) {
+        console.warn('Fallo auto-sync vault:', syncErr);
+      }
+    }
+
+    // Caso 2: El servidor respondió normalmente con la lista de usuarios
+    if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+      const merged = mergeUsersToVault(serverUsers);
+      isSyncingVault = false;
+      return merged;
+    }
+
+    // Caso 3: Sin conexión o error, retornar bóveda local
+    isSyncingVault = false;
+    return vault.users;
+  } catch (err) {
+    console.warn('Error en autoRestoreAndSyncWithServer:', err);
+    isSyncingVault = false;
+    return getMasterVault().users;
+  }
+};

@@ -1,10 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, Download, UploadCloud, Database, ShieldCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiGetUsers, apiCreateUser, apiUpdateUser, apiDeleteUser, apiUploadPhoto, apiToggleGps, getFullPhotoUrl, getSocket, apiExportBackup, apiImportBackup } from '../api';
+import { 
+  apiGetUsers, 
+  apiCreateUser, 
+  apiUpdateUser, 
+  apiDeleteUser, 
+  apiUploadPhoto, 
+  apiToggleGps, 
+  getFullPhotoUrl, 
+  getSocket, 
+  apiExportBackup, 
+  apiImportBackup,
+  autoRestoreAndSyncWithServer,
+  removeUserFromVault,
+  mergeUsersToVault,
+  getMasterVault
+} from '../api';
 
 export default function AdminUsersView({ currentUser, theme }) {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState(() => getMasterVault().users);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(null);
@@ -88,21 +103,15 @@ export default function AdminUsersView({ currentUser, theme }) {
 
   const fetchUsers = async () => {
     try {
-      const data = await apiGetUsers();
-      if (Array.isArray(data)) {
+      const data = await autoRestoreAndSyncWithServer();
+      if (Array.isArray(data) && data.length > 0) {
         setUsers(data);
-        if (data.length > 0) {
-          localStorage.setItem('asistencia_users_cache', JSON.stringify(data));
-        }
       }
     } catch (err) {
-      setActionError('Error al cargar lista de usuarios');
-      try {
-        const cached = localStorage.getItem('asistencia_users_cache');
-        if (cached) {
-          setUsers(JSON.parse(cached));
-        }
-      } catch (e) {}
+      const vault = getMasterVault();
+      if (vault.users.length > 0) {
+        setUsers(vault.users);
+      }
     }
   };
 
@@ -115,16 +124,20 @@ export default function AdminUsersView({ currentUser, theme }) {
       fetchUsers();
     };
 
+    socket.on('connect', fetchUsers);
     socket.on('user_created', handleUserUpdate);
     socket.on('user_updated', handleUserUpdate);
     socket.on('user_deleted', handleUserUpdate);
     socket.on('user_gps_toggled', handleUserUpdate);
+    socket.on('attendance_updated', handleUserUpdate);
 
     return () => {
+      socket.off('connect', fetchUsers);
       socket.off('user_created', handleUserUpdate);
       socket.off('user_updated', handleUserUpdate);
       socket.off('user_deleted', handleUserUpdate);
       socket.off('user_gps_toggled', handleUserUpdate);
+      socket.off('attendance_updated', handleUserUpdate);
     };
   }, []);
 
@@ -133,7 +146,10 @@ export default function AdminUsersView({ currentUser, theme }) {
     setActionError('');
     setActionSuccess('');
     try {
-      await apiCreateUser(newUser);
+      const created = await apiCreateUser(newUser);
+      if (created) {
+        mergeUsersToVault([created]);
+      }
       setActionSuccess('Usuario ' + newUser.name + ' creado exitosamente.');
       setShowCreateModal(false);
       setNewUser({ username: '', name: '', rut: '', email: '', password: '123', role: 'worker', gps_tracking_enabled: false });
@@ -227,6 +243,7 @@ export default function AdminUsersView({ currentUser, theme }) {
     if (!window.confirm('¿Está seguro de eliminar al usuario ' + userToDelete.name + '?')) return;
 
     try {
+      removeUserFromVault(userToDelete.id);
       await apiDeleteUser(userToDelete.id);
       setActionSuccess('Usuario ' + userToDelete.name + ' eliminado.');
       fetchUsers();

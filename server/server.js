@@ -716,6 +716,143 @@ app.post('/api/admin/backup/import', authenticateToken, requireAdmin, (req, res)
   }
 });
 
+// Sincronización Automática Bidireccional de Bóveda Maestra (Cliente <-> Servidor)
+app.post('/api/sync/vault', (req, res) => {
+  try {
+    const backup = req.body;
+    if (!backup || (!backup.users && !backup.attendance && !backup.voice_messages && !backup.gps_routes)) {
+      return res.status(400).json({ error: 'Datos de bóveda vacíos' });
+    }
+
+    let usersCount = 0;
+    let attendanceCount = 0;
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      if (Array.isArray(backup.users) && backup.users.length > 0) {
+        const stmtUser = db.prepare(`
+          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            username = COALESCE(excluded.username, users.username),
+            rut = COALESCE(excluded.rut, users.rut),
+            name = COALESCE(excluded.name, users.name),
+            email = COALESCE(excluded.email, users.email),
+            password_hash = COALESCE(excluded.password_hash, users.password_hash),
+            plain_password = COALESCE(excluded.plain_password, users.plain_password),
+            role = COALESCE(excluded.role, users.role),
+            is_superadmin = COALESCE(excluded.is_superadmin, users.is_superadmin),
+            photo_url = COALESCE(excluded.photo_url, users.photo_url),
+            qr_token = COALESCE(excluded.qr_token, users.qr_token),
+            gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled)
+        `);
+
+        for (let u of backup.users) {
+          let photoUrl = u.photo_url;
+          if (u.photo_base64) {
+            try {
+              const fname = u.photo_filename || `user_${u.id}_${Date.now()}.jpg`;
+              const filePath = path.join(uploadsDir, fname);
+              fs.writeFileSync(filePath, Buffer.from(u.photo_base64, 'base64'));
+              photoUrl = '/uploads/' + fname;
+            } catch (err) {}
+          }
+
+          stmtUser.run(
+            u.id || null,
+            u.username || (u.name ? u.name.toLowerCase().replace(/\s+/g, '') : 'user' + u.id),
+            u.rut || null,
+            u.name || 'Sin nombre',
+            u.email || ('user' + (u.id || Date.now()) + '@asistentruck.cl'),
+            u.password_hash || (u.plain_password ? bcrypt.hashSync(u.plain_password, 10) : bcrypt.hashSync('123', 10)),
+            u.plain_password || '123',
+            u.role || 'worker',
+            u.is_superadmin ? 1 : 0,
+            photoUrl || null,
+            u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase()),
+            u.gps_tracking_enabled ? 1 : 0,
+            u.created_at || new Date().toISOString()
+          );
+          usersCount++;
+        }
+        stmtUser.finalize();
+      }
+
+      if (Array.isArray(backup.attendance) && backup.attendance.length > 0) {
+        const stmtAtt = db.prepare(`
+          INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, date) DO UPDATE SET
+            entry_time = COALESCE(excluded.entry_time, attendance.entry_time),
+            lunch_out_time = COALESCE(excluded.lunch_out_time, attendance.lunch_out_time),
+            lunch_in_time = COALESCE(excluded.lunch_in_time, attendance.lunch_in_time),
+            exit_time = COALESCE(excluded.exit_time, attendance.exit_time),
+            total_hours = COALESCE(excluded.total_hours, attendance.total_hours),
+            modified_by_admin = COALESCE(excluded.modified_by_admin, attendance.modified_by_admin),
+            admin_note = COALESCE(excluded.admin_note, attendance.admin_note),
+            updated_at = COALESCE(excluded.updated_at, attendance.updated_at)
+        `);
+
+        for (let a of backup.attendance) {
+          stmtAtt.run(
+            a.id || null,
+            a.user_id,
+            a.date,
+            a.entry_time || null,
+            a.lunch_out_time || null,
+            a.lunch_in_time || null,
+            a.exit_time || null,
+            a.total_hours || 0,
+            a.modified_by_admin ? 1 : 0,
+            a.admin_note || null,
+            a.created_at || new Date().toISOString(),
+            a.updated_at || new Date().toISOString()
+          );
+          attendanceCount++;
+        }
+        stmtAtt.finalize();
+      }
+
+      if (Array.isArray(backup.voice_messages) && backup.voice_messages.length > 0) {
+        const stmtVoice = db.prepare(`
+          INSERT OR IGNORE INTO voice_messages (id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (let v of backup.voice_messages) {
+          stmtVoice.run(
+            v.id || null,
+            v.sender_id,
+            v.sender_name || 'Personal',
+            v.sender_photo || null,
+            v.receiver_ids || 'all',
+            v.receiver_names || 'Todos',
+            v.audio_url || null,
+            v.audio_data || null,
+            v.duration_seconds || 0,
+            v.created_at || new Date().toISOString()
+          );
+        }
+        stmtVoice.finalize();
+      }
+
+      db.run('COMMIT', (commitErr) => {
+        if (commitErr) {
+          console.error('Error confirmando sync vault:', commitErr);
+          return res.status(500).json({ error: 'Error al sincronizar datos' });
+        }
+        savePersistentBackup();
+        io.emit('user_created');
+        io.emit('attendance_updated');
+        return res.json({ success: true, stats: { users: usersCount, attendance: attendanceCount } });
+      });
+    });
+  } catch (err) {
+    console.error('Error en /api/sync/vault:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Scanner 4 Marcaciones
 app.post('/api/attendance/scan', (req, res) => {
   const { qr_token } = req.body;

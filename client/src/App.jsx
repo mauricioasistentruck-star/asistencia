@@ -6,7 +6,7 @@ import AdminAttendanceView from './components/AdminAttendanceView.jsx';
 import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
-import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl } from './api';
+import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer } from './api';
 import { Volume2, Radio, LogOut } from 'lucide-react';
 
 function playIncomingBeep() {
@@ -64,6 +64,9 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    // Sincronización inmediata con Render para auto-restaurar trabajadores si el servidor reinició
+    autoRestoreAndSyncWithServer().catch(() => {});
+
     const token = localStorage.getItem('asistencia_token');
     if (token) {
       apiGetMe()
