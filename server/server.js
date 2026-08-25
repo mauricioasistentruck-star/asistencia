@@ -1245,6 +1245,11 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
     if (!user.gps_tracking_enabled) return res.status(403).json({ message: 'Rastreo GPS desactivado para este usuario' });
 
+    // Filtrar puntos con imprecisión muy alta (ej. triangulación celular o reflejos)
+    if (accuracy && accuracy > 45) {
+      return res.json({ success: true, message: 'Punto descartado por baja precisión GPS' });
+    }
+
     const today = getLocalDateString();
     const currentTime = getLocalTimeString();
     const query = 'INSERT INTO gps_logs (user_id, latitude, longitude, accuracy, speed, date) VALUES (?, ?, ?, ?, ?, ?)';
@@ -1256,7 +1261,7 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, timestamp: new Date().toISOString(), date: today };
       io.emit('gps_position_updated', gpsData);
 
-      // Guardar o actualizar la ruta activa del día en segundo plano sin molestar al trabajador
+      // Guardar o actualizar la ruta activa del día con filtrado anti-saltos
       db.get('SELECT * FROM gps_routes WHERE user_id = ? AND date = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId, today], (routeErr, activeRoute) => {
         if (!activeRoute) {
           const routeName = 'Ruta ' + user.name + ' - ' + today;
@@ -1274,10 +1279,32 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
           }
           const lastPoint = points[points.length - 1];
           let addedDist = 0;
+          let shouldAddPoint = true;
+
           if (lastPoint) {
             addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
+            
+            // 1. Si se movió menos de 5 metros estando quieto, no añadir punto para evitar temblor
+            if (addedDist < 0.005 && (!speed || speed < 0.5)) {
+              shouldAddPoint = false;
+            }
+
+            // 2. Si el salto representa una velocidad imposible (> 140 km/h), descartar salto sobre casas/cerros
+            const t1 = new Date(lastPoint.timestamp || 0).getTime();
+            const t2 = new Date().getTime();
+            if (t1 > 0 && t2 > t1) {
+              const hours = (t2 - t1) / (1000 * 3600);
+              const speedKmH = addedDist / hours;
+              if (speedKmH > 140) {
+                shouldAddPoint = false; // Salto irreal descartado
+              }
+            }
           }
-          points.push(newPoint);
+
+          if (shouldAddPoint) {
+            points.push(newPoint);
+          }
+
           const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.005 ? addedDist : 0)).toFixed(2));
           db.run(
             'UPDATE gps_routes SET end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',

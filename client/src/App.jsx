@@ -378,12 +378,31 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       return;
     }
 
+    let lastSentCoords = null;
     const sendCoordsSilently = (pos) => {
       if (pos && pos.coords) {
+        const accuracy = pos.coords.accuracy || 10;
+        // Ignorar lecturas con baja precisión para evitar saltos erráticos
+        if (accuracy > 40) return;
+
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        if (lastSentCoords) {
+          const latDiff = Math.abs(lat - lastSentCoords.lat);
+          const lngDiff = Math.abs(lng - lastSentCoords.lng);
+          // Si no ha cambiado casi nada y la velocidad es 0, no reenviar
+          if (latDiff < 0.00004 && lngDiff < 0.00004 && (!pos.coords.speed || pos.coords.speed < 0.5)) {
+            return;
+          }
+        }
+
+        lastSentCoords = { lat, lng };
+
         apiSendGpsPoint({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || 10,
+          latitude: lat,
+          longitude: lng,
+          accuracy: accuracy,
           speed: pos.coords.speed || 0,
           heading: pos.coords.heading || null
         }).catch(() => {});

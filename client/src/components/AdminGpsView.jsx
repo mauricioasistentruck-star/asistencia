@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
+import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
 const WORKER_COLORS = [
   '#f97316', // Naranja
@@ -85,6 +86,8 @@ export default function AdminGpsView({ theme }) {
   const [selectedUser, setSelectedUser] = useState(null); // null = Todos los trabajadores
   const [selectedDate, setSelectedDate] = useState(getChileTodayString());
   const [routePoints, setRoutePoints] = useState([]);
+  const [snappedCoordinates, setSnappedCoordinates] = useState([]);
+  const [isSnappingRoads, setIsSnappingRoads] = useState(false);
   const [mapCenter, setMapCenter] = useState([-33.4489, -70.6693]);
   const [mapZoom, setMapZoom] = useState(13);
   const [liveGpsList, setLiveGpsList] = useState([]);
@@ -100,6 +103,33 @@ export default function AdminGpsView({ theme }) {
   const dateInputRef = useRef(null);
 
   const isDark = theme === 'dark';
+
+  // Efecto para ajustar la ruta automáticamente a las calles y carreteras reales (OSRM Map Matching)
+  useEffect(() => {
+    if (routePoints.length > 1) {
+      setIsSnappingRoads(true);
+      matchPointsToRealRoads(routePoints)
+        .then((snapped) => {
+          if (Array.isArray(snapped) && snapped.length > 0) {
+            setSnappedCoordinates(snapped);
+          } else {
+            setSnappedCoordinates(cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]));
+          }
+        })
+        .catch(() => {
+          setSnappedCoordinates(cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]));
+        })
+        .finally(() => {
+          setIsSnappingRoads(false);
+        });
+    } else if (routePoints.length === 1) {
+      setSnappedCoordinates([[routePoints[0].latitude, routePoints[0].longitude]]);
+      setIsSnappingRoads(false);
+    } else {
+      setSnappedCoordinates([]);
+      setIsSnappingRoads(false);
+    }
+  }, [routePoints]);
 
   const locateMe = () => {
     if ('geolocation' in navigator) {
@@ -442,7 +472,7 @@ export default function AdminGpsView({ theme }) {
       {/* VISTA 2: MAPA EN VIVO / TRAZADO DE RUTA */}
       {/* ========================================================================= */}
       {viewMode === 'live' && (
-        <>
+        <div className="space-y-4">
           {/* Banner de Ruta Guardada Visualizada */}
           {selectedSavedRoute && (
             <div className="bg-orange-500 text-black p-3.5 rounded-2xl shadow-xl flex items-center justify-between font-bold text-xs">
@@ -460,143 +490,146 @@ export default function AdminGpsView({ theme }) {
               </button>
             </div>
           )}
-
-          {/* Panel Superior: Tarjetas de Trabajadores y Selector de Fecha */}
-          {!selectedSavedRoute && (
-            <div className={'border rounded-3xl p-4 shadow-xl ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                <div className="md:col-span-8 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                  
-                  {/* Botón Principal: Ver Todos Simultáneamente */}
-                  <button
-                    onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); setRoutePoints([]); }}
-                    className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ' + (!selectedUser && !selectedSavedRoute ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
-                  >
-                    <Users className="w-4 h-4" />
-                    <div className="text-left">
-                      <div className="text-xs font-black">🌐 Todos en Terreno</div>
-                      <div className="text-[9px] font-mono">
-                        {liveGpsList.filter(g => g.latitude && g.longitude).length} activos
-                      </div>
+        <div className={'rounded-3xl border p-4 space-y-4 shadow-xl ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+          
+          {/* Barra de Filtro de Personal y Fecha */}
+          <div className="flex flex-col gap-3 pb-2 border-b border-zinc-800">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+              
+              {/* Carrusel Horizontal de Trabajadores */}
+              <div className="md:col-span-8 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                <button
+                  onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); }}
+                  className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ' + (!selectedUser && !selectedSavedRoute ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
+                >
+                  <Users className="w-4 h-4" />
+                  <div className="text-left">
+                    <div className="text-xs font-bold">Todos en Vivo</div>
+                    <div className={'text-[9px] ' + (!selectedUser ? 'text-black/80' : 'text-zinc-400')}>
+                      {liveGpsList.filter(g => g.latitude).length} Conectados
                     </div>
-                  </button>
+                  </div>
+                </button>
 
-                  <div className="h-7 w-[1px] bg-zinc-700/50 flex-shrink-0 mx-1"></div>
+                <div className="h-7 w-[1px] bg-zinc-700/50 flex-shrink-0 mx-1"></div>
 
-                  {trackedUsers.length === 0 ? (
-                    <span className="text-xs text-zinc-500">No hay trabajadores con GPS activo configurado.</span>
-                  ) : (
-                    trackedUsers.map((u, idx) => {
-                      const isSelected = selectedUser?.id === u.id;
-                      const livePos = liveGpsList.find(g => g.user_id === u.id);
-                      const uColor = getWorkerColor(u.id, idx);
-                      return (
-                        <button
-                          key={u.id}
-                          onClick={() => { setSelectedUser(u); setSelectedSavedRoute(null); }}
-                          className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2.5 cursor-pointer ' + (isSelected ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
-                        >
-                          <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: uColor }}>
-                            {u.photo_url ? (
-                              <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                {trackedUsers.length === 0 ? (
+                  <span className="text-xs text-zinc-500">No hay trabajadores con GPS activo configurado.</span>
+                ) : (
+                  trackedUsers.map((u, idx) => {
+                    const isSelected = selectedUser?.id === u.id;
+                    const livePos = liveGpsList.find(g => g.user_id === u.id);
+                    const uColor = getWorkerColor(u.id, idx);
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => { setSelectedUser(u); setSelectedSavedRoute(null); }}
+                        className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2.5 cursor-pointer ' + (isSelected ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
+                      >
+                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: uColor }}>
+                          {u.photo_url ? (
+                            <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xs font-bold" style={{ color: uColor }}>{u.name.charAt(0)}</span>
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <div className="text-xs font-bold truncate max-w-[120px]">{u.name}</div>
+                          <div className={'text-[9px] flex items-center gap-1 ' + (isSelected ? 'text-black/80' : 'text-zinc-400')}>
+                            {livePos?.latitude ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: uColor }}></span>
+                                <span className="text-emerald-400 font-bold">En Vivo</span>
+                              </>
                             ) : (
-                              <span className="text-xs font-bold" style={{ color: uColor }}>{u.name.charAt(0)}</span>
+                              <span>En Terreno</span>
                             )}
                           </div>
-                          <div className="text-left">
-                            <div className="text-xs font-bold truncate max-w-[120px]">{u.name}</div>
-                            <div className={'text-[9px] flex items-center gap-1 ' + (isSelected ? 'text-black/80' : 'text-zinc-400')}>
-                              {livePos?.latitude ? (
-                                <>
-                                  <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: uColor }}></span>
-                                  <span className="text-emerald-400 font-bold">En Vivo</span>
-                                </>
-                              ) : (
-                                <span>En Terreno</span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-
-                <div className="md:col-span-4 flex flex-wrap items-center gap-2 justify-end">
-                  {(() => {
-                    const todayDateStr = new Date().toISOString().split('T')[0];
-                    const yesterdayObj = new Date();
-                    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-                    const yesterdayDateStr = yesterdayObj.toISOString().split('T')[0];
-
-                    return (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDate(todayDateStr)}
-                          className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === todayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
-                        >
-                          Hoy
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDate(yesterdayDateStr)}
-                          className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === yesterdayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
-                        >
-                          Ayer
-                        </button>
-                      </div>
+                        </div>
+                      </button>
                     );
-                  })()}
+                  })
+                )}
+              </div>
 
-                  <div 
-                    onClick={() => {
-                      try {
-                        dateInputRef.current?.showPicker?.();
-                      } catch (e) {
-                        dateInputRef.current?.focus?.();
-                      }
+              <div className="md:col-span-4 flex flex-wrap items-center gap-2 justify-end">
+                {(() => {
+                  const todayDateStr = new Date().toISOString().split('T')[0];
+                  const yesterdayObj = new Date();
+                  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+                  const yesterdayDateStr = yesterdayObj.toISOString().split('T')[0];
+
+                  return (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(todayDateStr)}
+                        className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === todayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
+                      >
+                        Hoy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(yesterdayDateStr)}
+                        className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === yesterdayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
+                      >
+                        Ayer
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                <div 
+                  onClick={() => {
+                    try {
+                      dateInputRef.current?.showPicker?.();
+                    } catch (e) {
+                      dateInputRef.current?.focus?.();
+                    }
+                  }}
+                  className={'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border cursor-pointer transition-all active:scale-98 ' + (isDark ? 'bg-black border-orange-500/50 hover:border-orange-500 text-white' : 'bg-white border-orange-300 hover:border-orange-500 text-zinc-900 shadow-sm')}
+                  title="Haga clic para abrir el calendario"
+                >
+                  <Calendar className="w-4 h-4 text-orange-500 flex-shrink-0 animate-pulse" />
+                  <span className="text-[10px] font-black text-orange-500 uppercase flex-shrink-0">
+                    Día de Ruta:
+                  </span>
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      try { e.currentTarget.showPicker?.(); } catch (err) {}
                     }}
-                    className={'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border cursor-pointer transition-all active:scale-98 ' + (isDark ? 'bg-black border-orange-500/50 hover:border-orange-500 text-white' : 'bg-white border-orange-300 hover:border-orange-500 text-zinc-900 shadow-sm')}
-                    title="Haga clic para abrir el calendario"
-                  >
-                    <Calendar className="w-4 h-4 text-orange-500 flex-shrink-0 animate-pulse" />
-                    <span className="text-[10px] font-black text-orange-500 uppercase flex-shrink-0">
-                      Día de Ruta:
-                    </span>
-                    <input
-                      ref={dateInputRef}
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        try { e.currentTarget.showPicker?.(); } catch (err) {}
-                      }}
-                      className="bg-transparent border-none text-xs font-bold font-mono focus:outline-none cursor-pointer p-0 m-0"
-                    />
-                  </div>
+                    className="bg-transparent border-none text-xs font-bold font-mono focus:outline-none cursor-pointer p-0 m-0"
+                  />
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Contenedor del Mapa Panorámico */}
-          <div className={'border rounded-3xl p-3 shadow-2xl relative overflow-hidden flex flex-col isolation-auto ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
-            
-            {/* Barra Flotante de Telemetría sobre el Mapa */}
-            <div className="absolute top-6 left-6 z-10 flex flex-wrap gap-2 pointer-events-none">
+          {/* Panel Informativo Superior del Mapa */}
+          <div className="relative">
+            <div className="absolute top-4 left-4 z-[400] flex flex-wrap gap-2 pointer-events-none">
               {!selectedUser && !selectedSavedRoute ? (
-                <div className="bg-black/90 backdrop-blur-md border border-orange-500/60 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 pointer-events-auto">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black">
-                    🌐
+                <div className="bg-black/85 backdrop-blur-md border border-zinc-800 text-white px-3.5 py-2 rounded-2xl shadow-2xl flex items-center gap-3 pointer-events-auto">
+                  <div className="flex -space-x-2 overflow-hidden">
+                    {trackedUsers.slice(0, 4).map((u, i) => (
+                      <div key={u.id} className="w-6 h-6 rounded-full border-2 border-black overflow-hidden bg-zinc-800">
+                        {u.photo_url ? (
+                          <img src={getFullPhotoUrl(u.photo_url)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-bold text-orange-400 flex items-center justify-center h-full">{u.name.charAt(0)}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                   <div>
-                    <div className="text-xs font-black text-orange-400">
-                      Vista Panorámica Multi-Trabajador
-                    </div>
-                    <div className="text-[10px] text-zinc-300">
-                      {liveGpsList.filter(g => g.latitude && g.longitude).length} vehículos/trabajadores en vivo simultáneamente
+                    <div className="text-xs font-black text-orange-400">Flota en Terreno</div>
+                    <div className="text-[10px] text-zinc-400">
+                      {liveGpsList.filter(g => g.latitude).length} de {trackedUsers.length} transmitiendo en vivo
                     </div>
                   </div>
                 </div>
@@ -606,8 +639,14 @@ export default function AdminGpsView({ theme }) {
                     🚚
                   </div>
                   <div>
-                    <div className="text-xs font-black text-orange-400">
-                      {selectedSavedRoute ? selectedSavedRoute.user_name : selectedUser?.name}
+                    <div className="text-xs font-black text-orange-400 flex items-center gap-1.5">
+                      <span>{selectedSavedRoute ? selectedSavedRoute.user_name : selectedUser?.name}</span>
+                      {snappedCoordinates.length > 1 && (
+                        <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          <span>Trazado Vial Real</span>
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-zinc-400 flex items-center gap-2">
                       {!selectedSavedRoute && (
@@ -621,20 +660,11 @@ export default function AdminGpsView({ theme }) {
                     </div>
                   </div>
                   <button
-                    onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); setRoutePoints([]); }}
+                    onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); setRoutePoints([]); setSnappedCoordinates([]); }}
                     className="ml-2 bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2 py-1 rounded-lg border border-orange-500/30 transition-all cursor-pointer"
                   >
                     ← Ver Todos
                   </button>
-                </div>
-              )}
-
-              {totalPoints > 0 && (
-                <div className="bg-black/90 backdrop-blur-md border border-zinc-700 text-white px-3 py-2 rounded-2xl shadow-xl flex items-center gap-2 pointer-events-auto text-[11px]">
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-zinc-300">Inicio: <strong className="text-white font-mono">{routePoints[0]?.timestamp?.split('T')[1]?.substring(0,8) || routePoints[0]?.time || routePoints[0]?.timestamp}</strong></span>
-                  <span>→</span>
-                  <span className="text-zinc-300">Fin: <strong className="text-white font-mono">{routePoints[routePoints.length - 1]?.timestamp?.split('T')[1]?.substring(0,8) || routePoints[routePoints.length - 1]?.time || routePoints[routePoints.length - 1]?.timestamp}</strong></span>
                 </div>
               )}
             </div>
@@ -651,8 +681,8 @@ export default function AdminGpsView({ theme }) {
                   center={mapCenter}
                   zoom={mapZoom}
                   bounds={
-                    polylineCoordinates.length > 1 
-                      ? polylineCoordinates 
+                    displayCoordinates.length > 1 
+                      ? displayCoordinates 
                       : (liveGpsList.filter(g => g.latitude && g.longitude).length > 1 
                           ? liveGpsList.filter(g => g.latitude && g.longitude).map(g => [g.latitude, g.longitude]) 
                           : null)
@@ -719,17 +749,17 @@ export default function AdminGpsView({ theme }) {
                   )
                 ))}
 
-                {/* Trazado de la Línea de Ruta Recorrida */}
-                {polylineCoordinates.length > 1 && (
+                {/* Trazado Real de la Línea de Ruta Recorrida por Calles y Carreteras */}
+                {displayCoordinates.length > 1 && (
                   <>
                     <Polyline
-                      positions={polylineCoordinates}
+                      positions={displayCoordinates}
                       color="#000000"
                       weight={8}
-                      opacity={0.6}
+                      opacity={0.7}
                     />
                     <Polyline
-                      positions={polylineCoordinates}
+                      positions={displayCoordinates}
                       color="#f97316"
                       weight={5}
                       opacity={1.0}
@@ -796,7 +826,8 @@ export default function AdminGpsView({ theme }) {
             </div>
 
           </div>
-        </>
+        </div>
+      </div>
       )}
 
     </div>
