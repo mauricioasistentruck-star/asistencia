@@ -77,6 +77,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const routeTimerRef = useRef(null);
 
   const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+  const isDark = theme === 'dark';
   const isMauricio = user && (
     (user.name && user.name.toLowerCase().includes('mauricio')) || 
     (user.username && user.username.toLowerCase().includes('mauricio')) || 
