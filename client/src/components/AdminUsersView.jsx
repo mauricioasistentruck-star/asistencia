@@ -329,7 +329,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                 ref={fileInputRef}
                 accept=".json"
                 className="hidden"
-                onChange={handleImportBackup}
+                onChange={handleImportFileChange}
                 disabled={backupLoading}
               />
             </div>
