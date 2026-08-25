@@ -1273,13 +1273,14 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
 
     const today = getLocalDateString();
     const currentTime = getLocalTimeString();
-    const query = 'INSERT INTO gps_logs (user_id, latitude, longitude, accuracy, speed, date) VALUES (?, ?, ?, ?, ?, ?)';
+    const utcIso = new Date().toISOString();
+    const query = 'INSERT INTO gps_logs (user_id, latitude, longitude, accuracy, speed, date, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)';
 
-    db.run(query, [userId, latitude, longitude, accuracy || null, speed || null, today], function (insErr) {
+    db.run(query, [userId, latitude, longitude, accuracy || null, speed || null, today, utcIso], function (insErr) {
       if (insErr) return res.status(500).json({ error: 'Error al registrar GPS' });
 
-      const newPoint = { latitude, longitude, timestamp: new Date().toISOString(), time: currentTime, speed: speed || 0, accuracy: accuracy || 10 };
-      const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, timestamp: new Date().toISOString(), date: today };
+      const newPoint = { latitude, longitude, timestamp: utcIso, time: currentTime, speed: speed || 0, accuracy: accuracy || 10 };
+      const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, time: currentTime, timestamp: utcIso, date: today };
       io.emit('gps_position_updated', gpsData);
 
       // Guardar o actualizar la ruta activa del día con filtrado anti-saltos

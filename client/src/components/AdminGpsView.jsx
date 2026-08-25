@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
-import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive } from '../api';
+import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
 import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
@@ -456,11 +456,11 @@ export default function AdminGpsView({ theme }) {
                     <div className="grid grid-cols-3 gap-2 text-center text-xs my-3 bg-black/40 p-2.5 rounded-2xl border border-zinc-800">
                       <div>
                         <span className="text-[9px] text-zinc-400 block uppercase">Inicio</span>
-                        <strong className="font-mono text-white text-[11px]">{r.start_time || '--:--'}</strong>
+                        <strong className="font-mono text-white text-[11px]">{formatChileTime(r.start_time)}</strong>
                       </div>
                       <div>
                         <span className="text-[9px] text-zinc-400 block uppercase">Fin</span>
-                        <strong className="font-mono text-white text-[11px]">{r.end_time || '--:--'}</strong>
+                        <strong className="font-mono text-white text-[11px]">{formatChileTime(r.end_time)}</strong>
                       </div>
                       <div>
                         <span className="text-[9px] text-orange-400 block uppercase font-bold">Distancia</span>
@@ -757,7 +757,7 @@ export default function AdminGpsView({ theme }) {
                           <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
                             Velocidad: <strong>{g.speed ? Math.round(g.speed * 3.6) : 0} km/h</strong>
                           </div>
-                          <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Hora: {g.timestamp?.split('T')[1]?.substring(0,8) || g.timestamp}</div>
+                          <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Hora: {formatChileTime(g.timestamp || g.time)}</div>
                           <button
                             onClick={() => {
                               const u = trackedUsers.find(x => x.id === g.user_id);
@@ -802,7 +802,7 @@ export default function AdminGpsView({ theme }) {
                         <div className="text-xs font-bold text-zinc-900">
                           🟢 Punto de Inicio / Partida
                           <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                            {routePoints[0].timestamp || routePoints[0].time}
+                            Hora: {formatChileTime(routePoints[0].timestamp || routePoints[0].time)}
                           </div>
                         </div>
                       </Popup>
@@ -816,7 +816,7 @@ export default function AdminGpsView({ theme }) {
                         <div className="text-xs font-bold text-zinc-900">
                           🔴 Punto Final / Destino
                           <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                            {routePoints[routePoints.length - 1].timestamp || routePoints[routePoints.length - 1].time}
+                            Hora: {formatChileTime(routePoints[routePoints.length - 1].timestamp || routePoints[routePoints.length - 1].time)}
                           </div>
                         </div>
                       </Popup>

@@ -4,10 +4,12 @@ export const DEFAULT_CLOUD_API = 'https://asistenciasistentruck.onrender.com';
 
 export const isGpsActive = (val) => val === 1 || val === true || val === '1' || val === 'true';
 
+export const CHILE_TIMEZONE = 'America/Santiago';
+
 export const getChileTodayString = (d = new Date()) => {
   try {
     const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Santiago',
+      timeZone: CHILE_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
@@ -16,6 +18,54 @@ export const getChileTodayString = (d = new Date()) => {
   } catch (e) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+};
+
+export const formatChileTime = (val) => {
+  if (!val) return '--:--';
+  try {
+    if (typeof val === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(val.trim())) {
+      return val.trim();
+    }
+    const cleanStr = typeof val === 'string' && !val.endsWith('Z') && !val.includes('+') && val.includes(' ') 
+      ? val.replace(' ', 'T') + 'Z' 
+      : (typeof val === 'string' && !val.endsWith('Z') && !val.includes('+') && val.includes('T') ? val + 'Z' : val);
+    const d = new Date(cleanStr);
+    const target = isNaN(d.getTime()) ? new Date(val) : d;
+    if (isNaN(target.getTime())) return String(val);
+    return new Intl.DateTimeFormat('es-CL', {
+      timeZone: CHILE_TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(target);
+  } catch (e) {
+    return String(val);
+  }
+};
+
+export const formatChileDateTime = (val) => {
+  if (!val) return '';
+  try {
+    const cleanStr = typeof val === 'string' && !val.endsWith('Z') && !val.includes('+') && val.includes(' ') 
+      ? val.replace(' ', 'T') + 'Z' 
+      : (typeof val === 'string' && !val.endsWith('Z') && !val.includes('+') && val.includes('T') ? val + 'Z' : val);
+    const d = new Date(cleanStr);
+    const target = isNaN(d.getTime()) ? new Date(val) : d;
+    if (isNaN(target.getTime())) return String(val);
+    return new Intl.DateTimeFormat('es-CL', {
+      timeZone: CHILE_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(target);
+  } catch (e) {
+    return String(val);
   }
 };
 
