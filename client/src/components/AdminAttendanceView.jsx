@@ -109,7 +109,9 @@ export default function AdminAttendanceView({ user, theme }) {
   const fetchUsers = async () => {
     try {
       const data = await apiGetUsers();
-      setUsersList(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setUsersList(data);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -123,7 +125,12 @@ export default function AdminAttendanceView({ user, theme }) {
       if (dateTo) params.date_to = dateTo;
       if (selectedUserId) params.user_id = selectedUserId;
       const data = await apiGetAttendanceRecords(params);
-      setRecords(data);
+      if (Array.isArray(data)) {
+        setRecords(data);
+        if (data.length > 0) {
+          mergeAttendanceToVault(data);
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Lock, ShieldAlert, CheckCircle2, QrCode, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield, Camera, FlipHorizontal, RefreshCw } from 'lucide-react';
-import { apiScanQr, apiVerifyAdminPassword, getFullPhotoUrl } from '../api';
+import { apiScanQr, apiVerifyAdminPassword, getFullPhotoUrl, mergeAttendanceToVault } from '../api';
 
 export default function KioskView({ onExitKiosk, theme }) {
   const [scanResult, setScanResult] = useState(null);
@@ -230,6 +230,13 @@ export default function KioskView({ onExitKiosk, theme }) {
       } catch (e) {}
 
       const data = await apiScanQr(token);
+      if (data && data.success) {
+        mergeAttendanceToVault([{
+          user_id: data.userId || data.user_id,
+          date: data.date,
+          [data.type]: data.time
+        }]);
+      }
       setScanResult(data);
       setTimeout(() => {
         setScanResult(null);
