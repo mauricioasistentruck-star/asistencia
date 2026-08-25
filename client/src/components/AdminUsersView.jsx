@@ -151,8 +151,13 @@ export default function AdminUsersView({ currentUser, theme }) {
     setActionError('');
     setActionSuccess('');
     try {
-      const created = await apiCreateUser(newUser);
-      if (created) {
+      const payload = {
+        ...newUser,
+        gps_tracking_enabled: newUser.gps_tracking_enabled ? 1 : 0
+      };
+      const res = await apiCreateUser(payload);
+      const created = res?.user || res;
+      if (created && created.id) {
         mergeUsersToVault([created]);
       }
       setActionSuccess('Usuario ' + newUser.name + ' creado exitosamente.');
@@ -230,10 +235,13 @@ export default function AdminUsersView({ currentUser, theme }) {
 
   const handleToggleGps = async (userId, currentVal) => {
     try {
-      await apiToggleGps(userId, !currentVal);
+      const targetState = !currentVal;
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetState ? 1 : 0 } : u));
+      await apiToggleGps(userId, targetState);
       fetchUsers();
     } catch (err) {
-      setActionError('Error al modificar estado de GPS');
+      setActionError(err.message || 'Error al modificar estado de GPS');
+      fetchUsers();
     }
   };
 
