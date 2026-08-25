@@ -1256,12 +1256,12 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
   const { latitude, longitude, accuracy, speed } = req.body;
   if (!latitude || !longitude) return res.status(400).json({ error: 'Coordenadas requeridas' });
 
-  db.get('SELECT id, name, is_superadmin, gps_tracking_enabled FROM users WHERE id = ?', [userId], (err, user) => {
+  db.get('SELECT id, name, gps_tracking_enabled FROM users WHERE id = ?', [userId], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
     const isGpsActiveForUser = user.gps_tracking_enabled === 1 || 
       user.gps_tracking_enabled === true || 
-      user.is_superadmin === 1 || 
-      (user.name && user.name.toLowerCase().includes('mauricio'));
+      user.gps_tracking_enabled === '1' || 
+      user.gps_tracking_enabled === 'true';
     if (!isGpsActiveForUser) {
       return res.status(403).json({ message: 'Rastreo GPS desactivado para este usuario' });
     }
@@ -1334,10 +1334,21 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
 });
 
 app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
-  const query = 'SELECT u.id as user_id, u.name as user_name, u.photo_url, u.gps_tracking_enabled, g.latitude, g.longitude, g.accuracy, g.speed, g.timestamp FROM users u LEFT JOIN (SELECT g1.* FROM gps_logs g1 INNER JOIN (SELECT user_id, MAX(id) as max_id FROM gps_logs GROUP BY user_id) g2 ON g1.id = g2.max_id) g ON u.id = g.user_id WHERE u.gps_tracking_enabled = 1';
+  const query = `
+    SELECT u.id as user_id, u.name as user_name, u.photo_url, u.gps_tracking_enabled, 
+           g.latitude, g.longitude, g.accuracy, g.speed, g.timestamp, g.time 
+    FROM users u 
+    INNER JOIN (
+      SELECT g1.* FROM gps_logs g1 
+      INNER JOIN (
+        SELECT user_id, MAX(id) as max_id FROM gps_logs GROUP BY user_id
+      ) g2 ON g1.id = g2.max_id
+    ) g ON u.id = g.user_id 
+    WHERE (u.gps_tracking_enabled = 1 OR u.gps_tracking_enabled = '1' OR u.gps_tracking_enabled = 'true')
+  `;
   db.all(query, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar GPS' });
-    res.json(rows);
+    res.json(rows || []);
   });
 });
 

@@ -371,7 +371,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   // Transmisión GPS continua, precisa y silenciosa en segundo plano
   useEffect(() => {
-    if (!user || (!isGpsActive(user.gps_tracking_enabled) && !isMauricio)) {
+    if (!user || !isGpsActive(user.gps_tracking_enabled)) {
       if (watchIdRef.current !== null) {
         try {
           if (typeof watchIdRef.current === 'string') {

@@ -272,7 +272,8 @@ export default function AdminGpsView({ theme }) {
           longitude: data.longitude,
           accuracy: data.accuracy,
           speed: data.speed,
-          timestamp: data.timestamp
+          timestamp: data.timestamp,
+          time: data.time
         };
         if (index >= 0) {
           const newList = [...prev];
@@ -289,18 +290,32 @@ export default function AdminGpsView({ theme }) {
           longitude: data.longitude,
           accuracy: data.accuracy,
           speed: data.speed,
-          timestamp: data.timestamp
+          timestamp: data.timestamp,
+          time: data.time
         }]);
         setMapCenter([data.latitude, data.longitude]);
       }
     };
 
+    const handleUserSync = () => {
+      fetchUsers();
+      fetchLiveGps();
+    };
+
     socket.on('gps_position_updated', handleLiveGpsSocket);
+    socket.on('user_gps_toggled', handleUserSync);
+    socket.on('user_updated', handleUserSync);
+    socket.on('user_created', handleUserSync);
+    socket.on('user_deleted', handleUserSync);
     socket.on('gps_route_started', () => { fetchSavedRoutes(); fetchLiveGps(); });
     socket.on('gps_route_finished', () => { fetchSavedRoutes(); fetchLiveGps(); });
 
     return () => {
       socket.off('gps_position_updated', handleLiveGpsSocket);
+      socket.off('user_gps_toggled', handleUserSync);
+      socket.off('user_updated', handleUserSync);
+      socket.off('user_created', handleUserSync);
+      socket.off('user_deleted', handleUserSync);
       socket.off('gps_route_started');
       socket.off('gps_route_finished');
     };
@@ -317,7 +332,14 @@ export default function AdminGpsView({ theme }) {
     ? snappedCoordinates
     : cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]);
   const polylineCoordinates = displayCoordinates;
-  const currentLivePos = liveGpsList.find(g => g.user_id === selectedUser?.id);
+  
+  const activeTrackedUsers = trackedUsers.filter(u => isGpsActive(u.gps_tracking_enabled));
+  const activeLiveMarkers = liveGpsList.filter(g => {
+    if (!g.latitude || !g.longitude) return false;
+    return activeTrackedUsers.some(u => u.id === g.user_id);
+  });
+
+  const currentLivePos = activeLiveMarkers.find(g => g.user_id === selectedUser?.id);
   const totalPoints = routePoints.length;
   const currentSpeed = currentLivePos?.speed ? Math.round(currentLivePos.speed * 3.6) : 0;
 
@@ -739,8 +761,8 @@ export default function AdminGpsView({ theme }) {
                   </Marker>
                 )}
 
-                {/* Marcadores de TODOS los Trabajadores en Vivo Simultáneamente */}
-                {!selectedSavedRoute && liveGpsList.map((g, idx) => (
+                {/* Marcadores de Trabajadores con GPS Activo en Vivo */}
+                {!selectedSavedRoute && activeLiveMarkers.map((g, idx) => (
                   g.latitude && g.longitude && (
                     <Marker
                       key={g.user_id}
