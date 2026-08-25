@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, AlertCircle, ArrowRight, Smartphone, Sun, Moon, Monitor, Server, CheckCircle2, RefreshCw } from 'lucide-react';
-import { apiLogin, getApiBaseUrl, setApiBaseUrl } from '../api';
+import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault } from '../api';
 import IphoneModal from './IphoneModal.jsx';
 
 export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleTheme }) {
@@ -60,6 +60,15 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
       const data = await apiLogin(identifier, password);
       localStorage.setItem('asistencia_token', data.token);
       localStorage.setItem('asistencia_user', JSON.stringify(data.user));
+
+      // Sincronizar inmediatamente todos los usuarios creados en Render
+      try {
+        const cloudUsers = await apiGetUsers();
+        if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          mergeUsersToVault(cloudUsers);
+        }
+      } catch (uErr) {}
+
       onLoginSuccess(data.user);
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión. Verifique sus credenciales.');

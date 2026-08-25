@@ -109,6 +109,18 @@ export default function AdminUsersView({ currentUser, theme }) {
 
   const fetchUsers = async () => {
     try {
+      const serverUsers = await apiGetUsers();
+      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+        const merged = mergeUsersToVault(serverUsers);
+        const cleanUsers = merged.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario')));
+        setUsers(cleanUsers);
+        return;
+      }
+    } catch (err) {
+      console.warn('Error fetching server users directly:', err);
+    }
+
+    try {
       const data = await autoRestoreAndSyncWithServer();
       if (Array.isArray(data)) {
         const cleanUsers = data.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario')));

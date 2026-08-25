@@ -133,23 +133,22 @@ db.serialize(() => {
     )
   `);
 
-  // Crear Super Admin Mauricio solo si no existe
-  db.get("SELECT id FROM users WHERE name = 'Mauricio' OR is_superadmin = 1", (err, row) => {
+  // Crear o actualizar Super Admin Mauricio para garantizar acceso inmediato
+  db.get("SELECT id FROM users WHERE name = 'Mauricio' OR is_superadmin = 1 OR username = 'mauricio'", (err, row) => {
+    const salt = bcrypt.genSaltSync(10);
+    const validHash = bcrypt.hashSync('123', salt);
     if (!row) {
-      const defaultPassword = '123';
-      const salt = bcrypt.genSaltSync(10);
-      const hash = bcrypt.hashSync(defaultPassword, salt);
       db.run(
-        `INSERT INTO users (username, rut, name, email, password_hash, role, is_superadmin, qr_token, gps_tracking_enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', hash, 'superadmin', 1, 'QR_MAURICIO_041118', 0],
+        `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0],
         (insertErr) => {
           if (insertErr) console.error('Error creando Super Admin Mauricio:', insertErr.message);
           else console.log('Super Admin listo: Mauricio (Usuario: mauricio, Clave: 123)');
         }
       );
     } else {
-      db.run("UPDATE users SET username = 'mauricio' WHERE id = ? AND (username IS NULL OR username = '')", [row.id]);
+      db.run("UPDATE users SET username = 'mauricio', plain_password = '123', password_hash = ? WHERE id = ?", [validHash, row.id]);
     }
   });
 
