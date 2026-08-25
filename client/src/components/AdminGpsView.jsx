@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet';
 import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive } from '../api';
+import { Geolocation } from '@capacitor/geolocation';
 import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
 const WORKER_COLORS = [
@@ -131,26 +132,46 @@ export default function AdminGpsView({ theme }) {
     }
   }, [routePoints]);
 
-  const locateMe = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setMyLocation([lat, lng]);
-          setMyLocationAccuracy(Math.round(pos.coords.accuracy || 10));
-          if (!selectedUser && liveGpsList.length === 0) {
-            setMapCenter([lat, lng]);
-            setMapZoom(15);
-          }
-          setGeoError('');
-        },
-        (err) => {
-          console.warn('Geolocalización error:', err.message);
-          setGeoError('Active el GPS o permisos de ubicación para auto-centrar');
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
+  const locateMe = async () => {
+    try {
+      let lat, lng, acc;
+      try {
+        await Geolocation.requestPermissions().catch(() => {});
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+        if (pos && pos.coords) {
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+          acc = Math.round(pos.coords.accuracy || 10);
+        }
+      } catch (capErr) {
+        if ('geolocation' in navigator) {
+          await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (p) => {
+                lat = p.coords.latitude;
+                lng = p.coords.longitude;
+                acc = Math.round(p.coords.accuracy || 10);
+                resolve();
+              },
+              (err) => reject(err),
+              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+          });
+        }
+      }
+
+      if (lat !== undefined && lng !== undefined) {
+        setMyLocation([lat, lng]);
+        setMyLocationAccuracy(acc);
+        if (!selectedUser && liveGpsList.length === 0) {
+          setMapCenter([lat, lng]);
+          setMapZoom(16);
+        }
+        setGeoError('');
+      }
+    } catch (err) {
+      console.warn('Geolocalización error:', err.message);
+      setGeoError('Active el GPS o permisos de ubicación para auto-centrar');
     }
   };
 
@@ -292,7 +313,9 @@ export default function AdminGpsView({ theme }) {
     fetchSavedRoutes();
   }, [selectedUser, selectedDate, selectedSavedRoute]);
 
-  const displayCoordinates = routePoints.map(p => [p.latitude, p.longitude]);
+  const displayCoordinates = (snappedCoordinates && snappedCoordinates.length > 0)
+    ? snappedCoordinates
+    : cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]);
   const polylineCoordinates = displayCoordinates;
   const currentLivePos = liveGpsList.find(g => g.user_id === selectedUser?.id);
   const totalPoints = routePoints.length;

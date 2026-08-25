@@ -7,6 +7,7 @@ import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive } from './api';
+import { Geolocation } from '@capacitor/geolocation';
 import { Volume2, Radio, LogOut } from 'lucide-react';
 
 function playIncomingBeep() {
@@ -368,11 +369,17 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     };
   }, [user]);
 
-  // Transmisión GPS continua y silenciosa en segundo plano
+  // Transmisión GPS continua, precisa y silenciosa en segundo plano
   useEffect(() => {
     if (!user || (!isGpsActive(user.gps_tracking_enabled) && !isMauricio)) {
-      if (watchIdRef.current !== null && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+      if (watchIdRef.current !== null) {
+        try {
+          if (typeof watchIdRef.current === 'string') {
+            Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {});
+          } else if ('geolocation' in navigator) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+          }
+        } catch (e) {}
         watchIdRef.current = null;
       }
       return;
@@ -382,17 +389,18 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     const sendCoordsSilently = (pos) => {
       if (pos && pos.coords) {
         const accuracy = pos.coords.accuracy || 10;
-        // Ignorar lecturas con baja precisión para evitar saltos erráticos
-        if (accuracy > 40) return;
+        // Filtrar únicamente lecturas con precisión extremadamente degradada (> 120 metros)
+        if (accuracy > 120) return;
 
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
         if (lastSentCoords) {
           const latDiff = Math.abs(lat - lastSentCoords.lat);
           const lngDiff = Math.abs(lng - lastSentCoords.lng);
-          // Si no ha cambiado casi nada y la velocidad es 0, no reenviar
-          if (latDiff < 0.00004 && lngDiff < 0.00004 && (!pos.coords.speed || pos.coords.speed < 0.5)) {
+          // Si no ha cambiado casi nada y la velocidad es 0, omitir spam de puntos estáticos
+          if (latDiff < 0.00003 && lngDiff < 0.00003 && (!pos.coords.speed || pos.coords.speed < 0.3)) {
             return;
           }
         }
@@ -402,41 +410,89 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         apiSendGpsPoint({
           latitude: lat,
           longitude: lng,
-          accuracy: accuracy,
+          accuracy: Math.round(accuracy),
           speed: pos.coords.speed || 0,
           heading: pos.coords.heading || null
         }).catch(() => {});
       }
     };
 
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      });
+    // 1. Solicitar permisos de GPS explícitos en Android nativo y Web
+    const initGps = async () => {
+      try {
+        await Geolocation.requestPermissions();
+      } catch (e) {}
 
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        sendCoordsSilently,
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
-      );
-    }
-
-    const backupInterval = setInterval(() => {
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
+      // 2. Obtener primera posición inmediata
+      try {
+        const initialPos = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 8000,
+          timeout: 10000,
           maximumAge: 0
         });
+        if (initialPos && initialPos.coords) sendCoordsSilently(initialPos);
+      } catch (e) {
+        if ('geolocation' in navigator) {
+          navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        }
       }
-    }, 12000);
+
+      // 3. Activar escucha continua por hardware GPS nativo
+      try {
+        const watchId = await Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 },
+          (pos, err) => {
+            if (pos && pos.coords) sendCoordsSilently(pos);
+          }
+        );
+        watchIdRef.current = watchId;
+      } catch (capWatchErr) {
+        if ('geolocation' in navigator) {
+          watchIdRef.current = navigator.geolocation.watchPosition(
+            sendCoordsSilently,
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+          );
+        }
+      }
+    };
+
+    initGps();
+
+    // 4. Intervalo de respaldo periódico cada 8 segundos para evitar desconexiones
+    const backupInterval = setInterval(async () => {
+      try {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 2000
+        });
+        if (pos && pos.coords) sendCoordsSilently(pos);
+      } catch (e) {
+        if ('geolocation' in navigator) {
+          navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 0
+          });
+        }
+      }
+    }, 8000);
 
     return () => {
       clearInterval(backupInterval);
-      if (watchIdRef.current !== null && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+      if (watchIdRef.current !== null) {
+        try {
+          if (typeof watchIdRef.current === 'string') {
+            Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {});
+          } else if ('geolocation' in navigator) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+          }
+        } catch (e) {}
         watchIdRef.current = null;
       }
     };
