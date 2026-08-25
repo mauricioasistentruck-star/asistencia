@@ -6,7 +6,7 @@ import AdminAttendanceView from './components/AdminAttendanceView.jsx';
 import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
-import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer } from './api';
+import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive } from './api';
 import { Volume2, Radio, LogOut } from 'lucide-react';
 
 function playIncomingBeep() {
@@ -370,7 +370,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   // Transmisión GPS continua y silenciosa en segundo plano
   useEffect(() => {
-    if (!user || (user.gps_tracking_enabled !== 1 && !isMauricio)) {
+    if (!user || (!isGpsActive(user.gps_tracking_enabled) && !isMauricio)) {
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -556,7 +556,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
             <div>
               <h3 className="text-lg font-black tracking-tight">¿Desea salir de la aplicación?</h3>
               <p className="text-xs text-zinc-400 mt-1">
-                {user?.gps_tracking_enabled === 1 || isMauricio
+                {isGpsActive(user?.gps_tracking_enabled) || isMauricio
                   ? 'El rastreo GPS continuará transmitiendo su ubicación en tiempo real.'
                   : 'Presione Salir para cerrar Asistentruck o Cancelar para continuar trabajando.'}
               </p>

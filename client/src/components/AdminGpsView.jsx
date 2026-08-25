@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
-import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
+import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive } from '../api';
 import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
 const WORKER_COLORS = [
@@ -170,7 +170,7 @@ export default function AdminGpsView({ theme }) {
   const fetchUsers = async () => {
     try {
       const allUsers = await apiGetUsers();
-      const gpsUsers = allUsers.filter(u => u.gps_tracking_enabled === 1);
+      const gpsUsers = (allUsers || []).filter(u => isGpsActive(u.gps_tracking_enabled));
       setTrackedUsers(gpsUsers);
     } catch (err) {
       console.error(err);

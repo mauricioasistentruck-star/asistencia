@@ -15,7 +15,9 @@ import {
   autoRestoreAndSyncWithServer,
   removeUserFromVault,
   mergeUsersToVault,
-  getMasterVault
+  getMasterVault,
+  saveMasterVault,
+  isGpsActive
 } from '../api';
 
 export default function AdminUsersView({ currentUser, theme }) {
@@ -185,7 +187,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       email: u.email || '',
       password: '',
       role: u.role || 'worker',
-      gps_tracking_enabled: u.gps_tracking_enabled === 1
+      gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled)
     });
     setEditError('');
     setShowEditModal(true);
@@ -203,7 +205,7 @@ export default function AdminUsersView({ currentUser, theme }) {
         rut: editForm.rut,
         email: editForm.email,
         role: editForm.role,
-        gps_tracking_enabled: editForm.gps_tracking_enabled
+        gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();
@@ -234,11 +236,20 @@ export default function AdminUsersView({ currentUser, theme }) {
   };
 
   const handleToggleGps = async (userId, currentVal) => {
+    const isCurrentlyActive = isGpsActive(currentVal);
+    const targetState = !isCurrentlyActive;
+    const targetNumeric = targetState ? 1 : 0;
+    
+    // 1. Actualizar estado local inmediatamente
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u));
+    
+    // 2. Actualizar en Bóveda Maestra inmediatamente
+    const vault = getMasterVault();
+    vault.users = vault.users.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u);
+    saveMasterVault(vault);
+
     try {
-      const targetState = !currentVal;
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetState ? 1 : 0 } : u));
-      await apiToggleGps(userId, targetState);
-      fetchUsers();
+      await apiToggleGps(userId, targetNumeric);
     } catch (err) {
       setActionError(err.message || 'Error al modificar estado de GPS');
       fetchUsers();
@@ -423,7 +434,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                       {u.role === 'superadmin' || u.role === 'admin' ? 'Admin' : 'Trabajador'}
                     </span>
 
-                    {u.gps_tracking_enabled === 1 && (
+                    {isGpsActive(u.gps_tracking_enabled) && (
                       <span className="text-[9px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                         <MapPin className="w-3 h-3 animate-pulse" /> GPS Activo
                       </span>
@@ -491,10 +502,10 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <div className="flex items-center justify-between pt-1 text-xs">
                   <span className="text-[11px] text-zinc-400 font-bold">Rastreo GPS en vivo:</span>
                   <button
-                    onClick={() => handleToggleGps(u.id, u.gps_tracking_enabled === 1)}
-                    className={'px-2.5 py-1 rounded-lg text-[10px] font-black transition-all ' + (u.gps_tracking_enabled === 1 ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white')}
+                    onClick={() => handleToggleGps(u.id, u.gps_tracking_enabled)}
+                    className={'px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ' + (isGpsActive(u.gps_tracking_enabled) ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20' : 'bg-zinc-800 text-zinc-400 hover:text-white')}
                   >
-                    {u.gps_tracking_enabled === 1 ? 'ACTIVADO' : 'DESACTIVADO'}
+                    {isGpsActive(u.gps_tracking_enabled) ? 'ACTIVADO' : 'DESACTIVADO'}
                   </button>
                 </div>
               </div>

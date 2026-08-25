@@ -2,6 +2,8 @@ import { io } from 'socket.io-client';
 
 export const DEFAULT_CLOUD_API = 'https://asistenciasistentruck.onrender.com';
 
+export const isGpsActive = (val) => val === 1 || val === true || val === '1' || val === 'true';
+
 export const getChileTodayString = (d = new Date()) => {
   try {
     const formatter = new Intl.DateTimeFormat('en-CA', {
