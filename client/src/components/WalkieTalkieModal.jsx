@@ -77,7 +77,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const activeAudioPlayerRef = useRef(null);
   const progressIntervalRef = useRef(null);
 
-  const isMauricio = currentUser && (currentUser.is_superadmin === 1 || (currentUser.name && currentUser.name.toLowerCase().includes('mauricio')));
+  const isMauricio = currentUser && (
+    currentUser.is_superadmin === 1 || 
+    (currentUser.name && currentUser.name.toLowerCase().includes('mauricio')) ||
+    (currentUser.username && currentUser.username.toLowerCase().includes('mauricio'))
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -646,10 +650,11 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
   const selectAllUsers = () => setSelectedUserIds(usersList.map(u => u.id));
   const deselectAllUsers = () => setSelectedUserIds([]);
 
+  const q = (searchQuery || '').toLowerCase();
   const filteredUsers = usersList.filter(u => 
-    u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.rut?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.role?.toLowerCase().includes(searchQuery.toLowerCase())
+    (u.name || '').toLowerCase().includes(q) ||
+    (u.rut || '').toLowerCase().includes(q) ||
+    (u.role || '').toLowerCase().includes(q)
   );
 
   // =========================================================================
@@ -1021,7 +1026,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
                   {/* Lista de Colaboradores */}
                   {usersList
-                    .filter(u => u.name?.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+                    .filter(u => (u.name || '').toLowerCase().includes((chatSearchQuery || '').toLowerCase()))
                     .map((u) => {
                       const count = getAudioCountForUser(u.id);
                       return (

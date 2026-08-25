@@ -46,6 +46,7 @@ db.serialize(() => {
   db.run("ALTER TABLE users ADD COLUMN username TEXT", () => {});
   db.run("ALTER TABLE users ADD COLUMN plain_password TEXT", () => {});
   db.run("UPDATE users SET plain_password = '123' WHERE plain_password IS NULL", () => {});
+  db.run("UPDATE users SET username = LOWER(REPLACE(name, ' ', '')) WHERE username IS NULL OR username = ''", () => {});
 
   db.run(`
     CREATE TABLE IF NOT EXISTS attendance (

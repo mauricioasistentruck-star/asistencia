@@ -27,7 +27,11 @@ export default function AdminUsersView({ currentUser, theme }) {
   const [actionSuccess, setActionSuccess] = useState('');
 
   const isDark = theme === 'dark';
-  const isSuperAdmin = currentUser && (currentUser.is_superadmin === 1 || currentUser.name.toLowerCase() === 'mauricio');
+  const isSuperAdmin = currentUser && (
+    currentUser.is_superadmin === 1 || 
+    (currentUser.name || '').toLowerCase() === 'mauricio' ||
+    (currentUser.username || '').toLowerCase() === 'mauricio'
+  );
 
   // Formulario Crear
   const [newUser, setNewUser] = useState({
@@ -160,7 +164,7 @@ export default function AdminUsersView({ currentUser, theme }) {
   };
 
   const openEditModal = (u) => {
-    const isTargetMauricio = u.is_superadmin === 1 || u.name.toLowerCase() === 'mauricio';
+    const isTargetMauricio = u.is_superadmin === 1 || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
     if (isTargetMauricio && !isSuperAdmin) {
       setActionError('ACCESO DENEGADO: No tiene permisos para modificar la cuenta de este Administrador.');
       setTimeout(() => setActionError(''), 4000);
@@ -323,9 +327,10 @@ export default function AdminUsersView({ currentUser, theme }) {
               <input
                 type="file"
                 ref={fileInputRef}
-                onChange={handleImportFileChange}
                 accept=".json"
                 className="hidden"
+                onChange={handleImportBackup}
+                disabled={backupLoading}
               />
             </div>
           </div>
@@ -349,7 +354,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       {/* Grid de Tarjetas de Usuarios */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {users.map((u) => {
-          const isMauricio = u.is_superadmin === 1 || u.name.toLowerCase() === 'mauricio';
+          const isMauricio = u.is_superadmin === 1 || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
           const canEditThis = isSuperAdmin || !isMauricio;
 
           return (
@@ -364,7 +369,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                       {u.photo_url ? (
                         <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-orange-500">{u.name.charAt(0)}</span>
+                        <span className="text-orange-500">{(u.name || 'U').charAt(0)}</span>
                       )}
                     </div>
                     <label
@@ -399,7 +404,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <div className="space-y-1.5 my-2.5 font-mono text-xs">
                   <div className="flex items-center justify-between text-zinc-400 bg-orange-500/10 px-2.5 py-1 rounded-xl border border-orange-500/20">
                     <span className="font-sans text-[11px] font-bold text-orange-500">Usuario Login:</span>
-                    <strong className="text-orange-400 font-bold">{u.username || u.name.toLowerCase().replace(/\s+/g, '')}</strong>
+                    <strong className="text-orange-400 font-bold">{u.username || (u.name ? u.name.toLowerCase().replace(/\s+/g, '') : 'usuario')}</strong>
                   </div>
                   <div className="flex items-center justify-between text-zinc-400">
                     <span className="font-sans text-[11px]">RUT:</span>
@@ -580,7 +585,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                   <select
                     value={editForm.role}
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                    disabled={editingUser.is_superadmin === 1 || editingUser.name.toLowerCase() === 'mauricio'}
+                    disabled={editingUser && (editingUser.is_superadmin === 1 || (editingUser.name || '').toLowerCase() === 'mauricio' || (editingUser.username || '').toLowerCase() === 'mauricio')}
                     className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
                     <option value="worker">Trabajador (Solo Credencial y Horarios)</option>

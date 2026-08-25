@@ -18,7 +18,7 @@ export default function ScannerView({ user, theme }) {
     Html5Qrcode.getCameras().then((devices) => {
       if (devices && devices.length > 0) {
         setCameras(devices);
-        const backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('trasera'));
+        const backCam = devices.find(d => (d.label || '').toLowerCase().includes('back') || (d.label || '').toLowerCase().includes('trasera'));
         setSelectedCamera(backCam ? backCam.id : devices[0].id);
       }
     }).catch(err => console.warn('Error listando camaras:', err));

@@ -1,0 +1,65 @@
+{
+  "users": [
+    {
+      "id": 6,
+      "rut": "12.345.678-9",
+      "name": "Mauricio",
+      "email": "mauricio@asistentruck.cl",
+      "password_hash": "$2a$10$Ebs6Xm7qQHm5/7cWYx93C.MUf1dLGwjaOj1t25JXnr7o8.ND0Rck2",
+      "role": "superadmin",
+      "is_superadmin": 1,
+      "photo_url": null,
+      "qr_token": "QR_MAURICIO_041118",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-21 18:44:39",
+      "username": "mauricio",
+      "plain_password": "123"
+    },
+    {
+      "id": 8,
+      "rut": null,
+      "name": "Bastian Soto",
+      "email": "bastian.asistentruck@gmail.com",
+      "password_hash": "$2a$10$El.rFuuc0.BbphzXb35iaeMzJqv.xUiKsFn6rEGjFvn/9M1x4sBy.",
+      "role": "worker",
+      "is_superadmin": 0,
+      "photo_url": null,
+      "qr_token": "QR_BASTIAN_SOTO_S2NYCV_1787340614145",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-21 19:30:14",
+      "username": null,
+      "plain_password": "123"
+    },
+    {
+      "id": 10,
+      "rut": null,
+      "name": "Boris Aguirre",
+      "email": "baguirre.asistentruck@gmail.com",
+      "password_hash": "$2a$10$Y6vOTYLg55/xARfn9J9il.pdeRE7JhHksd12Q7LVdvoEm0zPJuVIC",
+      "role": "admin",
+      "is_superadmin": 0,
+      "photo_url": null,
+      "qr_token": "QR_BORIS_AGUIRRE_TIEUGQ_1787340710918",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-21 19:31:51",
+      "username": null,
+      "plain_password": "123"
+    }
+  ],
+  "attendance": [
+    {
+      "id": 1,
+      "user_id": 2,
+      "date": "2026-08-21",
+      "entry_time": "09:34:19",
+      "lunch_out_time": "09:34:19",
+      "lunch_in_time": "09:34:19",
+      "exit_time": "09:34:19",
+      "total_hours": 0,
+      "modified_by_admin": 0,
+      "admin_note": null,
+      "created_at": "2026-08-21 13:34:19",
+      "updated_at": "2026-08-21 13:34:19"
+    }
+  ]
+}

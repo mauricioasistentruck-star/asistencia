@@ -292,7 +292,8 @@ export default function AdminGpsView({ theme }) {
     fetchSavedRoutes();
   }, [selectedUser, selectedDate, selectedSavedRoute]);
 
-  const polylineCoordinates = routePoints.map(p => [p.latitude, p.longitude]);
+  const displayCoordinates = routePoints.map(p => [p.latitude, p.longitude]);
+  const polylineCoordinates = displayCoordinates;
   const currentLivePos = liveGpsList.find(g => g.user_id === selectedUser?.id);
   const totalPoints = routePoints.length;
   const currentSpeed = currentLivePos?.speed ? Math.round(currentLivePos.speed * 3.6) : 0;
