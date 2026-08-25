@@ -217,14 +217,22 @@ export const apiSyncVault = (vaultData) => apiRequest('/api/sync/vault', {
 // Protege todos los trabajadores, fotos, contraseñas y marcaciones contra reinicios de Render
 // =========================================================================
 
+export const isUserValid = (u) => {
+  if (!u || typeof u !== 'object') return false;
+  const name = typeof u.name === 'string' ? u.name.trim() : '';
+  const username = typeof u.username === 'string' ? u.username.trim() : '';
+  return name.length > 0 || username.length > 0;
+};
+
 export const getMasterVault = () => {
   try {
     const raw = localStorage.getItem('asistencia_master_vault');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        const rawUsers = Array.isArray(parsed.users) ? parsed.users : [];
         return {
-          users: Array.isArray(parsed.users) ? parsed.users : [],
+          users: rawUsers.filter(isUserValid),
           attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
           voice_messages: Array.isArray(parsed.voice_messages) ? parsed.voice_messages : []
         };
@@ -236,7 +244,10 @@ export const getMasterVault = () => {
   let users = [];
   try {
     const uCache = localStorage.getItem('asistencia_users_cache');
-    if (uCache) users = JSON.parse(uCache) || [];
+    if (uCache) {
+      const parsed = JSON.parse(uCache);
+      if (Array.isArray(parsed)) users = parsed.filter(isUserValid);
+    }
   } catch (e) {}
 
   let voice_messages = [];
@@ -250,8 +261,9 @@ export const getMasterVault = () => {
 
 export const saveMasterVault = (vault) => {
   try {
+    const rawUsers = Array.isArray(vault?.users) ? vault.users : [];
     const safeVault = {
-      users: Array.isArray(vault?.users) ? vault.users : [],
+      users: rawUsers.filter(isUserValid),
       attendance: Array.isArray(vault?.attendance) ? vault.attendance.slice(0, 500) : [],
       voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : []
     };
@@ -268,9 +280,9 @@ export const mergeUsersToVault = (incomingUsers) => {
   if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) return getMasterVault().users;
   const vault = getMasterVault();
   const currentMap = new Map();
-  vault.users.forEach(u => currentMap.set(String(u.id || u.rut || u.username), u));
+  vault.users.filter(isUserValid).forEach(u => currentMap.set(String(u.id || u.rut || u.username), u));
 
-  incomingUsers.forEach(u => {
+  incomingUsers.filter(isUserValid).forEach(u => {
     const key = String(u.id || u.rut || u.username);
     if (currentMap.has(key)) {
       currentMap.set(key, { ...currentMap.get(key), ...u });
@@ -279,14 +291,20 @@ export const mergeUsersToVault = (incomingUsers) => {
     }
   });
 
-  vault.users = Array.from(currentMap.values());
+  vault.users = Array.from(currentMap.values()).filter(isUserValid);
   saveMasterVault(vault);
   return vault.users;
 };
 
 export const removeUserFromVault = (userId) => {
   const vault = getMasterVault();
-  vault.users = vault.users.filter(u => String(u.id) !== String(userId));
+  const idStr = String(userId);
+  vault.users = vault.users.filter(u => {
+    if (!isUserValid(u)) return false;
+    if (String(u.id) === idStr) return false;
+    if (String(u.username) === idStr) return false;
+    return true;
+  });
   saveMasterVault(vault);
   return vault.users;
 };

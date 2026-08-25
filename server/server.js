@@ -206,11 +206,12 @@ app.post('/api/auth/login', (req, res) => {
     const isMatch = bcrypt.compareSync(password, user.password_hash);
     if (!isMatch) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    const fallbackUsername = user.username || (user.name ? user.name.toLowerCase().replace(/\s+/g, '') : `user${user.id}`);
     const payload = {
       id: user.id,
-      username: user.username || user.name.toLowerCase().replace(/\s+/g, ''),
+      username: fallbackUsername,
       rut: user.rut,
-      name: user.name,
+      name: user.name || fallbackUsername,
       email: user.email,
       role: user.role,
       is_superadmin: user.is_superadmin
@@ -221,9 +222,9 @@ app.post('/api/auth/login', (req, res) => {
       token,
       user: {
         id: user.id,
-        username: user.username || user.name.toLowerCase().replace(/\s+/g, ''),
+        username: fallbackUsername,
         rut: user.rut,
-        name: user.name,
+        name: user.name || fallbackUsername,
         email: user.email,
         role: user.role,
         is_superadmin: user.is_superadmin,
@@ -360,7 +361,9 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
   db.get('SELECT * FROM users WHERE id = ?', [targetId], (err, targetUser) => {
     if (err || !targetUser) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const isTargetSuperAdmin = targetUser.is_superadmin === 1 || (targetUser.name && targetUser.name.toLowerCase().includes('mauricio'));
+    const isTargetSuperAdmin = targetUser.is_superadmin === 1 || 
+      (targetUser.name && targetUser.name.toLowerCase().includes('mauricio')) ||
+      (targetUser.username && targetUser.username.toLowerCase().includes('mauricio'));
     if (isTargetSuperAdmin && !isCurrentUserSuperAdmin) {
       return res.status(403).json({ error: 'ACCESO DENEGADO: No tiene permisos para modificar la cuenta de este Administrador.' });
     }
@@ -369,7 +372,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     const plainPassword = password && password.trim() !== '' ? password.trim() : targetUser.plain_password;
     const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role || targetUser.role);
     const assignedGps = gps_tracking_enabled !== undefined ? (gps_tracking_enabled ? 1 : 0) : targetUser.gps_tracking_enabled;
-    const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || targetUser.name.toLowerCase().replace(/\s+/g, ''));
+    const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || (targetUser.name ? targetUser.name.toLowerCase().replace(/\s+/g, '') : `user${targetId}`));
     const finalRut = (rut && rut.trim() !== '') ? rut.trim() : null;
     const finalEmail = (email && email.trim() !== '') ? email.trim().toLowerCase() : targetUser.email;
     const finalName = (name && name.trim() !== '') ? name.trim() : targetUser.name;
@@ -406,7 +409,10 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
   const targetId = Number(req.params.id);
   db.get('SELECT * FROM users WHERE id = ?', [targetId], (err, targetUser) => {
     if (err || !targetUser) return res.status(404).json({ error: 'Usuario no encontrado' });
-    if (targetUser.is_superadmin === 1 || targetUser.name.toLowerCase() === 'mauricio' || targetUser.name.toLowerCase().includes('mauricio')) {
+    const isMauricio = targetUser.is_superadmin === 1 || 
+      (targetUser.name && targetUser.name.toLowerCase().includes('mauricio')) ||
+      (targetUser.username && targetUser.username.toLowerCase().includes('mauricio'));
+    if (isMauricio) {
       return res.status(403).json({ error: 'ACCESO DENEGADO: El usuario Mauricio es el Administrador Principal y no puede ser eliminado.' });
     }
     db.run('DELETE FROM users WHERE id = ?', [targetId], (delErr) => {

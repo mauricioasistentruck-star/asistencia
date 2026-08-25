@@ -108,13 +108,14 @@ export default function AdminUsersView({ currentUser, theme }) {
   const fetchUsers = async () => {
     try {
       const data = await autoRestoreAndSyncWithServer();
-      if (Array.isArray(data) && data.length > 0) {
-        setUsers(data);
+      if (Array.isArray(data)) {
+        const cleanUsers = data.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario')));
+        setUsers(cleanUsers);
       }
     } catch (err) {
       const vault = getMasterVault();
       if (vault.users.length > 0) {
-        setUsers(vault.users);
+        setUsers(vault.users.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario'))));
       }
     }
   };
@@ -237,22 +238,45 @@ export default function AdminUsersView({ currentUser, theme }) {
   };
 
   const handleDelete = async (userToDelete) => {
-    const isTargetMauricio = userToDelete.is_superadmin === 1 || userToDelete.name.toLowerCase() === 'mauricio';
+    if (!userToDelete) return;
+    
+    const isTargetMauricio = userToDelete.is_superadmin === 1 || 
+      (userToDelete.name && userToDelete.name.toLowerCase() === 'mauricio') || 
+      (userToDelete.username && userToDelete.username.toLowerCase() === 'mauricio');
+
     if (isTargetMauricio) {
       setActionError('ACCESO DENEGADO: Esta cuenta de Administrador está protegida contra eliminación.');
       setTimeout(() => setActionError(''), 4000);
       return;
     }
 
-    if (!window.confirm('¿Está seguro de eliminar al usuario ' + userToDelete.name + '?')) return;
+    const displayName = userToDelete.name || userToDelete.username || 'este registro incompleto';
+    if (!window.confirm('¿Está seguro de eliminar a ' + displayName + '?')) return;
 
     try {
-      removeUserFromVault(userToDelete.id);
-      await apiDeleteUser(userToDelete.id);
-      setActionSuccess('Usuario ' + userToDelete.name + ' eliminado.');
+      // 1. Remover siempre de la Bóveda Maestra (LocalStorage)
+      if (userToDelete.id) {
+        removeUserFromVault(userToDelete.id);
+      } else {
+        const vault = getMasterVault();
+        vault.users = vault.users.filter(u => u !== userToDelete && (u.id || u.name || u.username));
+        saveMasterVault(vault);
+      }
+
+      // 2. Si tiene ID, eliminar en el servidor
+      if (userToDelete.id) {
+        try {
+          await apiDeleteUser(userToDelete.id);
+        } catch (serverErr) {
+          console.warn('Aviso al eliminar en servidor:', serverErr.message);
+        }
+      }
+
+      setActionSuccess('Usuario ' + displayName + ' eliminado correctamente.');
       fetchUsers();
     } catch (err) {
       setActionError(err.message || 'Error al eliminar usuario');
+      fetchUsers();
     }
   };
 
