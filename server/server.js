@@ -1283,16 +1283,9 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, time: currentTime, timestamp: utcIso, date: today };
       io.emit('gps_position_updated', gpsData);
 
-      // Guardar o actualizar la ruta activa del día con filtrado anti-saltos
-      db.get('SELECT * FROM gps_routes WHERE user_id = ? AND date = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId, today], (routeErr, activeRoute) => {
-        if (!activeRoute) {
-          const routeName = 'Ruta ' + user.name + ' - ' + today;
-          const initialPoints = JSON.stringify([newPoint]);
-          db.run(
-            'INSERT INTO gps_routes (user_id, user_name, name, date, start_time, start_lat, start_lng, total_distance_km, total_points, points_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, "active")',
-            [userId, user.name, routeName, today, currentTime, latitude, longitude, initialPoints]
-          );
-        } else {
+      // Si el usuario tiene una ruta en terreno iniciada explícitamente, actualizarla
+      db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (routeErr, activeRoute) => {
+        if (activeRoute) {
           let points = [];
           try {
             points = JSON.parse(activeRoute.points_json || '[]');
@@ -1311,14 +1304,14 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
               shouldAddPoint = false;
             }
 
-            // 2. Si el salto representa una velocidad imposible (> 140 km/h), descartar salto sobre casas/cerros
+            // 2. Si el salto representa una velocidad imposible (> 140 km/h), descartar salto
             const t1 = new Date(lastPoint.timestamp || 0).getTime();
             const t2 = new Date().getTime();
             if (t1 > 0 && t2 > t1) {
               const hours = (t2 - t1) / (1000 * 3600);
               const speedKmH = addedDist / hours;
               if (speedKmH > 140) {
-                shouldAddPoint = false; // Salto irreal descartado
+                shouldAddPoint = false;
               }
             }
           }
