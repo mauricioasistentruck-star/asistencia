@@ -456,8 +456,6 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     });
   });
 });
-  });
-});
 
 // =========================================================================
 // SISTEMA DE EXPORTACIÓN E IMPORTACIÓN MASIVA TOTAL (BACKUP & RESTORE)
@@ -1517,7 +1515,6 @@ app.post('/api/gps/routes/finish', authenticateToken, (req, res) => {
     });
   });
 });
-});
 
 app.get('/api/gps/routes/active', authenticateToken, (req, res) => {
   const userId = req.user.id;
@@ -1572,9 +1569,6 @@ app.delete('/api/gps/routes/:id', authenticateToken, requireAdmin, (req, res) =>
     if (err) return res.status(500).json({ error: 'Error al eliminar ruta' });
     savePersistentBackup();
     io.emit('routes_updated');
-    res.json({ success: true, message: 'Ruta eliminada del registro' });
-  });
-});
     res.json({ success: true, message: 'Ruta eliminada del registro' });
   });
 });
