@@ -185,7 +185,16 @@ db.serialize(() => {
           );
         }
       }
-      console.log('Respaldo persistente de datos y audios cargado correctamente.');
+      if (data && Array.isArray(data.gps_routes)) {
+        for (let r of data.gps_routes) {
+          db.run(
+            `INSERT OR IGNORE INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [r.id, r.user_id, r.user_name || 'Personal', r.name, r.date, r.start_time, r.end_time || null, r.start_lat, r.start_lng, r.end_lat || null, r.end_lng || null, r.total_distance_km || 0, r.total_points || 0, r.points_json || '[]', r.status || 'completed', r.created_at || new Date().toISOString()]
+          );
+        }
+      }
+      console.log('Respaldo persistente de datos, audios y rutas GPS cargado correctamente.');
     } catch (e) {
       console.warn('Advertencia restaurando persistent backup:', e);
     }

@@ -868,6 +868,45 @@ app.post('/api/sync/vault', (req, res) => {
         }
         stmtVoice.finalize();
       }
+      if (Array.isArray(backup.gps_routes) && backup.gps_routes.length > 0) {
+        const stmtRoute = db.prepare(`
+          INSERT INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            user_name = COALESCE(excluded.user_name, gps_routes.user_name),
+            name = COALESCE(excluded.name, gps_routes.name),
+            date = COALESCE(excluded.date, gps_routes.date),
+            start_time = COALESCE(excluded.start_time, gps_routes.start_time),
+            end_time = COALESCE(excluded.end_time, gps_routes.end_time),
+            end_lat = COALESCE(excluded.end_lat, gps_routes.end_lat),
+            end_lng = COALESCE(excluded.end_lng, gps_routes.end_lng),
+            total_distance_km = COALESCE(excluded.total_distance_km, gps_routes.total_distance_km),
+            total_points = COALESCE(excluded.total_points, gps_routes.total_points),
+            points_json = COALESCE(excluded.points_json, gps_routes.points_json),
+            status = COALESCE(excluded.status, gps_routes.status)
+        `);
+        for (let r of backup.gps_routes) {
+          stmtRoute.run(
+            r.id || null,
+            r.user_id,
+            r.user_name || 'Personal',
+            r.name || ('Ruta ' + r.date),
+            r.date,
+            r.start_time,
+            r.end_time || null,
+            r.start_lat,
+            r.start_lng,
+            r.end_lat || null,
+            r.end_lng || null,
+            r.total_distance_km || 0,
+            r.total_points || 0,
+            r.points_json ? (typeof r.points_json === 'string' ? r.points_json : JSON.stringify(r.points_json)) : '[]',
+            r.status || 'completed',
+            r.created_at || new Date().toISOString()
+          );
+        }
+        stmtRoute.finalize();
+      }
 
       db.run('COMMIT', (commitErr) => {
         if (commitErr) {
@@ -1419,24 +1458,57 @@ app.post('/api/gps/routes/finish', authenticateToken, (req, res) => {
 
   const today = getLocalDateString();
   const endTime = getLocalTimeString();
-  const pointsJson = points ? (typeof points === 'string' ? points : JSON.stringify(points)) : '[]';
-  const totalPts = Array.isArray(points) ? points.length : 0;
-  const distanceKm = Number(totalDistanceKm) || 0;
 
   // Desactivar GPS del usuario
   db.run('UPDATE users SET gps_tracking_enabled = 0 WHERE id = ?', [userId]);
 
-  const query = `
-    UPDATE gps_routes 
-    SET end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ?, status = 'completed'
-    WHERE (id = ? OR (user_id = ? AND status = 'active'))
-  `;
+  db.get('SELECT * FROM gps_routes WHERE (id = ? OR (user_id = ? AND status = "active")) ORDER BY id DESC LIMIT 1', [routeId || 0, userId], (rErr, currentRoute) => {
+    let finalPoints = [];
+    let serverPoints = [];
+    if (currentRoute && currentRoute.points_json) {
+      try { serverPoints = JSON.parse(currentRoute.points_json); } catch(e) { serverPoints = []; }
+    }
+    const clientPoints = Array.isArray(points) ? points : (typeof points === 'string' ? (JSON.parse(points || '[]')) : []);
 
-  db.run(query, [endTime, latitude || null, longitude || null, distanceKm, totalPts, pointsJson, routeId || 0, userId], function (upErr) {
-    if (upErr) return res.status(500).json({ error: 'Error al finalizar ruta: ' + upErr.message });
-    io.emit('gps_route_finished', { routeId, userId, endTime, distanceKm });
-    res.json({ success: true, message: 'Ruta finalizada y guardada exitosamente en el registro' });
+    if (serverPoints.length >= clientPoints.length && serverPoints.length > 0) {
+      finalPoints = serverPoints;
+    } else if (clientPoints.length > 0) {
+      finalPoints = clientPoints;
+    } else {
+      finalPoints = serverPoints;
+    }
+
+    if (latitude && longitude && finalPoints.length > 0) {
+      const lastP = finalPoints[finalPoints.length - 1];
+      const dist = calculateDistanceBetween(lastP.latitude, lastP.longitude, latitude, longitude);
+      if (dist > 0.005) {
+        finalPoints.push({ latitude, longitude, timestamp: new Date().toISOString(), time: endTime });
+      }
+    }
+
+    // Calcular distancia total precisa
+    let calcDist = 0;
+    for (let i = 1; i < finalPoints.length; i++) {
+      calcDist += calculateDistanceBetween(finalPoints[i-1].latitude, finalPoints[i-1].longitude, finalPoints[i].latitude, finalPoints[i].longitude);
+    }
+    const totalDist = Number(calcDist > 0 ? calcDist.toFixed(2) : (Number(totalDistanceKm) || 0).toFixed(2));
+    const targetRouteId = currentRoute ? currentRoute.id : (routeId || 0);
+
+    const query = `
+      UPDATE gps_routes 
+      SET end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ?, status = 'completed'
+      WHERE id = ? OR (user_id = ? AND status = 'active')
+    `;
+
+    db.run(query, [endTime, latitude || null, longitude || null, totalDist, finalPoints.length, JSON.stringify(finalPoints), targetRouteId, userId], function (upErr) {
+      if (upErr) return res.status(500).json({ error: 'Error al finalizar ruta: ' + upErr.message });
+      savePersistentBackup();
+      io.emit('gps_route_finished', { routeId: targetRouteId, userId, endTime, distanceKm: totalDist, totalPoints: finalPoints.length });
+      io.emit('routes_updated');
+      res.json({ success: true, message: 'Ruta finalizada y guardada exitosamente en el registro', routeId: targetRouteId, totalDistanceKm: totalDist, totalPoints: finalPoints.length });
+    });
   });
+});
 });
 
 app.get('/api/gps/routes/active', authenticateToken, (req, res) => {
@@ -1490,6 +1562,11 @@ app.delete('/api/gps/routes/:id', authenticateToken, requireAdmin, (req, res) =>
   const routeId = req.params.id;
   db.run('DELETE FROM gps_routes WHERE id = ?', [routeId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al eliminar ruta' });
+    savePersistentBackup();
+    io.emit('routes_updated');
+    res.json({ success: true, message: 'Ruta eliminada del registro' });
+  });
+});
     res.json({ success: true, message: 'Ruta eliminada del registro' });
   });
 });

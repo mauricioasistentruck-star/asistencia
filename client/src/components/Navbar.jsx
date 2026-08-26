@@ -3,7 +3,8 @@ import {
   UserCheck, QrCode, MapPin, Users, FileSpreadsheet, LogOut, Sun, Moon, 
   Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key
 } from 'lucide-react';
-import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword } from '../api';
+import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio } from '../api';
+import { Geolocation } from '@capacitor/geolocation';
 import IphoneModal from './IphoneModal.jsx';
 import WalkieTalkieModal from './WalkieTalkieModal.jsx';
 
@@ -134,54 +135,172 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+    // Restaurar ruta activa desde localStorage o Servidor al iniciar
+  useEffect(() => {
+    try {
+      const savedActive = localStorage.getItem('asistencia_active_route');
+      if (savedActive) {
+        const parsed = JSON.parse(savedActive);
+        if (parsed && parsed.id) {
+          setActiveRoute({ id: parsed.id, start_lat: parsed.start_lat, start_lng: parsed.start_lng, name: parsed.name });
+          setRoutePoints(Array.isArray(parsed.points) ? parsed.points : []);
+          setRouteDistance(parsed.distance || 0);
+        }
+      }
+    } catch(e) {}
+
+    apiGetActiveGpsRoute().then(serverRoute => {
+      if (serverRoute && serverRoute.id) {
+        let pts = [];
+        try { pts = JSON.parse(serverRoute.points_json || '[]'); } catch(e) { pts = []; }
+        setActiveRoute({ id: serverRoute.id, start_lat: serverRoute.start_lat, start_lng: serverRoute.start_lng, name: serverRoute.name });
+        setRoutePoints(pts);
+        setRouteDistance(serverRoute.total_distance_km || 0);
+        localStorage.setItem('asistencia_active_route', JSON.stringify({
+          id: serverRoute.id,
+          name: serverRoute.name,
+          start_lat: serverRoute.start_lat,
+          start_lng: serverRoute.start_lng,
+          distance: serverRoute.total_distance_km || 0,
+          points: pts
+        }));
+      }
+    }).catch(() => {});
+  }, [user]);
+
+  const getCurrentCoords = async () => {
+    try {
+      await Geolocation.requestPermissions().catch(() => {});
+      const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      if (pos && pos.coords) {
+        return {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 10),
+          speed: pos.coords.speed || 0
+        };
+      }
+    } catch (e) {}
+
+    if ('geolocation' in navigator) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve({
+            latitude: p.coords.latitude,
+            longitude: p.coords.longitude,
+            accuracy: Math.round(p.coords.accuracy || 10),
+            speed: p.coords.speed || 0
+          }),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        );
+      });
+    }
+    throw new Error('Geolocalizacin no disponible en este dispositivo');
+  };
+
   const handleToggleRoute = async () => {
     if (routeLoading) return;
+    unlockIOSAudio();
 
     if (!activeRoute) {
-      if (!('geolocation' in navigator)) {
-        alert('Geolocalización no soportada');
-        return;
-      }
       setRouteLoading(true);
       setRouteSuccessMsg('');
 
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const speed = pos.coords.speed || 0;
-          const accuracy = pos.coords.accuracy || 10;
+      try {
+        const coords = await getCurrentCoords();
+        const lat = coords.latitude;
+        const lng = coords.longitude;
+        const routeName = `Ruta ${user?.name || 'Personal'} - ${getChileTodayString()} ${formatChileTime()}`;
 
-          try {
-            const res = await apiStartGpsRoute({
-              latitude: lat,
-              longitude: lng,
-              name: `Ruta Terreno Mauricio - ${new Date().toLocaleDateString('es-CL')} ${new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`
-            });
+        const res = await apiStartGpsRoute({
+          latitude: lat,
+          longitude: lng,
+          name: routeName
+        });
 
-            const initialPoint = { latitude: lat, longitude: lng, timestamp: new Date().toISOString(), speed, accuracy };
-            setActiveRoute({ id: res.routeId, start_lat: lat, start_lng: lng, name: res.routeName });
-            setRoutePoints([initialPoint]);
-            setRouteDistance(0);
-            setRouteSuccessMsg('🟢 Ruta en curso. GPS activo.');
-            setTimeout(() => setRouteSuccessMsg(''), 4000);
+        const initialPoint = { latitude: lat, longitude: lng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: coords.speed, accuracy: coords.accuracy };
+        const newActive = { id: res.routeId, start_lat: lat, start_lng: lng, name: res.routeName || routeName };
+        setActiveRoute(newActive);
+        setRoutePoints([initialPoint]);
+        setRouteDistance(0);
+        setRouteSuccessMsg('Ruta en curso. GPS activo grabando recorrido.');
+        setTimeout(() => setRouteSuccessMsg(''), 4500);
 
-            routeWatchRef.current = navigator.geolocation.watchPosition(
-              (newPos) => {
+        localStorage.setItem('asistencia_active_route', JSON.stringify({
+          ...newActive,
+          distance: 0,
+          points: [initialPoint]
+        }));
+
+        // Iniciar rastreo continuo nativo y web
+        try {
+          routeWatchRef.current = await Geolocation.watchPosition(
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 },
+            (newPos, err) => {
+              if (newPos && newPos.coords) {
                 const nLat = newPos.coords.latitude;
                 const nLng = newPos.coords.longitude;
                 const nSpeed = newPos.coords.speed || 0;
-                const nAcc = newPos.coords.accuracy || 10;
-                const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), speed: nSpeed, accuracy: nAcc };
+                const nAcc = Math.round(newPos.coords.accuracy || 10);
+                if (nAcc > 45) return; // Filtrar ruido
+
+                const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
 
                 setRoutePoints(prev => {
                   const lastPt = prev[prev.length - 1];
                   if (lastPt) {
                     const dist = calculateDistance(lastPt.latitude, lastPt.longitude, nLat, nLng);
-                    if (dist > 0.005) {
-                      setRouteDistance(d => Number((d + dist).toFixed(2)));
+                    if (dist >= 0.006) {
+                      const updatedDist = Number((routeDistance + dist).toFixed(2));
+                      setRouteDistance(updatedDist);
+                      const updatedPts = [...prev, pt];
+                      localStorage.setItem('asistencia_active_route', JSON.stringify({
+                        id: res.routeId,
+                        name: res.routeName || routeName,
+                        start_lat: lat,
+                        start_lng: lng,
+                        distance: updatedDist,
+                        points: updatedPts
+                      }));
                       apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
-                      return [...prev, pt];
+                      return updatedPts;
+                    }
+                  }
+                  return prev;
+                });
+              }
+            }
+          );
+        } catch(wErr) {
+          if ('geolocation' in navigator) {
+            routeWatchRef.current = navigator.geolocation.watchPosition(
+              (newPos) => {
+                const nLat = newPos.coords.latitude;
+                const nLng = newPos.coords.longitude;
+                const nSpeed = newPos.coords.speed || 0;
+                const nAcc = Math.round(newPos.coords.accuracy || 10);
+                if (nAcc > 45) return;
+                const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
+
+                setRoutePoints(prev => {
+                  const lastPt = prev[prev.length - 1];
+                  if (lastPt) {
+                    const dist = calculateDistance(lastPt.latitude, lastPt.longitude, nLat, nLng);
+                    if (dist >= 0.006) {
+                      const updatedDist = Number((routeDistance + dist).toFixed(2));
+                      setRouteDistance(updatedDist);
+                      const updatedPts = [...prev, pt];
+                      localStorage.setItem('asistencia_active_route', JSON.stringify({
+                        id: res.routeId,
+                        name: res.routeName || routeName,
+                        start_lat: lat,
+                        start_lng: lng,
+                        distance: updatedDist,
+                        points: updatedPts
+                      }));
+                      apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
+                      return updatedPts;
                     }
                   }
                   return prev;
@@ -190,73 +309,74 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
               () => {},
               { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
             );
-
-          } catch (err) {
-            alert('Error al iniciar ruta: ' + err.message);
-          } finally {
-            setRouteLoading(false);
           }
-        },
-        (err) => {
-          alert('Active el GPS y permita la ubicación.');
-          setRouteLoading(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+        }
+      } catch (err) {
+        alert('Active el GPS y conceda permisos de ubicacin para iniciar ruta: ' + err.message);
+      } finally {
+        setRouteLoading(false);
+      }
     } else {
       setRouteLoading(true);
 
-      if (routeWatchRef.current !== null && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(routeWatchRef.current);
+      if (routeWatchRef.current !== null) {
+        try {
+          if (typeof routeWatchRef.current === 'string') {
+            Geolocation.clearWatch({ id: routeWatchRef.current }).catch(() => {});
+          } else if ('geolocation' in navigator) {
+            navigator.geolocation.clearWatch(routeWatchRef.current);
+          }
+        } catch(e) {}
         routeWatchRef.current = null;
       }
 
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const finalPts = [...routePoints, { latitude: lat, longitude: lng, timestamp: new Date().toISOString() }];
+      let endCoords = null;
+      try {
+        endCoords = await getCurrentCoords();
+      } catch(e) {}
 
-          try {
-            await apiFinishGpsRoute({
-              routeId: activeRoute?.id,
-              latitude: lat,
-              longitude: lng,
-              totalDistanceKm: routeDistance,
-              points: finalPts
-            });
+      const lat = endCoords?.latitude || null;
+      const lng = endCoords?.longitude || null;
+      const finalPts = lat && lng 
+        ? [...routePoints, { latitude: lat, longitude: lng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: endCoords?.speed || 0, accuracy: endCoords?.accuracy || 10 }]
+        : routePoints;
 
-            setActiveRoute(null);
-            setRoutePoints([]);
-            setRouteDistance(0);
-            setRouteSuccessMsg('✅ ¡Ruta guardada exitosamente!');
-            setTimeout(() => setRouteSuccessMsg(''), 5000);
-          } catch (err) {
-            alert('Error al guardar ruta: ' + err.message);
-          } finally {
-            setRouteLoading(false);
-          }
-        },
-        async () => {
-          try {
-            await apiFinishGpsRoute({
-              routeId: activeRoute?.id,
-              totalDistanceKm: routeDistance,
-              points: routePoints
-            });
-            setActiveRoute(null);
-            setRoutePoints([]);
-            setRouteDistance(0);
-            setRouteSuccessMsg('✅ ¡Ruta guardada exitosamente!');
-            setTimeout(() => setRouteSuccessMsg(''), 5000);
-          } catch (err) {
-            alert('Error al guardar ruta: ' + err.message);
-          } finally {
-            setRouteLoading(false);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+      try {
+        const finishRes = await apiFinishGpsRoute({
+          routeId: activeRoute?.id,
+          latitude: lat,
+          longitude: lng,
+          totalDistanceKm: routeDistance,
+          points: finalPts
+        });
+
+        mergeRoutesToVault([{
+          id: activeRoute?.id,
+          user_id: user?.id,
+          user_name: user?.name,
+          name: activeRoute?.name,
+          date: getChileTodayString(),
+          start_lat: activeRoute?.start_lat,
+          start_lng: activeRoute?.start_lng,
+          end_lat: lat,
+          end_lng: lng,
+          total_distance_km: finishRes?.totalDistanceKm || routeDistance,
+          total_points: finalPts.length,
+          points_json: JSON.stringify(finalPts),
+          status: 'completed'
+        }]);
+
+        localStorage.removeItem('asistencia_active_route');
+        setActiveRoute(null);
+        setRoutePoints([]);
+        setRouteDistance(0);
+        setRouteSuccessMsg('Ruta guardada exitosamente en el registro central!');
+        setTimeout(() => setRouteSuccessMsg(''), 5000);
+      } catch (err) {
+        alert('Error al guardar ruta: ' + err.message);
+      } finally {
+        setRouteLoading(false);
+      }
     }
   };
 

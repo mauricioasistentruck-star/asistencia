@@ -276,6 +276,34 @@ export const isUserValid = (u) => {
   return name.length > 0 || username.length > 0;
 };
 
+export const isSafariOrIOS = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  return isIOS || isSafari;
+};
+
+let audioUnlocked = false;
+export const unlockIOSAudio = () => {
+  if (audioUnlocked || typeof window === 'undefined') return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      audioUnlocked = true;
+    }
+  } catch (e) {}
+};
+
 export const getMasterVault = () => {
   try {
     const raw = localStorage.getItem('asistencia_master_vault');
@@ -286,13 +314,13 @@ export const getMasterVault = () => {
         return {
           users: rawUsers.filter(isUserValid),
           attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
-          voice_messages: Array.isArray(parsed.voice_messages) ? parsed.voice_messages : []
+          voice_messages: Array.isArray(parsed.voice_messages) ? parsed.voice_messages : [],
+          gps_routes: Array.isArray(parsed.gps_routes) ? parsed.gps_routes : []
         };
       }
     }
   } catch (e) {}
 
-  // Fallback migración desde cachés anteriores
   let users = [];
   try {
     const uCache = localStorage.getItem('asistencia_users_cache');
@@ -308,7 +336,7 @@ export const getMasterVault = () => {
     if (vCache) voice_messages = JSON.parse(vCache) || [];
   } catch (e) {}
 
-  return { users, attendance: [], voice_messages };
+  return { users, attendance: [], voice_messages, gps_routes: [] };
 };
 
 export const saveMasterVault = (vault) => {
@@ -317,7 +345,8 @@ export const saveMasterVault = (vault) => {
     const safeVault = {
       users: rawUsers.filter(isUserValid),
       attendance: Array.isArray(vault?.attendance) ? vault.attendance.slice(0, 500) : [],
-      voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : []
+      voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : [],
+      gps_routes: Array.isArray(vault?.gps_routes) ? vault.gps_routes.slice(0, 200) : []
     };
     localStorage.setItem('asistencia_master_vault', JSON.stringify(safeVault));
     if (safeVault.users.length > 0) {
@@ -381,7 +410,27 @@ export const mergeAttendanceToVault = (incomingRecords) => {
   return vault.attendance;
 };
 
-// Sincronización Automática con el Servidor (Auto-Restauración de Render)
+export const mergeRoutesToVault = (incomingRoutes) => {
+  if (!Array.isArray(incomingRoutes) || incomingRoutes.length === 0) return getMasterVault().gps_routes;
+  const vault = getMasterVault();
+  const currentMap = new Map();
+  vault.gps_routes.forEach(r => currentMap.set(String(r.id || r.name || r.start_time), r));
+
+  incomingRoutes.forEach(r => {
+    const key = String(r.id || r.name || r.start_time);
+    if (currentMap.has(key)) {
+      currentMap.set(key, { ...currentMap.get(key), ...r });
+    } else {
+      currentMap.set(key, r);
+    }
+  });
+
+  vault.gps_routes = Array.from(currentMap.values());
+  saveMasterVault(vault);
+  return vault.gps_routes;
+};
+
+// Sincronizacin Automtica Bidireccional con el Servidor (Auto-Restauracin de Render)
 let isSyncingVault = false;
 export const autoRestoreAndSyncWithServer = async () => {
   if (isSyncingVault) return getMasterVault().users;
@@ -391,10 +440,10 @@ export const autoRestoreAndSyncWithServer = async () => {
     const vault = getMasterVault();
     const serverUsers = await apiGetUsers().catch(() => null);
 
-    // Caso 1: El servidor en Render reinició de cero y solo tiene a Mauricio (o 0 usuarios),
-    // pero la Bóveda Maestra local tiene a los trabajadores registrados.
-    if (Array.isArray(serverUsers) && serverUsers.length <= 1 && vault.users.length > 1) {
-      console.log('Detectado reinicio en Render. Auto-restaurando Bóveda Maestra al servidor...');
+    // Si el servidor en Render reinici de cero o tiene menos usuarios/datos que la bveda local
+    const needsRestore = (!Array.isArray(serverUsers) || serverUsers.length <= 1) && (vault.users.length > 1 || vault.attendance.length > 0 || vault.gps_routes.length > 0);
+    if (needsRestore) {
+      console.log('Detectado reinicio en Render. Auto-restaurando Bveda Maestra al servidor...');
       try {
         await apiSyncVault(vault);
         const refreshedUsers = await apiGetUsers().catch(() => null);
@@ -407,14 +456,21 @@ export const autoRestoreAndSyncWithServer = async () => {
       }
     }
 
-    // Caso 2: El servidor respondió normalmente con la lista de usuarios
     if (Array.isArray(serverUsers) && serverUsers.length > 0) {
       const merged = mergeUsersToVault(serverUsers);
+      
+      // Sincronizar rutas tambin
+      try {
+        const serverRoutes = await apiGetGpsRoutes().catch(() => null);
+        if (Array.isArray(serverRoutes) && serverRoutes.length > 0) {
+          mergeRoutesToVault(serverRoutes);
+        }
+      } catch (e) {}
+
       isSyncingVault = false;
       return merged;
     }
 
-    // Caso 3: Sin conexión o error, retornar bóveda local
     isSyncingVault = false;
     return vault.users;
   } catch (err) {

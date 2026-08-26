@@ -6,6 +6,8 @@ import AdminAttendanceView from './components/AdminAttendanceView.jsx';
 import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
+import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
+import { unlockIOSAudio } from './api';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive } from './api';
 import { Geolocation } from '@capacitor/geolocation';
 import { Volume2, Radio, LogOut } from 'lucide-react';
@@ -637,6 +639,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         </div>
       )}
 
+      <IphonePermissionsModal theme={theme} />
     </div>
   );
 }

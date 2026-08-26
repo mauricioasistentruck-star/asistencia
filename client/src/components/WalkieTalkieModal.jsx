@@ -4,7 +4,7 @@ import {
   AlertTriangle, Headphones, Bluetooth, Sparkles, Lock, Unlock, RefreshCw, 
   Play, Pause, RotateCcw, MessageSquare, Search, Trash2, Check, ArrowLeft, Send
 } from 'lucide-react';
-import { apiGetUsers, apiGetAudioStatus, apiGetVoiceMessages, apiDeleteVoiceMessage, getFullPhotoUrl, getSocket } from '../api';
+import { apiGetUsers, apiGetAudioStatus, apiGetVoiceMessages, apiDeleteVoiceMessage, getFullPhotoUrl, getSocket, unlockIOSAudio } from '../api';
 
 // Generador de Beep tipo Radio Motorola / Walkie-Talkie
 function playRadioBeep(frequency = 880, duration = 0.08) {
@@ -404,6 +404,7 @@ export default function WalkieTalkieModal({ isOpen, onClose, currentUser, theme,
 
   // Alternar hablar/enviar con 1 clic directo protegido con debounce anti-rebote
   const toggleTalking = () => {
+    unlockIOSAudio();
     const now = Date.now();
     if (now - lastToggleTimeRef.current < 500) {
       return;
