@@ -3,7 +3,7 @@ import {
   UserCheck, QrCode, MapPin, Users, FileSpreadsheet, LogOut, Sun, Moon, 
   Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key
 } from 'lucide-react';
-import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio } from '../api';
+import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio, isGpsScheduleAllowed } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
 import IphoneModal from './IphoneModal.jsx';
 import WalkieTalkieModal from './WalkieTalkieModal.jsx';
@@ -204,6 +204,11 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
     unlockIOSAudio();
 
     if (!activeRoute) {
+      const gpsCheck = isGpsScheduleAllowed(user);
+      if (!gpsCheck.allowed) {
+        alert(gpsCheck.reason);
+        return;
+      }
       setRouteLoading(true);
       setRouteSuccessMsg('');
 

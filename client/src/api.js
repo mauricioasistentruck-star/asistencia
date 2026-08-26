@@ -2,6 +2,39 @@ import { io } from 'socket.io-client';
 
 export const DEFAULT_CLOUD_API = 'https://asistenciasistentruck.onrender.com';
 
+
+export const isGpsScheduleAllowed = (user) => {
+  if (user && (user.is_superadmin === 1 || user.is_superadmin === true || (user.name && user.name.toLowerCase().includes('mauricio')) || (user.username && user.username.toLowerCase().includes('mauricio')))) {
+    return { allowed: true, isSuperAdmin: true, reason: 'SuperAdmin tiene libre disposicin 24/7' };
+  }
+
+  try {
+    const now = new Date();
+    const dayOfWeek = now.toLocaleDateString('en-US', { timeZone: 'America/Santiago', weekday: 'short' });
+    const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const currentMinutes = hour * 60 + minute;
+
+    if (['Mon', 'Tue', 'Wed', 'Thu'].includes(dayOfWeek)) {
+      if (currentMinutes >= 8 * 60 && currentMinutes <= 19 * 60) {
+        return { allowed: true, isSuperAdmin: false, schedule: 'Lunes a Jueves: 08:00 - 19:00 hrs' };
+      }
+      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse de Lunes a Jueves de 08:00 a 19:00 hrs (Fuera de horario, solo SuperAdmin).' };
+    }
+
+    if (dayOfWeek === 'Fri') {
+      if (currentMinutes >= 8 * 60 && currentMinutes <= 18 * 60) {
+        return { allowed: true, isSuperAdmin: false, schedule: 'Viernes: 08:00 - 18:00 hrs' };
+      }
+      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse los Viernes de 08:00 a 18:00 hrs (Fuera de horario, solo SuperAdmin).' };
+    }
+
+    return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS no est activo los fines de semana (Horario permitido: Lun-Jue 08:00-19:00, Vie 08:00-18:00).' };
+  } catch (e) {
+    return { allowed: true, isSuperAdmin: false };
+  }
+};
+
 export const isGpsActive = (val) => val === 1 || val === true || val === '1' || val === 'true';
 
 export const CHILE_TIMEZONE = 'America/Santiago';

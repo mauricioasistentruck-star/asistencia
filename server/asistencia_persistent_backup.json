@@ -5,7 +5,7 @@
       "rut": "12.345.678-9",
       "name": "Mauricio",
       "email": "mauricio@asistentruck.cl",
-      "password_hash": "$2b$10$G2uN2i.9WTE8PvEubkqgiObDqTm1nUoIn3mSAh5HzDEYGM8KgtQPa",
+      "password_hash": "$2b$10$c3z5X1ymIjUOR7cYkXfOFO4lw0UmSinBrQDM62ReUd3rbAFMC8xNm",
       "role": "superadmin",
       "is_superadmin": 1,
       "photo_url": null,
@@ -20,14 +20,29 @@
       "rut": null,
       "name": "Bastian Soto",
       "email": "bastian.asistentruck@gmail.com",
-      "password_hash": "$2b$10$G2uN2i.9WTE8PvEubkqgiObDqTm1nUoIn3mSAh5HzDEYGM8KgtQPa",
+      "password_hash": "$2b$10$zfXemjS8vRkA4o4Wldxg7.IBHDx30Pbbup0CAUyQYQ5tsIizDoqnm",
       "role": "worker",
       "is_superadmin": 0,
       "photo_url": null,
       "qr_token": "QR_BASTIAN_SOTO_S2NYCV_1787340614145",
-      "gps_tracking_enabled": 0,
+      "gps_tracking_enabled": 1,
       "created_at": "2026-08-21 19:30:14",
       "username": "bastiansoto",
+      "plain_password": "123"
+    },
+    {
+      "id": 9,
+      "rut": null,
+      "name": "Nicolas Chamorro",
+      "email": "nicolas.asistentruck@gmail.com",
+      "password_hash": "$2b$10$zfXemjS8vRkA4o4Wldxg7.IBHDx30Pbbup0CAUyQYQ5tsIizDoqnm",
+      "role": "worker",
+      "is_superadmin": 0,
+      "photo_url": null,
+      "qr_token": "QR_NICOLAS_CHAMORRO_041118",
+      "gps_tracking_enabled": 1,
+      "created_at": "2026-08-26 23:00:35",
+      "username": "nicolaschamorro",
       "plain_password": "123"
     },
     {
@@ -35,7 +50,7 @@
       "rut": null,
       "name": "Boris Aguirre",
       "email": "baguirre.asistentruck@gmail.com",
-      "password_hash": "$2b$10$G2uN2i.9WTE8PvEubkqgiObDqTm1nUoIn3mSAh5HzDEYGM8KgtQPa",
+      "password_hash": "$2b$10$zfXemjS8vRkA4o4Wldxg7.IBHDx30Pbbup0CAUyQYQ5tsIizDoqnm",
       "role": "admin",
       "is_superadmin": 0,
       "photo_url": null,
@@ -43,6 +58,21 @@
       "gps_tracking_enabled": 0,
       "created_at": "2026-08-21 19:31:51",
       "username": "borisaguirre",
+      "plain_password": "123"
+    },
+    {
+      "id": 11,
+      "rut": null,
+      "name": "Juan Poblete",
+      "email": "juan.poblete.asistentruck@gmail.com",
+      "password_hash": "$2b$10$zfXemjS8vRkA4o4Wldxg7.IBHDx30Pbbup0CAUyQYQ5tsIizDoqnm",
+      "role": "worker",
+      "is_superadmin": 0,
+      "photo_url": null,
+      "qr_token": "QR_JUAN_POBLETE_041118",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-26 23:00:35",
+      "username": "juanpoblete",
       "plain_password": "123"
     }
   ],
@@ -61,5 +91,8 @@
       "created_at": "2026-08-21 13:34:19",
       "updated_at": "2026-08-21 13:34:19"
     }
-  ]
+  ],
+  "voice_messages": [],
+  "gps_routes": [],
+  "saved_at": "2026-08-26T23:00:36.518Z"
 }

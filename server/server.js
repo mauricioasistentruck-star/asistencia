@@ -365,6 +365,12 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
   }
 
   const gpsVal = (enabled === true || enabled === 1 || enabled === '1' || enabled === 'true') ? 1 : 0;
+  if (gpsVal === 1) {
+    const gpsCheck = isGpsScheduleAllowed(req.user);
+    if (!gpsCheck.allowed) {
+      return res.status(403).json({ error: gpsCheck.reason });
+    }
+  }
   db.run('UPDATE users SET gps_tracking_enabled = ? WHERE id = ?', [gpsVal, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar estado GPS' });
     io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
@@ -399,6 +405,12 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
       : targetUser.gps_tracking_enabled;
+    if (assignedGps === 1 && targetUser.gps_tracking_enabled !== 1) {
+      const gpsCheck = isGpsScheduleAllowed(req.user);
+      if (!gpsCheck.allowed) {
+        return res.status(403).json({ error: gpsCheck.reason });
+      }
+    }
     const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || (targetUser.name ? targetUser.name.toLowerCase().replace(/\s+/g, '') : `user${targetId}`));
     const finalRut = (rut && rut.trim() !== '') ? rut.trim() : null;
     const finalEmail = (email && email.trim() !== '') ? email.trim().toLowerCase() : targetUser.email;
@@ -1433,6 +1445,11 @@ app.post('/api/gps/routes/start', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Coordenadas de inicio requeridas' });
   }
 
+  const gpsCheck = isGpsScheduleAllowed(req.user);
+  if (!gpsCheck.allowed) {
+    return res.status(403).json({ error: gpsCheck.reason });
+  }
+
   db.get('SELECT id, name FROM users WHERE id = ?', [userId], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
@@ -1574,6 +1591,39 @@ app.delete('/api/gps/routes/:id', authenticateToken, requireAdmin, (req, res) =>
 });
 
 // COMUNICACIÓN DE AUDIO / WALKIE-TALKIE EN TIEMPO REAL
+
+function isGpsScheduleAllowed(user) {
+  if (user && (user.is_superadmin === 1 || (user.name && user.name.toLowerCase().includes('mauricio')) || (user.username && user.username.toLowerCase().includes('mauricio')))) {
+    return { allowed: true, isSuperAdmin: true, reason: 'SuperAdmin tiene libre disposicin 24/7' };
+  }
+
+  try {
+    const now = new Date();
+    const dayOfWeek = now.toLocaleDateString('en-US', { timeZone: 'America/Santiago', weekday: 'short' });
+    const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const currentMinutes = hour * 60 + minute;
+
+    if (['Mon', 'Tue', 'Wed', 'Thu'].includes(dayOfWeek)) {
+      if (currentMinutes >= 8 * 60 && currentMinutes <= 19 * 60) {
+        return { allowed: true, isSuperAdmin: false, schedule: 'Lunes a Jueves: 08:00 - 19:00 hrs' };
+      }
+      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse de Lunes a Jueves de 08:00 a 19:00 hrs (Fuera de horario, solo SuperAdmin).' };
+    }
+
+    if (dayOfWeek === 'Fri') {
+      if (currentMinutes >= 8 * 60 && currentMinutes <= 18 * 60) {
+        return { allowed: true, isSuperAdmin: false, schedule: 'Viernes: 08:00 - 18:00 hrs' };
+      }
+      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse los Viernes de 08:00 a 18:00 hrs (Fuera de horario, solo SuperAdmin).' };
+    }
+
+    return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS no est activo los fines de semana (Horario permitido: Lun-Jue 08:00-19:00, Vie 08:00-18:00).' };
+  } catch (e) {
+    return { allowed: true, isSuperAdmin: false };
+  }
+}
+
 function isAudioScheduleAllowed(user) {
   // Super Admin Mauricio tiene libre disposición 24/7
   if (user && (user.is_superadmin === 1 || (user.name && user.name.toLowerCase().includes('mauricio')))) {
@@ -1610,6 +1660,11 @@ function isAudioScheduleAllowed(user) {
     return { allowed: true, isMauricio: false };
   }
 }
+
+
+app.get('/api/gps/schedule-status', authenticateToken, (req, res) => {
+  res.json(isGpsScheduleAllowed(req.user));
+});
 
 app.get('/api/audio/status', authenticateToken, (req, res) => {
   const status = isAudioScheduleAllowed(req.user);

@@ -355,8 +355,12 @@ export default function AdminGpsView({ theme }) {
           </h2>
           <p className="text-xs text-orange-500 font-semibold flex items-center gap-1.5 mt-0.5">
             <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            Monitoreo en tiempo real y registro histórico de rutas guardadas
+            Monitoreo en tiempo real y registro histrico de rutas guardadas
           </p>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/30 text-[11px] font-bold text-orange-400">
+            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Horario GPS: Lun-Jue 08:00 - 19:00 hrs | Vie 08:00 - 18:00 hrs (SuperAdmin 24/7)</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
