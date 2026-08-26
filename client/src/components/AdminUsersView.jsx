@@ -146,7 +146,13 @@ export default function AdminUsersView({ currentUser, theme }) {
     socket.on('connect', fetchUsers);
     socket.on('user_created', handleUserUpdate);
     socket.on('user_updated', handleUserUpdate);
-    socket.on('user_deleted', handleUserUpdate);
+    socket.on('user_deleted', (payload) => {
+      if (payload && payload.id) {
+        removeUserFromVault(payload.id);
+        setUsers(prev => prev.filter(u => u.id !== payload.id));
+      }
+      fetchUsers();
+    });
     socket.on('user_gps_toggled', handleUserUpdate);
     socket.on('attendance_updated', handleUserUpdate);
 

@@ -357,6 +357,14 @@ export const saveMasterVault = (vault) => {
   }
 };
 
+export const setVaultUsers = (serverUsers) => {
+  if (!Array.isArray(serverUsers)) return getMasterVault().users;
+  const vault = getMasterVault();
+  vault.users = serverUsers.filter(isUserValid);
+  saveMasterVault(vault);
+  return vault.users;
+};
+
 export const mergeUsersToVault = (incomingUsers) => {
   if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) return getMasterVault().users;
   const vault = getMasterVault();

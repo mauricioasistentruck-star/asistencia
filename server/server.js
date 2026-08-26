@@ -442,12 +442,20 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     if (isMauricio) {
       return res.status(403).json({ error: 'ACCESO DENEGADO: El usuario Mauricio es el Administrador Principal y no puede ser eliminado.' });
     }
-    db.run('DELETE FROM users WHERE id = ?', [targetId], (delErr) => {
-      if (delErr) return res.status(500).json({ error: 'Error al eliminar usuario' });
-      io.emit('user_deleted', { id: targetId });
-      savePersistentBackup();
-      res.json({ message: 'Usuario eliminado exitosamente' });
+
+    db.serialize(() => {
+      db.run('DELETE FROM attendance WHERE user_id = ?', [targetId]);
+      db.run('DELETE FROM gps_logs WHERE user_id = ?', [targetId]);
+      db.run('DELETE FROM gps_routes WHERE user_id = ?', [targetId]);
+      db.run('DELETE FROM users WHERE id = ?', [targetId], (delErr) => {
+        if (delErr) return res.status(500).json({ error: 'Error al eliminar usuario de la base de datos' });
+        io.emit('user_deleted', { id: targetId });
+        savePersistentBackup();
+        res.json({ success: true, message: 'Usuario y sus registros eliminados correctamente' });
+      });
     });
+  });
+});
   });
 });
 
