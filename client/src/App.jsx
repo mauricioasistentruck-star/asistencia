@@ -608,7 +608,10 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onLogout={handleLogout}
-        onEnterKiosk={() => setKioskMode(true)}
+        onEnterKiosk={() => {
+          if (isAdminWithoutCredential) return;
+          setKioskMode(true);
+        }}
         theme={theme}
         toggleTheme={toggleTheme}
         onOpenHistory={() => setShowHistoryModal(true)}

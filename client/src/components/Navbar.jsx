@@ -387,12 +387,24 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
     }
   };
 
-  const isSuperAdminUser = user?.is_superadmin === 1 || user?.role === 'superadmin' || isMauricio;
-  const userHasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0' && user?.has_credential !== 'false' && user?.has_credential !== null && user?.has_credential !== undefined;
-  const isAdminWithoutCredential = user?.role === 'admin' && !userHasCredential && !isSuperAdminUser;
+  const isSuperAdminUser = Boolean(
+    user?.is_superadmin === 1 || 
+    user?.role === 'superadmin' || 
+    (user?.username && user.username.toLowerCase().includes('mauricio')) ||
+    (user?.name && user.name.toLowerCase().includes('mauricio'))
+  );
+
+  const hasCredential = (
+    user?.has_credential === 1 ||
+    user?.has_credential === true ||
+    user?.has_credential === '1' ||
+    user?.has_credential === 'true'
+  );
+
+  const isAdminWithoutCredential = (user?.role === 'admin' || user?.role === 'reports') && !hasCredential && !isSuperAdminUser;
 
   const navItems = [];
-  if (userHasCredential || (!isAdmin && !isAdminWithoutCredential)) {
+  if (hasCredential || (!isAdmin && !isAdminWithoutCredential)) {
     navItems.push({ id: 'credential', label: 'Mi Credencial', desc: 'Código QR personal para marcar asistencia', icon: QrCode, color: 'text-orange-500', bg: 'bg-orange-500/15' });
   }
   if (isAdmin) {
