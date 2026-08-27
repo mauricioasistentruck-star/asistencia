@@ -9,6 +9,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
-        generateValue: true
+        value: asistentruck_botam_spa_production_jwt_master_secret_key_2026
       - key: PORT
         value: 10000

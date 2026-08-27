@@ -168,6 +168,13 @@ export async function apiRequest(endpoint, options = {}) {
     const res = await fetch(baseUrl + endpoint, { ...options, headers });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 401 || (res.status === 403 && data.error && (data.error.includes('Token') || data.error.includes('expirado') || data.error.includes('autorizado')))) {
+        if (typeof window !== 'undefined') {
+          console.warn('Sesion expirada o invalida, renovando credenciales...');
+          localStorage.removeItem('asistencia_token');
+          window.dispatchEvent(new CustomEvent('auth_expired'));
+        }
+      }
       throw new Error(data.error || ('Error ' + res.status + ': ' + res.statusText));
     }
     return data;

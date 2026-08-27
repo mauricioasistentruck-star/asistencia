@@ -10,7 +10,7 @@ const { Server } = require('socket.io');
 const XLSX = require('xlsx');
 const db = require('./database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'asistencia_secret_key_2026_super_secure';
+const JWT_SECRET = process.env.JWT_SECRET || 'asistentruck_botam_spa_production_jwt_master_secret_key_2026';
 const PORT = process.env.PORT || 3001;
 
 const app = express();
@@ -282,6 +282,7 @@ app.post('/api/auth/change-my-password', authenticateToken, (req, res) => {
     [hash, cleanPass, userId],
     (err) => {
       if (err) return res.status(500).json({ error: 'Error al cambiar contraseña: ' + err.message });
+      savePersistentBackup();
       io.emit('user_updated', { id: userId });
       res.json({ success: true, message: 'Contraseña actualizada correctamente' });
     }
@@ -1169,6 +1170,7 @@ const handleAdminAttendanceEdit = (req, res) => {
         ]);
 
         db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (fErr, updatedRec) => {
+          savePersistentBackup();
           io.emit('attendance_updated', updatedRec);
           res.json({ message: 'Horario modificado y registrado en auditoría', record: updatedRec });
         });

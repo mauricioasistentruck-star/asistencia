@@ -66,9 +66,14 @@ export default function App() {
     }
   }, [theme]);
 
-  useEffect(() => {
-    // Sincronización inmediata con Render para auto-restaurar trabajadores si el servidor reinició
+    useEffect(() => {
     autoRestoreAndSyncWithServer().catch(() => {});
+
+    const handleAuthExpired = () => {
+      localStorage.removeItem('asistencia_token');
+      setUser(null);
+    };
+    window.addEventListener('auth_expired', handleAuthExpired);
 
     const token = localStorage.getItem('asistencia_token');
     if (token) {
@@ -84,6 +89,10 @@ export default function App() {
     } else {
       setLoading(false);
     }
+
+    return () => {
+      window.removeEventListener('auth_expired', handleAuthExpired);
+    };
   }, []);
 
   const isMauricio = user && (
