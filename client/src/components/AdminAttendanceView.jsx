@@ -362,7 +362,7 @@ export default function AdminAttendanceView({ user, theme }) {
               )}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              <span>Resumen por Trabajador</span>
+              <span>Resumen</span>
             </button>
             <button
               type="button"
@@ -473,21 +473,23 @@ export default function AdminAttendanceView({ user, theme }) {
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Filtrar por Trabajador:</label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-            >
-              <option value="">Todos los Trabajadores</option>
-              {usersList.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role === 'admin' ? 'Admin' : 'Trabajador'})
-                </option>
-              ))}
-            </select>
-          </div>
+          {activeSubTab === 'details' && (
+            <div>
+              <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Filtrar por Trabajador:</label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+              >
+                <option value="">Todos los Trabajadores</option>
+                {usersList.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.role === 'admin' ? 'Admin' : 'Trabajador'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

@@ -4,23 +4,20 @@ import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
 import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
-  const [metallicPos, setMetallicPos] = useState({ x: 50, y: 50, angle: 125 });
+  const [metallicX, setMetallicX] = useState(50);
 
   useEffect(() => {
     const handleOrientation = (e) => {
-      if (e.gamma !== null && e.beta !== null) {
-        const x = Math.min(100, Math.max(0, 50 + (e.gamma * 1.5)));
-        const y = Math.min(100, Math.max(0, 50 + (e.beta * 0.9)));
-        const angle = Math.round(110 + (e.gamma * 0.6));
-        setMetallicPos({ x, y, angle });
+      if (e.gamma !== null) {
+        // Inclinación lateral [-90, 90] hacia los lados
+        const x = Math.min(100, Math.max(0, 50 + (e.gamma * 2.2)));
+        setMetallicX(x);
       }
     };
 
     const handleMouseMove = (e) => {
       const x = Math.round((e.clientX / window.innerWidth) * 100);
-      const y = Math.round((e.clientY / window.innerHeight) * 100);
-      const angle = Math.round(95 + ((e.clientX / window.innerWidth) * 60));
-      setMetallicPos({ x, y, angle });
+      setMetallicX(x);
     };
 
     window.addEventListener('deviceorientation', handleOrientation);
@@ -217,15 +214,15 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
         
-        {/* Capa de Brillo Metálico Holográfico Dinámico con Giroscopio aplicado ÚNICAMENTE a las rayas */}
+        {/* Capa de Brillo Metálico Holográfico Lateral Naranja Opaco hacia los lados */}
         <div 
-          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-opacity duration-300 opacity-80"
+          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-150"
           style={{
-            background: `linear-gradient(${metallicPos.angle}deg, transparent 20%, rgba(255, 225, 140, 0.22) 42%, rgba(255, 255, 255, 0.45) 50%, rgba(255, 185, 80, 0.28) 58%, transparent 80%)`,
-            backgroundPosition: `${metallicPos.x}% ${metallicPos.y}%`,
+            background: `linear-gradient(90deg, transparent ${metallicX - 35}%, rgba(234, 88, 12, 0.5) ${metallicX - 18}%, rgba(255, 185, 65, 0.9) ${metallicX}%, rgba(249, 115, 22, 0.6) ${metallicX + 18}%, transparent ${metallicX + 35}%)`,
             WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
-            mixBlendMode: 'screen'
+            mixBlendMode: 'screen',
+            opacity: 0.95
           }}
         />
 
