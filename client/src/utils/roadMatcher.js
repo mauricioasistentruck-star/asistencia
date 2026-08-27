@@ -107,25 +107,30 @@ export async function matchPointsToRealRoads(points) {
     
     // Primero intentar con OSRM Route (garantiza conexin por carreteras reales entre puntos distantes)
     let snappedChunk = null;
-    const routeUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false&continue_straight=true`;
+    // Probar servidores de OSRM en cascada para garantizar trazado exacto sobre calles reales
+    const osrmServers = [
+      `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false&continue_straight=true`,
+      `https://routing.openstreetmap.de/routed-car/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false&continue_straight=true`
+    ];
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(routeUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
+    for (let sUrl of osrmServers) {
+      if (snappedChunk) break;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(sUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
-          const geom = data.routes[0].geometry;
-          if (Array.isArray(geom.coordinates)) {
-            snappedChunk = geom.coordinates.map(c => [c[1], c[0]]);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry) {
+            const geom = data.routes[0].geometry;
+            if (Array.isArray(geom.coordinates)) {
+              snappedChunk = geom.coordinates.map(c => [c[1], c[0]]);
+            }
           }
         }
-      }
-    } catch (err) {
-      // Fallback a OSRM Match si Route no respondi a tiempo
+      } catch (err) {}
     }
 
     if (!snappedChunk) {

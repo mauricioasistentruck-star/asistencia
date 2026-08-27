@@ -155,11 +155,17 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
     socket.on('attendance_updated', handleAttendanceUpdate);
     socket.on('scan_registered', handleAttendanceUpdate);
     socket.on('attendance_marked', handleAttendanceUpdate);
+    socket.on('user_updated', (updated) => {
+      if (updated && (updated.id === user?.id || String(updated.id) === String(user?.id))) {
+        fetchHistory();
+      }
+    });
 
     return () => {
       socket.off('attendance_updated', handleAttendanceUpdate);
       socket.off('scan_registered', handleAttendanceUpdate);
       socket.off('attendance_marked', handleAttendanceUpdate);
+      socket.off('user_updated');
     };
   }, [user, historyRange]);
 

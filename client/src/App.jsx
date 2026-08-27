@@ -75,6 +75,23 @@ export default function App() {
     };
     window.addEventListener('auth_expired', handleAuthExpired);
 
+    // Sincronizacin en tiempo real para actualizar credencial y datos de usuario sin desloguearse
+    const socket = getSocket();
+    const handleLiveUserUpdate = (updatedUser) => {
+      if (updatedUser) {
+        setUser(prev => {
+          if (!prev) return prev;
+          if (prev.id === updatedUser.id || String(prev.id) === String(updatedUser.id)) {
+            const merged = { ...prev, ...updatedUser };
+            localStorage.setItem('asistencia_user', JSON.stringify(merged));
+            return merged;
+          }
+          return prev;
+        });
+      }
+    };
+    socket.on('user_updated', handleLiveUserUpdate);
+
     const token = localStorage.getItem('asistencia_token');
     if (token) {
       apiGetMe()
@@ -92,6 +109,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('auth_expired', handleAuthExpired);
+      socket.off('user_updated', handleLiveUserUpdate);
     };
   }, []);
 

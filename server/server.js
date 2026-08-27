@@ -1110,15 +1110,23 @@ app.get('/api/attendance/user/:userId/history', authenticateToken, (req, res) =>
   let query = 'SELECT * FROM attendance WHERE user_id = ?';
   const params = [targetUserId];
 
+  const now = new Date();
+  const getChileOffsetDate = (daysAgo) => {
+    const d = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
+  };
+
   if (range === 'day') {
     query += ' AND date = ? ORDER BY id DESC LIMIT 1';
     params.push(getLocalDateString());
   } else if (range === 'week') {
-    query += ' AND date >= date("now", "-7 days") ORDER BY date DESC';
+    query += ' AND date >= ? ORDER BY date DESC';
+    params.push(getChileOffsetDate(7));
   } else if (range === 'month') {
-    query += ' AND date >= date("now", "-30 days") ORDER BY date DESC';
+    query += ' AND date >= ? ORDER BY date DESC';
+    params.push(getChileOffsetDate(31));
   } else {
-    query += ' ORDER BY date DESC LIMIT 60';
+    query += ' ORDER BY date DESC LIMIT 90';
   }
 
   db.all(query, params, (err, rows) => {
