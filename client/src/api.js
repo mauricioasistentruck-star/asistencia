@@ -623,6 +623,7 @@ export const mergeAttendanceToVault = (incomingRecords) => {
 };
 
 // Sincronizacin Automtica Bidireccional con el Servidor (Auto-Restauracin de Render)
+// Sincronización Automática Bidireccional Inteligente con Render
 let isSyncingVault = false;
 export const autoRestoreAndSyncWithServer = async () => {
   if (isSyncingVault) return getMasterVault().users;
@@ -632,10 +633,36 @@ export const autoRestoreAndSyncWithServer = async () => {
     const vault = getMasterVault();
     const serverUsers = await apiGetUsers().catch(() => null);
 
-    // Si el servidor en Render reinici de cero o tiene menos usuarios/datos que la bveda local
-    const needsRestore = (!Array.isArray(serverUsers) || serverUsers.length <= 1) && (vault.users.length > 1 || vault.attendance.length > 0 || vault.gps_routes.length > 0);
-    if (needsRestore) {
-      console.log('Detectado reinicio en Render. Auto-restaurando Bveda Maestra al servidor...');
+    let needsSync = false;
+    if (!Array.isArray(serverUsers) || serverUsers.length === 0) {
+      if ((vault.users || []).length > 0 || (vault.attendance || []).length > 0) needsSync = true;
+    } else {
+      for (const vu of (vault.users || [])) {
+        const su = serverUsers.find(s => s.id === vu.id || (s.username && vu.username && s.username.toLowerCase() === vu.username.toLowerCase()));
+        if (!su) {
+          needsSync = true;
+          break;
+        }
+        if (vu.plain_password && vu.plain_password !== su.plain_password) {
+          needsSync = true;
+          break;
+        }
+        if (vu.photo_url && !su.photo_url) {
+          needsSync = true;
+          break;
+        }
+        if (vu.has_credential !== undefined && su.has_credential !== undefined && vu.has_credential !== su.has_credential) {
+          needsSync = true;
+          break;
+        }
+      }
+      if (!needsSync && (vault.attendance || []).length > 0) {
+        needsSync = true;
+      }
+    }
+
+    if (needsSync && ((vault.users || []).length > 0 || (vault.attendance || []).length > 0)) {
+      console.log('Sincronizando Bóveda Maestra de forma persistente con Render...');
       try {
         await apiSyncVault(vault);
         const refreshedUsers = await apiGetUsers().catch(() => null);
@@ -650,24 +677,21 @@ export const autoRestoreAndSyncWithServer = async () => {
 
     if (Array.isArray(serverUsers) && serverUsers.length > 0) {
       const merged = mergeUsersToVault(serverUsers);
-      
-      // Sincronizar rutas tambin
       try {
         const serverRoutes = await apiGetGpsRoutes().catch(() => null);
         if (Array.isArray(serverRoutes) && serverRoutes.length > 0) {
           mergeRoutesToVault(serverRoutes);
         }
       } catch (e) {}
-
       isSyncingVault = false;
       return merged;
     }
 
     isSyncingVault = false;
-    return vault.users;
+    return vault.users || [];
   } catch (err) {
     console.warn('Error en autoRestoreAndSyncWithServer:', err);
     isSyncingVault = false;
-    return getMasterVault().users;
+    return getMasterVault().users || [];
   }
 };
