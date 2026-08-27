@@ -4,6 +4,33 @@ import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
 import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
+  const [metallicPos, setMetallicPos] = useState({ x: 50, y: 50, angle: 125 });
+
+  useEffect(() => {
+    const handleOrientation = (e) => {
+      if (e.gamma !== null && e.beta !== null) {
+        const x = Math.min(100, Math.max(0, 50 + (e.gamma * 1.5)));
+        const y = Math.min(100, Math.max(0, 50 + (e.beta * 0.9)));
+        const angle = Math.round(110 + (e.gamma * 0.6));
+        setMetallicPos({ x, y, angle });
+      }
+    };
+
+    const handleMouseMove = (e) => {
+      const x = Math.round((e.clientX / window.innerWidth) * 100);
+      const y = Math.round((e.clientY / window.innerHeight) * 100);
+      const angle = Math.round(95 + ((e.clientX / window.innerWidth) * 60));
+      setMetallicPos({ x, y, angle });
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation);
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation);
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, []);
   const [historyRange, setHistoryRange] = useState('week');
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -189,6 +216,16 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
       <div className={'w-full h-full rounded-3xl p-3 sm:p-4.5 relative overflow-hidden text-center security-watermark flex flex-col justify-between shadow-2xl transition-all ' + (isDark ? 'credential-card-dark text-white' : 'credential-card-light text-zinc-900')}>
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
+        
+        {/* Capa de Brillo Metálico Holográfico Dinámico con Giroscopio */}
+        <div 
+          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-opacity duration-300 opacity-60"
+          style={{
+            background: `linear-gradient(${metallicPos.angle}deg, transparent 15%, rgba(255, 215, 0, 0.1) 32%, rgba(255, 255, 255, 0.32) 48%, rgba(249, 115, 22, 0.18) 60%, transparent 80%)`,
+            backgroundPosition: `${metallicPos.x}% ${metallicPos.y}%`,
+            mixBlendMode: 'screen'
+          }}
+        />
 
         {/* Encabezado Credencial */}
         <div className="flex items-center justify-between mt-0.5 flex-shrink-0">

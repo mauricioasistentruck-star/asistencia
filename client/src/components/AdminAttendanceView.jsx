@@ -413,40 +413,7 @@ export default function AdminAttendanceView({ user, theme }) {
         </div>
       </div>
 
-      {/* Tarjetas de Estadísticas Globales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
-        <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Horas Trabajadas</div>
-          <div className="text-lg sm:text-xl font-black text-orange-500 mt-0.5">
-            {formatMinutesToHHMM(globalTotalWorkedMins)}
-          </div>
-          <div className="text-[10px] text-zinc-500">{globalTotalRecords} marcaciones totales</div>
-        </div>
 
-        <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Atrasos</div>
-          <div className="text-lg sm:text-xl font-black text-amber-400 mt-0.5">
-            {formatMinutesToHHMM(globalTotalDelaysMins)}
-          </div>
-          <div className="text-[10px] text-zinc-500">Minutos acumulados</div>
-        </div>
-
-        <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Horas Extras</div>
-          <div className="text-lg sm:text-xl font-black text-emerald-400 mt-0.5">
-            {formatMinutesToHHMM(globalTotalOvertimeMins)}
-          </div>
-          <div className="text-[10px] text-zinc-500">Sobre jornada ordinaria</div>
-        </div>
-
-        <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Días Laborales</div>
-          <div className="text-lg sm:text-xl font-black text-blue-400 mt-0.5">
-            {workingDaysInRange.length} Días
-          </div>
-          <div className="text-[10px] text-zinc-500">En período seleccionado</div>
-        </div>
-      </div>
 
       {/* Barra de Filtros y Fechas Rápidas */}
       <div className={'p-4 rounded-3xl border shadow-md space-y-3 print:hidden ' + (isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-white border-orange-200')}>
@@ -526,7 +493,43 @@ export default function AdminAttendanceView({ user, theme }) {
 
       {/* VISTA 1: RESUMEN CONSOLIDADO POR TRABAJADOR */}
       {activeSubTab === 'summary' && (
-        <div className={'border rounded-3xl overflow-hidden shadow-xl ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
+        <div className="space-y-4">
+          {/* Tarjetas de Estadísticas Globales Exclusivas del Resumen */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:grid-cols-4">
+            <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
+              <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Horas Trabajadas</div>
+              <div className="text-lg sm:text-xl font-black text-orange-500 mt-0.5">
+                {formatMinutesToHHMM(globalTotalWorkedMins)}
+              </div>
+              <div className="text-[10px] text-zinc-500">{globalTotalRecords} marcaciones totales</div>
+            </div>
+
+            <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
+              <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Atrasos</div>
+              <div className="text-lg sm:text-xl font-black text-amber-400 mt-0.5">
+                {formatMinutesToHHMM(globalTotalDelaysMins)}
+              </div>
+              <div className="text-[10px] text-zinc-500">Minutos acumulados</div>
+            </div>
+
+            <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
+              <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Horas Extras</div>
+              <div className="text-lg sm:text-xl font-black text-emerald-400 mt-0.5">
+                {formatMinutesToHHMM(globalTotalOvertimeMins)}
+              </div>
+              <div className="text-[10px] text-zinc-500">Sobre jornada ordinaria</div>
+            </div>
+
+            <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
+              <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Días Laborales</div>
+              <div className="text-lg sm:text-xl font-black text-blue-400 mt-0.5">
+                {workingDaysInRange.length} Días
+              </div>
+              <div className="text-[10px] text-zinc-500">En período seleccionado</div>
+            </div>
+          </div>
+
+          <div className={'border rounded-3xl overflow-hidden shadow-xl ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
           <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
             <h3 className="text-sm font-black flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-orange-500" />
@@ -598,6 +601,7 @@ export default function AdminAttendanceView({ user, theme }) {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 

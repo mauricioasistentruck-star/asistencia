@@ -67,13 +67,21 @@
 }
 
 .security-watermark {
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(249, 115, 22, 0.04) 0px,
-    rgba(249, 115, 22, 0.04) 15px,
-    transparent 15px,
-    transparent 30px
-  );
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      rgba(249, 115, 22, 0.18) 0px,
+      rgba(249, 115, 22, 0.18) 2.5px,
+      transparent 2.5px,
+      transparent 22px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(251, 146, 60, 0.14) 0px,
+      rgba(251, 146, 60, 0.14) 2.5px,
+      transparent 2.5px,
+      transparent 22px
+    );
 }
 
 .leaflet-container {
