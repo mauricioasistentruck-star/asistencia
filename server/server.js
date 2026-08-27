@@ -1196,6 +1196,17 @@ const handleAdminAttendanceEdit = (req, res) => {
 app.put('/api/attendance/admin/edit/:id', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 app.put('/api/attendance/:id/admin-edit', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 
+app.delete('/api/attendance/:id', authenticateToken, requireAdmin, (req, res) => {
+  const recordId = Number(req.params.id);
+  db.run('DELETE FROM attendance WHERE id = ?', [recordId], function (err) {
+    if (err) return res.status(500).json({ error: 'Error al eliminar marcacin: ' + err.message });
+    savePersistentBackup();
+    io.emit('attendance_updated', { id: recordId, deleted: true });
+    res.json({ success: true, message: 'Marcacin eliminada correctamente' });
+  });
+});
+
+
 const handleExportExcel = (req, res) => {
   const { date_from, date_to, user_id } = req.query;
   let query = `

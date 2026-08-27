@@ -243,6 +243,7 @@ export const apiGetAttendanceRecords = (params = {}) => {
   return apiRequest('/api/attendance/records?' + query);
 };
 export const apiAdminEditAttendance = (recordId, payload) => apiRequest('/api/attendance/' + recordId + '/admin-edit', { method: 'PUT', body: JSON.stringify(payload) });
+export const apiDeleteAttendanceRecord = (recordId) => apiRequest('/api/attendance/' + recordId, { method: 'DELETE' });
 
 export const getExportExcelUrl = (params = {}) => {
   const query = new URLSearchParams(params).toString();

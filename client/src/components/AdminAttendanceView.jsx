@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar } from 'lucide-react';
-import { apiGetAttendanceRecords, apiGetUsers, apiAdminEditAttendance, getExportExcelUrl, getSocket, getChileTodayString } from '../api';
+import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2 } from 'lucide-react';
+import { apiGetAttendanceRecords, apiGetUsers, apiAdminEditAttendance, apiDeleteAttendanceRecord, getExportExcelUrl, getSocket, getChileTodayString } from '../api';
 
 export default function AdminAttendanceView({ user, theme }) {
   const [records, setRecords] = useState([]);
@@ -190,6 +190,18 @@ export default function AdminAttendanceView({ user, theme }) {
       exit_time: rec.exit_time || '',
       admin_note: rec.admin_note || ''
     });
+  };
+
+  
+  const handleDeleteRecord = async (recordId) => {
+    if (!window.confirm('Est seguro de eliminar esta marcacin de asistencia?')) return;
+    try {
+      await apiDeleteAttendanceRecord(recordId);
+      setEditingRecord(null);
+      fetchRecords(true);
+    } catch (err) {
+      alert(err.message || 'Error al eliminar marcacin');
+    }
   };
 
   const handleSaveEdit = async (e) => {
