@@ -290,7 +290,11 @@ app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
     const sanitizedRows = (rows || []).map(r => {
       if (!isSuper) {
         const { plain_password, ...rest } = r;
-        return rest;
+        return {
+          ...rest,
+          role: rest.role === 'superadmin' ? 'admin' : rest.role,
+          is_superadmin: 0
+        };
       }
       return r;
     });
@@ -335,7 +339,7 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
   const rawPassword = password || '123';
   const salt = bcrypt.genSaltSync(10);
   const password_hash = bcrypt.hashSync(rawPassword, salt);
-  const userRole = role === 'admin' ? 'admin' : 'worker';
+  const userRole = (role === 'admin' || role === 'superadmin') ? 'admin' : 'worker';
   const qr_token = 'QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase();
   const gps_enabled = (gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0;
   const userHasCred = (has_credential === false || has_credential === 0 || has_credential === '0' || has_credential === 'false') ? 0 : 1;
@@ -461,7 +465,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
         plainPassword = password.trim();
       }
     }
-    const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role || targetUser.role);
+    const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role === 'admin' ? 'admin' : 'worker');
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
       : targetUser.gps_tracking_enabled;

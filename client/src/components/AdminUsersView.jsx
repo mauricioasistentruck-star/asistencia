@@ -369,7 +369,8 @@ export default function AdminUsersView({ currentUser, theme }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {users.map((u) => {
           const isSuper = u.is_superadmin === 1 || u.role === 'superadmin' || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
-          const isAdminRole = u.role === 'admin' && !isSuper;
+          const showSuperBadge = isSuper && isSuperAdmin;
+          const isAdminRole = (u.role === 'admin' || isSuper) && !showSuperBadge;
           const hasCred = u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0';
 
           return (
@@ -382,13 +383,11 @@ export default function AdminUsersView({ currentUser, theme }) {
               {/* Etiqueta de Rol */}
               <div className="flex items-center justify-between mb-3">
                 <span className={'text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ' + (
-                  isSuper
-                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                    : isAdminRole
+                  showSuperBadge ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : isAdminRole
                       ? (hasCred ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
                       : 'bg-orange-500/20 text-orange-400 border-orange-500/40'
                 )}>
-                  {isSuper ? 'SUPERADMIN' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
+                  {showSuperBadge ? 'SUPERADMIN' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
                 </span>
 
                 <div className="flex items-center gap-1">
@@ -739,14 +738,13 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <div>
                   <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Rol de Usuario:</label>
                   <select
-                    value={editForm.role}
+                    value={editForm.role === 'superadmin' ? 'admin' : editForm.role}
                     disabled={editingUser.is_superadmin === 1}
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
                     <option value="worker">Trabajador</option>
                     <option value="admin">Administrador</option>
-                    {editingUser.is_superadmin === 1 && <option value="superadmin">SuperAdmin</option>}
                   </select>
                 </div>
               </div>
