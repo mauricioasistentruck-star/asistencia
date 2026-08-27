@@ -387,12 +387,19 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
     }
   };
 
-  const navItems = [
-    { id: 'credential', label: 'Mi Credencial', desc: 'Código QR personal para marcar asistencia', icon: QrCode, color: 'text-orange-500', bg: 'bg-orange-500/15' },
-    { id: 'admin_attendance', label: 'Registros & Excel', desc: 'Historial de entradas, salidas y descarga Excel', icon: FileSpreadsheet, color: 'text-blue-400', bg: 'bg-blue-500/15' },
-    { id: 'admin_users', label: 'Gestión de Personal', desc: 'Crear trabajadores, usuarios de login y fotos', icon: Users, color: 'text-amber-400', bg: 'bg-amber-500/15' },
-    { id: 'admin_gps', label: 'Rastreo GPS & Rutas', desc: 'Monitoreo en vivo y registro de rutas en terreno', icon: MapPin, color: 'text-orange-400', bg: 'bg-orange-500/15' },
-  ];
+  const isSuperAdminUser = user?.is_superadmin === 1 || user?.role === 'superadmin' || isMauricio;
+  const userHasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0' && user?.has_credential !== 'false' && user?.has_credential !== null && user?.has_credential !== undefined;
+  const isAdminWithoutCredential = user?.role === 'admin' && !userHasCredential && !isSuperAdminUser;
+
+  const navItems = [];
+  if (userHasCredential || (!isAdmin && !isAdminWithoutCredential)) {
+    navItems.push({ id: 'credential', label: 'Mi Credencial', desc: 'Código QR personal para marcar asistencia', icon: QrCode, color: 'text-orange-500', bg: 'bg-orange-500/15' });
+  }
+  if (isAdmin) {
+    navItems.push({ id: 'admin_attendance', label: isAdminWithoutCredential ? 'Panel de Asistencia y Reportes' : 'Registros & Excel', desc: 'Historial de jornadas, cálculo de horas y Excel', icon: FileSpreadsheet, color: 'text-blue-400', bg: 'bg-blue-500/15' });
+    navItems.push({ id: 'admin_users', label: 'Gestión de Personal', desc: 'Crear trabajadores, usuarios de login y fotos', icon: Users, color: 'text-amber-400', bg: 'bg-amber-500/15' });
+    navItems.push({ id: 'admin_gps', label: 'Rastreo GPS & Rutas', desc: 'Monitoreo en vivo y registro de rutas en terreno', icon: MapPin, color: 'text-orange-400', bg: 'bg-orange-500/15' });
+  }
 
   const currentNav = navItems.find(n => n.id === activeTab) || navItems[0];
 
@@ -547,22 +554,24 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 );
               })}
 
-              {/* Modo Kiosco dentro del menú */}
-              <button
-                onClick={() => {
-                  setShowNavDrawer(false);
-                  onEnterKiosk();
-                }}
-                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900/50 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-orange-400' : 'bg-zinc-100 hover:bg-orange-50 border-zinc-300 text-zinc-800 hover:text-orange-600')}
-              >
-                <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
-                  <Monitor className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={'text-xs truncate ' + (isDark ? 'font-bold text-zinc-300' : 'font-black text-black')}>Modo Kiosco QR</div>
-                  <div className={'text-[9px] leading-tight truncate ' + (isDark ? 'text-zinc-500' : 'text-zinc-700 font-bold')}>Pantalla fija para escaneo</div>
-                </div>
-              </button>
+              {/* Modo Kiosco dentro del menú (Oculto para Admin sin credencial) */}
+              {!isAdminWithoutCredential && (
+                <button
+                  onClick={() => {
+                    setShowNavDrawer(false);
+                    onEnterKiosk();
+                  }}
+                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900/50 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-orange-400' : 'bg-zinc-100 hover:bg-orange-50 border-zinc-300 text-zinc-800 hover:text-orange-600')}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
+                    <Monitor className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className={'text-xs truncate ' + (isDark ? 'font-bold text-zinc-300' : 'font-black text-black')}>Modo Kiosco QR</div>
+                    <div className={'text-[9px] leading-tight truncate ' + (isDark ? 'text-zinc-500' : 'text-zinc-700 font-bold')}>Pantalla fija para escaneo</div>
+                  </div>
+                </button>
+              )}
             </div>
 
             <div className="pt-2 border-t border-zinc-800/80 text-center flex-shrink-0">
