@@ -279,6 +279,13 @@ export const apiGetAttendanceRecords = (params = {}) => {
   return apiRequest('/api/attendance/records?' + query);
 };
 export const apiAdminEditAttendance = (recordId, payload) => apiRequest('/api/attendance/' + recordId + '/admin-edit', { method: 'PUT', body: JSON.stringify(payload) });
+export const apiPurgeAllAttendance = async (superadmin_password) => {
+  return apiRequest('/api/attendance/purge/all', {
+    method: 'DELETE',
+    body: JSON.stringify({ superadmin_password })
+  });
+};
+
 export const apiDeleteAttendanceRecord = (recordId, superAdminPassword) => apiRequest('/api/attendance/' + recordId, { method: 'DELETE', body: JSON.stringify({ superadmin_password: superAdminPassword }) });
 
 export const getExportExcelUrl = (params = {}) => {

@@ -8,7 +8,7 @@ import {
   apiGetAttendanceRecords, 
   apiGetUsers, 
   apiAdminEditAttendance, 
-  apiDeleteAttendanceRecord, 
+  apiDeleteAttendanceRecord, apiPurgeAllAttendance, 
   getExportExcelUrl, 
   getSocket, 
   getChileTodayString,
@@ -292,6 +292,24 @@ export default function AdminAttendanceView({ user, theme }) {
       setEditError(err.message || 'Error al actualizar marcación');
     } finally {
       setEditLoading(false);
+    }
+  };
+
+    const handlePurgeAll = async () => {
+    const pass = window.prompt('ATENCIÓN SUPERADMIN: Ingrese su contraseña para ELIMINAR Y PURGAR TODAS las marcaciones de prueba de todo el sistema:');
+    if (!pass) return;
+    try {
+      setLoading(true);
+      await apiPurgeAllAttendance(pass);
+      const vault = getMasterVault();
+      vault.attendance = [];
+      saveMasterVault(vault);
+      fetchRecords(true);
+      alert('Todas las marcaciones de prueba han sido eliminadas y purgadas correctamente.');
+    } catch (err) {
+      alert('Error al purgar marcaciones: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
