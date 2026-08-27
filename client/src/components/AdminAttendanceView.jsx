@@ -234,7 +234,10 @@ export default function AdminAttendanceView({ user, theme }) {
     });
 
     const daysWorked = attendedDates.size;
-    const missingDays = workingDaysInRange.filter(d => !attendedDates.has(d)).length;
+    // Si no hay marcaciones en el sistema para este período, no calcular faltas (tabla limpia lista para inicio)
+    const missingDays = (records.length === 0 || userRecords.length === 0) 
+      ? 0 
+      : workingDaysInRange.filter(d => !attendedDates.has(d)).length;
 
     return {
       worker,
@@ -545,9 +548,9 @@ export default function AdminAttendanceView({ user, theme }) {
             <div className={'p-3.5 rounded-2xl border shadow-sm ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-100')}>
               <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Días Laborales</div>
               <div className="text-lg sm:text-xl font-black text-blue-400 mt-0.5">
-                {workingDaysInRange.length} Días
+                {records.length > 0 ? workingDaysInRange.length : 0} Días
               </div>
-              <div className="text-[10px] text-zinc-500">En período seleccionado</div>
+              <div className="text-[10px] text-zinc-500">{records.length > 0 ? 'En período seleccionado' : 'Sin registros de jornada'}</div>
             </div>
           </div>
 
@@ -570,7 +573,8 @@ export default function AdminAttendanceView({ user, theme }) {
                   <th className="py-3 px-3 text-center">Días No Marcados</th>
                   <th className="py-3 px-3 text-center">Atrasos</th>
                   <th className="py-3 px-3 text-center">Horas Extras</th>
-                  <th className="py-3 px-4 text-right">Total Horas Trabajadas</th>
+                  <th className="py-3 px-3 text-right">Total Horas</th>
+                  <th className="py-3 px-3 text-right print:hidden">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
@@ -594,7 +598,7 @@ export default function AdminAttendanceView({ user, theme }) {
                           {missingDays} días faltantes
                         </span>
                       ) : (
-                        <span className="text-zinc-500 text-xs font-bold">0 faltas</span>
+                        <span className="text-zinc-500 text-xs font-bold">0 días</span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-center">
@@ -615,8 +619,24 @@ export default function AdminAttendanceView({ user, theme }) {
                         <span className="text-zinc-500 text-xs">0 min</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right font-black text-sm text-orange-400 font-mono">
+                    <td className="py-3 px-3 text-right font-black text-sm text-orange-400 font-mono">
                       {formatMinutesToHHMM(totalMinutesWorked)}
+                    </td>
+                    <td className="py-3 px-3 text-right print:hidden">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserId(worker.id);
+                            setActiveSubTab('details');
+                          }}
+                          title="Ver y Gestionar Marcaciones de este Trabajador"
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Ver / Editar</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
