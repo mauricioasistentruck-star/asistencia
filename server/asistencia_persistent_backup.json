@@ -5,7 +5,7 @@
       "rut": "12.345.678-9",
       "name": "Mauricio",
       "email": "mauricio@asistentruck.cl",
-      "password_hash": "$2b$10$2R5K1Buufw4dgHqCn0UceuK76UwUYvk7esl6nMx0lUWDxKUFW1.mi",
+      "password_hash": "$2b$10$zJJynsexOGSEweL1R0r7.elKNP1m4Rp2RdEr1uEUh93wxIryl6XSK",
       "role": "superadmin",
       "is_superadmin": 1,
       "photo_url": null,
@@ -79,5 +79,5 @@
   "attendance": [],
   "voice_messages": [],
   "gps_routes": [],
-  "saved_at": "2026-08-27T00:42:10.098Z"
+  "saved_at": "2026-08-27T03:02:54.392Z"
 }
