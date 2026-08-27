@@ -32,8 +32,7 @@ export default function AdminUsersView({ currentUser, theme }) {
     currentUser.is_superadmin === 1 || 
     currentUser.is_superadmin === '1' ||
     currentUser.is_superadmin === true ||
-    currentUser.role === 'superadmin' || 
-    currentUser.role === 'admin' ||
+    currentUser.role === 'superadmin' ||
     (currentUser.name || '').toLowerCase().includes('mauricio') ||
     (currentUser.username || '').toLowerCase().includes('mauricio')
   );
@@ -454,16 +453,18 @@ export default function AdminUsersView({ currentUser, theme }) {
                 </div>
               </div>
 
-              {/* Datos de Clave */}
-              <div className={'p-2.5 rounded-2xl border mb-3 flex items-center justify-between ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Key className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-[11px]">Clave:</span>
+                            {/* Datos de Clave (Solo SuperAdmin) */}
+              {isSuperAdmin && (
+                <div className={'p-2.5 rounded-2xl border mb-3 flex items-center justify-between ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Key className="w-3.5 h-3.5 text-orange-500" />
+                    <span className="text-[11px]">Clave:</span>
+                  </div>
+                  <span className="font-mono text-xs font-black text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
+                    {u.plain_password || '123'}
+                  </span>
                 </div>
-                <span className="font-mono text-xs font-black text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
-                  {u.plain_password || '123'}
-                </span>
-              </div>
+              )}
 
               {/* Acciones Rápidas: QR y GPS */}
               <div className="space-y-2 pt-1 border-t border-zinc-800/60">
@@ -565,17 +566,27 @@ export default function AdminUsersView({ currentUser, theme }) {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Contraseña:</label>
-                  <input
-                    type="text"
-                    value={newUser.password}
-                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                    placeholder="123"
-                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                    required
-                  />
-                </div>
+                {isSuperAdmin ? (
+                  <div>
+                    <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Contraseña Inicial:</label>
+                    <input
+                      type="text"
+                      value={newUser.password}
+                      onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                      placeholder="123"
+                      className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Contraseña Inicial:</label>
+                    <div className={'w-full rounded-xl px-3 py-2 text-xs border flex items-center justify-between ' + (isDark ? 'bg-zinc-900/80 border-zinc-800 text-zinc-400' : 'bg-zinc-100 border-zinc-200 text-zinc-600')}>
+                      <span className="font-mono font-bold">Predeterminada (123)</span>
+                      <span className="text-[9px] text-zinc-500 font-bold">Asignada</span>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Rol de Usuario:</label>
                   <select
@@ -705,16 +716,26 @@ export default function AdminUsersView({ currentUser, theme }) {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Nueva Contraseña:</label>
-                  <input
-                    type="text"
-                    value={editForm.password}
-                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                    placeholder="Dejar en blanco para no cambiar"
-                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  />
-                </div>
+                {isSuperAdmin ? (
+                  <div>
+                    <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Nueva Contraseña:</label>
+                    <input
+                      type="text"
+                      value={editForm.password}
+                      onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                      placeholder="Dejar en blanco para no cambiar"
+                      className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Contraseña:</label>
+                    <div className={'w-full rounded-xl px-3 py-2 text-xs border flex items-center justify-between ' + (isDark ? 'bg-zinc-900/80 border-zinc-800 text-zinc-500' : 'bg-zinc-100 border-zinc-200 text-zinc-500')}>
+                      <span>••••••••</span>
+                      <span className="text-[9px] text-zinc-500 font-bold">Solo SuperAdmin</span>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Rol de Usuario:</label>
                   <select

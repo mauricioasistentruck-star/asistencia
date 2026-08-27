@@ -82,6 +82,26 @@ function authenticateToken(req, res, next) {
   });
 }
 
+function isSuperAdminUser(user) {
+  if (!user) return false;
+  return Boolean(
+    user.is_superadmin === 1 || 
+    user.is_superadmin === '1' || 
+    user.is_superadmin === true || 
+    user.role === 'superadmin' || 
+    (user.name && user.name.toLowerCase().includes('mauricio')) ||
+    (user.username && user.username.toLowerCase().includes('mauricio'))
+  );
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (isSuperAdminUser(req.user)) {
+    next();
+  } else {
+    res.status(403).json({ error: 'ACCESO DENEGADO: Requiere permisos exclusivos de SuperAdmin' });
+  }
+}
+
 function requireAdmin(req, res, next) {
   if (req.user && (
     req.user.role === 'admin' || 
@@ -264,9 +284,17 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // CRUD Usuarios
 app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
+  const isSuper = isSuperAdminUser(req.user);
   db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar usuarios' });
-    res.json(rows);
+    const sanitizedRows = (rows || []).map(r => {
+      if (!isSuper) {
+        const { plain_password, ...rest } = r;
+        return rest;
+      }
+      return r;
+    });
+    res.json(sanitizedRows);
   });
 });
 
@@ -331,9 +359,13 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
       }
       const newId = this.lastID;
       db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
-        io.emit('user_created', row);
+        const isSuper = isSuperAdminUser(req.user);
+        const broadcastRow = { ...row };
+        delete broadcastRow.plain_password;
+        io.emit('user_created', broadcastRow);
         savePersistentBackup();
-        res.status(201).json({ message: 'Usuario creado exitosamente', user: row });
+        const returnUser = isSuper ? row : broadcastRow;
+        res.status(201).json({ message: 'Usuario creado exitosamente', user: returnUser });
       });
     });
   });
@@ -419,8 +451,16 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
       return res.status(403).json({ error: 'ACCESO DENEGADO: No tiene permisos para modificar la cuenta de este Administrador.' });
     }
 
-    const passwordHash = password && password.trim() !== '' ? bcrypt.hashSync(password, 10) : targetUser.password_hash;
-    const plainPassword = password && password.trim() !== '' ? password.trim() : targetUser.plain_password;
+    const isCurrentUserSuper = isSuperAdminUser(req.user);
+    // Solo SuperAdmin o el propio usuario pueden cambiar la clave
+    let passwordHash = targetUser.password_hash;
+    let plainPassword = targetUser.plain_password;
+    if (password && password.trim() !== '') {
+      if (isCurrentUserSuper || req.user.id === targetId) {
+        passwordHash = bcrypt.hashSync(password.trim(), 10);
+        plainPassword = password.trim();
+      }
+    }
     const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role || targetUser.role);
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
@@ -453,9 +493,13 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
         (upErr) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
           db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
-            io.emit('user_updated', updatedUser);
+            const isCurrentUserSuper = isSuperAdminUser(req.user);
+            const broadcastUser = { ...updatedUser };
+            delete broadcastUser.plain_password;
+            io.emit('user_updated', broadcastUser);
             savePersistentBackup();
-            res.json({ message: 'Perfil actualizado exitosamente', user: updatedUser });
+            const returnUser = isCurrentUserSuper ? updatedUser : broadcastUser;
+            res.json({ message: 'Perfil actualizado exitosamente', user: returnUser });
           });
         }
       );
@@ -494,7 +538,7 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 // Excluye exclusivamente los audios de walkie-talkie.
 // =========================================================================
 
-app.get('/api/admin/backup/export', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/backup/export', authenticateToken, requireSuperAdmin, async (req, res) => {
   try {
     const backup = {
       app: 'ASISTENTRUCK',
@@ -585,7 +629,7 @@ app.get('/api/admin/backup/export', authenticateToken, requireAdmin, async (req,
   }
 });
 
-app.post('/api/admin/backup/import', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req, res) => {
   try {
     const backup = req.body;
     if (!backup || (!backup.users && !backup.attendance && !backup.gps_routes)) {
