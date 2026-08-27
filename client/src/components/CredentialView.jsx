@@ -4,20 +4,29 @@ import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
 import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
-  const [metallicX, setMetallicX] = useState(50);
+  const [sheenPos, setSheenPos] = useState(50);
+  const [sheenAngle, setSheenAngle] = useState(65);
 
   useEffect(() => {
     const handleOrientation = (e) => {
-      if (e.gamma !== null) {
-        // Inclinación lateral [-90, 90] hacia los lados
-        const x = Math.min(100, Math.max(0, 50 + (e.gamma * 2.2)));
-        setMetallicX(x);
+      if (e.gamma !== null || e.beta !== null) {
+        const gamma = e.gamma || 0; // Inclinación izquierda/derecha [-90, 90]
+        const beta = e.beta || 0;   // Inclinación adelante/atrás [-180, 180]
+        
+        // Movimiento lineal en función de cómo se gira e inclina la pantalla
+        const pos = Math.min(100, Math.max(0, 50 + (gamma * 1.3) + (beta * 0.6)));
+        const angle = Math.round(65 + (gamma * 0.4) + (beta * 0.2));
+        
+        setSheenPos(pos);
+        setSheenAngle(angle);
       }
     };
 
     const handleMouseMove = (e) => {
-      const x = Math.round((e.clientX / window.innerWidth) * 100);
-      setMetallicX(x);
+      const x = (e.clientX / window.innerWidth) * 100;
+      const y = (e.clientY / window.innerHeight) * 100;
+      setSheenPos(Math.round((x + y) / 2));
+      setSheenAngle(Math.round(45 + (x * 0.4)));
     };
 
     window.addEventListener('deviceorientation', handleOrientation);
@@ -214,15 +223,15 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
         
-        {/* Capa de Brillo Metálico Holográfico Lateral Suave y Elegante en las Rayas */}
+        {/* Capa de Brillo Metálico Holográfico Lineal Reactivo a la Rotación e Inclinación (No Circular) */}
         <div 
-          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-150"
+          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100"
           style={{
-            background: `linear-gradient(90deg, transparent ${metallicX - 30}%, rgba(234, 88, 12, 0.2) ${metallicX - 14}%, rgba(255, 175, 60, 0.42) ${metallicX}%, rgba(249, 115, 22, 0.25) ${metallicX + 14}%, transparent ${metallicX + 30}%)`,
+            background: `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 28}%, rgba(234, 88, 12, 0.2) ${sheenPos - 14}%, rgba(255, 175, 60, 0.45) ${sheenPos}%, rgba(249, 115, 22, 0.25) ${sheenPos + 14}%, transparent ${sheenPos + 28}%)`,
             WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             mixBlendMode: 'screen',
-            opacity: 0.65
+            opacity: 0.7
           }}
         />
 

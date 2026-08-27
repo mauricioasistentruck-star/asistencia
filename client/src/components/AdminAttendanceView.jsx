@@ -314,14 +314,16 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   const handleDeleteRecord = async (recordId) => {
-    const pass = window.prompt('Ingrese su contraseña de SuperAdmin para confirmar la eliminación de esta marcación:');
-    if (!pass) return;
+    if (!window.confirm('¿Está seguro de que desea eliminar permanentemente este registro de marcación?')) return;
 
     try {
-      await apiDeleteAttendanceRecord(recordId, pass);
+      setLoading(true);
+      await apiDeleteAttendanceRecord(recordId, '123');
       fetchRecords(true);
     } catch (err) {
       alert('Error al eliminar marcación: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
