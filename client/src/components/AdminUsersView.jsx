@@ -21,7 +21,7 @@ import {
 } from '../api';
 
 export default function AdminUsersView({ currentUser, theme }) {
-  const [users, setUsers] = useState(() => getMasterVault().users);
+  const [users, setUsers] = useState(() => [...getMasterVault().users].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(null);
@@ -137,8 +137,8 @@ export default function AdminUsersView({ currentUser, theme }) {
     const onUserCreated = (created) => {
       if (created && created.id) {
         setUsers(prev => {
-          if (prev.some(u => u.id === created.id)) return prev;
-          return [...prev, created];
+          if (prev.some(u => u.id === created.id)) return prev.map(u => u.id === created.id ? created : u);
+          return [...prev, created].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
         });
       }
       fetchUsers();
@@ -146,7 +146,7 @@ export default function AdminUsersView({ currentUser, theme }) {
 
     const onUserUpdated = (updated) => {
       if (updated && updated.id) {
-        setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u));
+        setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
       }
       fetchUsers();
     };

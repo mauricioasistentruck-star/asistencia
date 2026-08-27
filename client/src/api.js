@@ -397,7 +397,7 @@ export const saveMasterVault = (vault) => {
   try {
     const rawUsers = Array.isArray(vault?.users) ? vault.users : [];
     const safeVault = {
-      users: rawUsers.filter(isUserValid),
+      users: rawUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)),
       attendance: Array.isArray(vault?.attendance) ? vault.attendance.slice(0, 500) : [],
       voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : [],
       gps_routes: Array.isArray(vault?.gps_routes) ? vault.gps_routes.slice(0, 200) : []
@@ -413,7 +413,7 @@ export const saveMasterVault = (vault) => {
 
 export const setVaultUsers = (serverUsers) => {
   if (!Array.isArray(serverUsers)) return getMasterVault().users;
-  const validUsers = serverUsers.filter(isUserValid);
+  const validUsers = serverUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
   const vault = getMasterVault();
   vault.users = validUsers;
   saveMasterVault(vault);
