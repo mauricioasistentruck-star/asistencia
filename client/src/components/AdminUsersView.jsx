@@ -109,22 +109,16 @@ export default function AdminUsersView({ currentUser, theme }) {
 
   const fetchUsers = async () => {
     try {
-      const serverUsers = await apiGetUsers();
-      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
-        const merged = mergeUsersToVault(serverUsers);
-        const cleanUsers = merged.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario')));
+      const data = await apiGetUsers();
+      if (Array.isArray(data) && data.length > 0) {
+        // El servidor en la nube es la fuente autoritativa: sincronizar exactamente
+        const cleanUsers = setVaultUsers(data);
         setUsers(cleanUsers);
-        return;
-      }
-    } catch (err) {
-      console.warn('Error fetching server users directly:', err);
-    }
-
-    try {
-      const data = await autoRestoreAndSyncWithServer();
-      if (Array.isArray(data)) {
-        const cleanUsers = data.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario')));
-        setUsers(cleanUsers);
+      } else {
+        const vault = getMasterVault();
+        if (vault.users.length > 0) {
+          setUsers(vault.users.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario'))));
+        }
       }
     } catch (err) {
       const vault = getMasterVault();

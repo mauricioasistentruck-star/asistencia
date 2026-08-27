@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, AlertCircle, ArrowRight, Smartphone, Sun, Moon, Monitor, Server, CheckCircle2, RefreshCw } from 'lucide-react';
-import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault } from '../api';
+import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault, setVaultUsers } from '../api';
 import IphoneModal from './IphoneModal.jsx';
 
 export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleTheme }) {
