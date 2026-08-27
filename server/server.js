@@ -290,7 +290,7 @@ app.post('/api/auth/change-my-password', authenticateToken, (req, res) => {
 });
 
 app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
-  const { username, rut, name, email, password, role, gps_tracking_enabled } = req.body;
+  const { username, rut, name, email, password, role, gps_tracking_enabled, has_credential } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Nombre del trabajador es obligatorio' });
   }
@@ -309,6 +309,7 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
   const userRole = role === 'admin' ? 'admin' : 'worker';
   const qr_token = 'QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase();
   const gps_enabled = (gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0;
+  const userHasCred = (has_credential === false || has_credential === 0 || has_credential === '0' || has_credential === 'false') ? 0 : 1;
 
   let dupQuery = 'SELECT id FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?';
   let dupParams = [cleanUsername, cleanEmail];
@@ -322,16 +323,16 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'El Nombre de Usuario, Correo o RUT ya está registrado en el sistema' });
     }
 
-    const query = 'INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)';
-    db.run(query, [cleanUsername, cleanRut, cleanName, cleanEmail, password_hash, rawPassword, userRole, qr_token, gps_enabled], function (err) {
+    const query = 'INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled, has_credential) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)';
+    db.run(query, [cleanUsername, cleanRut, cleanName, cleanEmail, password_hash, rawPassword, userRole, qr_token, gps_enabled, userHasCred], function (err) {
       if (err) {
         return res.status(500).json({ error: 'Error al registrar usuario: ' + err.message });
       }
       const newId = this.lastID;
-      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
+      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, created_at FROM users WHERE id = ?', [newId], (fetchErr, row) => {
         io.emit('user_created', row);
         savePersistentBackup();
-        res.status(201).json({ message: 'Usuario creado exitosamente con código QR generado', user: row });
+        res.status(201).json({ message: 'Usuario creado exitosamente', user: row });
       });
     });
   });
@@ -346,7 +347,7 @@ app.post('/api/users/:id/photo', authenticateToken, requireAdmin, upload.single(
     const photoUrl = 'data:' + mimeType + ';base64,' + fileBuffer.toString('base64');
     db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photoUrl, userId], (err) => {
       if (err) return res.status(500).json({ error: 'Error al actualizar foto: ' + err.message });
-      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
+      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
         io.emit('user_updated', updatedUser || { id: Number(userId), photo_url: photoUrl });
         savePersistentBackup();
         res.json({ message: 'Foto actualizada exitosamente', photo_url: photoUrl, user: updatedUser });
@@ -364,19 +365,11 @@ app.post('/api/users/:id/photo-base64', authenticateToken, requireAdmin, (req, r
   if (!photo_base64) return res.status(400).json({ error: 'No se proporcionó imagen' });
   db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photo_base64, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar foto: ' + err.message });
-    db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
+    db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
       io.emit('user_updated', updatedUser || { id: Number(userId), photo_url: photo_base64 });
       savePersistentBackup();
       res.json({ message: 'Foto actualizada exitosamente', photo_url: photo_base64, user: updatedUser });
     });
-  });
-});
-  const photoUrl = '/uploads/' + req.file.filename;
-  db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photoUrl, userId], (err) => {
-    if (err) return res.status(500).json({ error: 'Error al actualizar foto' });
-    io.emit('user_updated', { id: Number(userId), photo_url: photoUrl });
-    savePersistentBackup();
-    res.json({ message: 'Foto actualizada exitosamente', photo_url: photoUrl });
   });
 });
 
@@ -408,7 +401,7 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
 // Modificar Perfil de Usuario
 app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
   const targetId = Number(req.params.id);
-  const { username, rut, name, email, role, password, gps_tracking_enabled } = req.body;
+  const { username, rut, name, email, role, password, gps_tracking_enabled, has_credential } = req.body;
   const isCurrentUserSuperAdmin = req.user.is_superadmin === 1 || 
     req.user.role === 'superadmin' || 
     req.user.role === 'admin' || 
@@ -431,6 +424,9 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
       : targetUser.gps_tracking_enabled;
+    const assignedHasCred = has_credential !== undefined
+      ? ((has_credential === false || has_credential === 0 || has_credential === '0' || has_credential === 'false') ? 0 : 1)
+      : (targetUser.has_credential !== undefined ? targetUser.has_credential : 1);
 
     const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || (targetUser.name ? targetUser.name.toLowerCase().replace(/\s+/g, '') : `user${targetId}`));
     const finalRut = (rut && rut.trim() !== '') ? rut.trim() : null;
@@ -451,11 +447,11 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 
       const finalPhotoUrl = (req.body.photo_url || req.body.photo_base64) ? (req.body.photo_url || req.body.photo_base64) : targetUser.photo_url;
       db.run(
-        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ?, photo_url = ? WHERE id = ?',
-        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, finalPhotoUrl, targetId],
+        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ?, photo_url = ?, has_credential = ? WHERE id = ?',
+        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, finalPhotoUrl, assignedHasCred, targetId],
         (upErr) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
-          db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
+          db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
             io.emit('user_updated', updatedUser);
             savePersistentBackup();
             res.json({ message: 'Perfil actualizado exitosamente', user: updatedUser });
@@ -605,208 +601,9 @@ app.post('/api/admin/backup/import', authenticateToken, requireAdmin, (req, res)
 
       // 1. Restaurar Usuarios y Fotos
       if (Array.isArray(backup.users)) {
-        const stmtUser = db.prepare(`
-          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            username = excluded.username,
-            rut = excluded.rut,
-            name = excluded.name,
-            email = excluded.email,
-            password_hash = excluded.password_hash,
-            plain_password = excluded.plain_password,
-            role = excluded.role,
-            is_superadmin = excluded.is_superadmin,
-            photo_url = excluded.photo_url,
-            qr_token = excluded.qr_token,
-            gps_tracking_enabled = excluded.gps_tracking_enabled
-        `);
-
-        for (let u of backup.users) {
-          let photoUrl = u.photo_url;
-          if (u.photo_base64) {
-            try {
-              const fname = u.photo_filename || `user_${u.id}_${Date.now()}.jpg`;
-              const filePath = path.join(uploadsDir, fname);
-              fs.writeFileSync(filePath, Buffer.from(u.photo_base64, 'base64'));
-              photoUrl = '/uploads/' + fname;
-            } catch (err) {
-              console.error('Error restaurando foto:', err);
-            }
-          }
-
-          stmtUser.run(
-            u.id || null,
-            u.username || (u.name ? u.name.toLowerCase().replace(/\s+/g, '') : 'user' + u.id),
-            u.rut || null,
-            u.name || 'Sin nombre',
-            u.email || ('user' + u.id + '@asistentruck.cl'),
-            u.password_hash || bcrypt.hashSync('123', 10),
-            u.plain_password || '123',
-            u.role || 'worker',
-            u.is_superadmin ? 1 : 0,
-            photoUrl || null,
-            u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase()),
-            u.gps_tracking_enabled ? 1 : 0,
-            u.created_at || new Date().toISOString()
-          );
-          usersImported++;
-        }
-        stmtUser.finalize();
-      }
-
-      // 2. Restaurar Asistencia
-      if (Array.isArray(backup.attendance)) {
-        const stmtAtt = db.prepare(`
-          INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(user_id, date) DO UPDATE SET
-            entry_time = excluded.entry_time,
-            lunch_out_time = excluded.lunch_out_time,
-            lunch_in_time = excluded.lunch_in_time,
-            exit_time = excluded.exit_time,
-            total_hours = excluded.total_hours,
-            modified_by_admin = excluded.modified_by_admin,
-            admin_note = excluded.admin_note,
-            updated_at = excluded.updated_at
-        `);
-
-        for (let a of backup.attendance) {
-          stmtAtt.run(
-            a.id || null,
-            a.user_id,
-            a.date,
-            a.entry_time || null,
-            a.lunch_out_time || null,
-            a.lunch_in_time || null,
-            a.exit_time || null,
-            a.total_hours || 0,
-            a.modified_by_admin ? 1 : 0,
-            a.admin_note || null,
-            a.created_at || new Date().toISOString(),
-            a.updated_at || new Date().toISOString()
-          );
-          attendanceImported++;
-        }
-        stmtAtt.finalize();
-      }
-
-      // 3. Restaurar Rutas GPS
-      if (Array.isArray(backup.gps_routes)) {
-        const stmtRoute = db.prepare(`
-          INSERT INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            user_id = excluded.user_id,
-            user_name = excluded.user_name,
-            name = excluded.name,
-            date = excluded.date,
-            start_time = excluded.start_time,
-            end_time = excluded.end_time,
-            start_lat = excluded.start_lat,
-            start_lng = excluded.start_lng,
-            end_lat = excluded.end_lat,
-            end_lng = excluded.end_lng,
-            total_distance_km = excluded.total_distance_km,
-            total_points = excluded.total_points,
-            points_json = excluded.points_json,
-            status = excluded.status
-        `);
-
-        for (let r of backup.gps_routes) {
-          stmtRoute.run(
-            r.id || null,
-            r.user_id,
-            r.user_name || 'Personal',
-            r.name || 'Ruta GPS',
-            r.date,
-            r.start_time,
-            r.end_time || null,
-            r.start_lat || 0,
-            r.start_lng || 0,
-            r.end_lat || null,
-            r.end_lng || null,
-            r.total_distance_km || 0,
-            r.total_points || 0,
-            r.points_json || '[]',
-            r.status || 'completed',
-            r.created_at || new Date().toISOString()
-          );
-          routesImported++;
-        }
-        stmtRoute.finalize();
-      }
-
-      // 4. Restaurar Logs GPS
-      if (Array.isArray(backup.gps_logs)) {
-        const stmtLog = db.prepare(`
-          INSERT INTO gps_logs (id, user_id, latitude, longitude, accuracy, speed, timestamp, date)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO NOTHING
-        `);
-        for (let l of backup.gps_logs) {
-          stmtLog.run(
-            l.id || null,
-            l.user_id,
-            l.latitude,
-            l.longitude,
-            l.accuracy || null,
-            l.speed || null,
-            l.timestamp || new Date().toISOString(),
-            l.date
-          );
-          logsImported++;
-        }
-        stmtLog.finalize();
-      }
-
-      db.run('COMMIT', (commitErr) => {
-        if (commitErr) {
-          console.error('Error confirmando restauración de backup:', commitErr);
-          return res.status(500).json({ error: 'Error al confirmar la restauración: ' + commitErr.message });
-        }
-
-        io.emit('user_created');
-        io.emit('user_updated');
-        io.emit('attendance_updated');
-
-        return res.json({
-          success: true,
-          message: '¡Copia de seguridad restaurada exitosamente!',
-          stats: {
-            users: usersImported,
-            attendance: attendanceImported,
-            routes: routesImported,
-            logs: logsImported
-          }
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Error en importación masiva:', error);
-    db.run('ROLLBACK', () => {});
-    return res.status(500).json({ error: 'Fallo al procesar archivo de respaldo: ' + error.message });
-  }
-});
-
-// Sincronización Automática Bidireccional de Bóveda Maestra (Cliente <-> Servidor)
-app.post('/api/sync/vault', (req, res) => {
-  try {
-    const backup = req.body;
-    if (!backup || (!backup.users && !backup.attendance && !backup.voice_messages && !backup.gps_routes)) {
-      return res.status(400).json({ error: 'Datos de bóveda vacíos' });
-    }
-
-    let usersCount = 0;
-    let attendanceCount = 0;
-
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-
-      if (Array.isArray(backup.users) && backup.users.length > 0) {
-        const stmtUser = db.prepare(`
-          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                const stmtUser = db.prepare(`
+          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             username = COALESCE(excluded.username, users.username),
             rut = COALESCE(excluded.rut, users.rut),
@@ -818,7 +615,8 @@ app.post('/api/sync/vault', (req, res) => {
             is_superadmin = COALESCE(excluded.is_superadmin, users.is_superadmin),
             photo_url = COALESCE(excluded.photo_url, users.photo_url),
             qr_token = COALESCE(excluded.qr_token, users.qr_token),
-            gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled)
+            gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled),
+            has_credential = COALESCE(excluded.has_credential, users.has_credential)
         `);
 
         for (let u of backup.users) {
@@ -844,7 +642,8 @@ app.post('/api/sync/vault', (req, res) => {
             u.is_superadmin ? 1 : 0,
             photoUrl || null,
             u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase()),
-            u.gps_tracking_enabled ? 1 : 0,
+            (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0,
+            (u.has_credential === false || u.has_credential === 0 || u.has_credential === '0') ? 0 : 1,
             u.created_at || new Date().toISOString()
           );
           usersCount++;

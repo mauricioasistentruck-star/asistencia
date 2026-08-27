@@ -1,4 +1,4 @@
-﻿const sqlite3 = require('sqlite3').verbose();
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -40,12 +40,14 @@ db.serialize(() => {
       photo_url TEXT,
       qr_token TEXT UNIQUE NOT NULL,
       gps_tracking_enabled INTEGER NOT NULL DEFAULT 0,
+      has_credential INTEGER NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   db.run("ALTER TABLE users ADD COLUMN username TEXT", () => {});
   db.run("ALTER TABLE users ADD COLUMN plain_password TEXT", () => {});
+  db.run("ALTER TABLE users ADD COLUMN has_credential INTEGER DEFAULT 1", () => {});
   db.run("UPDATE users SET username = LOWER(REPLACE(name, ' ', '')) WHERE username IS NULL OR username = ''", () => {});
   db.run("DELETE FROM users WHERE (name IS NULL OR TRIM(name) = '') AND (username IS NULL OR TRIM(username) = '' OR username = 'usuario')", () => {});
 
@@ -141,18 +143,25 @@ db.serialize(() => {
       const data = JSON.parse(content);
       if (data && Array.isArray(data.users)) {
         for (let u of data.users) {
+          const hasCred = (u.has_credential !== undefined && u.has_credential !== null) ? (u.has_credential ? 1 : 0) : 1;
+          const gpsVal = (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0;
           db.run(
-            `INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
-               username = COALESCE(users.username, excluded.username),
-               rut = COALESCE(users.rut, excluded.rut),
-               name = COALESCE(users.name, excluded.name),
-               email = COALESCE(users.email, excluded.email),
-               photo_url = COALESCE(users.photo_url, excluded.photo_url),
-               qr_token = COALESCE(users.qr_token, excluded.qr_token),
-               gps_tracking_enabled = COALESCE(users.gps_tracking_enabled, excluded.gps_tracking_enabled)`,
-            [u.id, u.username, u.rut, u.name, u.email, u.password_hash, u.plain_password || '123', u.role, u.is_superadmin ? 1 : 0, u.photo_url, u.qr_token, u.gps_tracking_enabled ? 1 : 0, u.created_at || new Date().toISOString()]
+               username = COALESCE(excluded.username, users.username),
+               rut = COALESCE(excluded.rut, users.rut),
+               name = COALESCE(excluded.name, users.name),
+               email = COALESCE(excluded.email, users.email),
+               password_hash = COALESCE(excluded.password_hash, users.password_hash),
+               plain_password = COALESCE(excluded.plain_password, users.plain_password),
+               role = COALESCE(excluded.role, users.role),
+               is_superadmin = COALESCE(excluded.is_superadmin, users.is_superadmin),
+               photo_url = COALESCE(excluded.photo_url, users.photo_url),
+               qr_token = COALESCE(excluded.qr_token, users.qr_token),
+               gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled),
+               has_credential = COALESCE(excluded.has_credential, users.has_credential)`,
+            [u.id, u.username, u.rut, u.name, u.email, u.password_hash, u.plain_password || '123', u.role, u.is_superadmin ? 1 : 0, u.photo_url, u.qr_token, gpsVal, hasCred, u.created_at || new Date().toISOString()]
           );
         }
       }
@@ -203,9 +212,9 @@ db.serialize(() => {
       const salt = bcrypt.genSaltSync(10);
       const validHash = bcrypt.hashSync('123', salt);
       db.run(
-        `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0],
+        `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled, has_credential)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0, 1],
         (insertErr) => {
           if (insertErr) console.error('Error creando Super Admin Mauricio:', insertErr.message);
           else console.log('Super Admin listo: Mauricio (Usuario: mauricio, Clave: 123)');

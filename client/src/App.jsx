@@ -529,7 +529,12 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
-    setActiveTab('credential');
+    const userHasCred = userData?.has_credential !== 0 && userData?.has_credential !== false && userData?.has_credential !== '0';
+    if (userData?.role === 'admin' && !userHasCred) {
+      setActiveTab('admin_attendance');
+    } else {
+      setActiveTab('credential');
+    }
   };
 
   const handleLogout = () => {
@@ -561,6 +566,16 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   if (kioskMode) {
     return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
   }
+
+  const hasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0';
+  const isAdminWithoutCredential = user?.role === 'admin' && !hasCredential && !isMauricio;
+
+  // Enforce default tab for admin without credential
+  useEffect(() => {
+    if (user && isAdminWithoutCredential && activeTab === 'credential') {
+      setActiveTab('admin_attendance');
+    }
+  }, [user, isAdminWithoutCredential, activeTab]);
 
   const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.is_superadmin === 1 || isMauricio;
 
@@ -610,7 +625,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         ) : (
           /* ADMINISTRADORES */
           <div className="w-full h-full overflow-y-auto">
-            {activeTab === 'credential' && (
+            {activeTab === 'credential' && (hasCredential || !isAdminWithoutCredential) && (
               <CredentialView
                 user={user}
                 theme={theme}

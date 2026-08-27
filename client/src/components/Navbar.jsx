@@ -7,6 +7,7 @@ import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRo
 import { Geolocation } from '@capacitor/geolocation';
 import IphoneModal from './IphoneModal.jsx';
 import WalkieTalkieModal from './WalkieTalkieModal.jsx';
+import BackupModal from './BackupModal.jsx';
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -26,6 +27,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const [showNavDrawer, setShowNavDrawer] = useState(false);
   const [showWalkieTalkie, setShowWalkieTalkie] = useState(false);
   const [walkieTab, setWalkieTab] = useState('walkie');
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   // Estados Cambio de Contraseña
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -847,6 +849,8 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
         theme={theme}
         initialTab={walkieTab}
       />
+
+      <BackupModal isOpen={showBackupModal} onClose={() => setShowBackupModal(false)} theme={theme} />
 
       <IphoneModal
         isOpen={showIphoneModal}

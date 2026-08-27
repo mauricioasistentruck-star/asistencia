@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, Download, UploadCloud, Database, ShieldCheck } from 'lucide-react';
+import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, ShieldCheck, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   apiGetUsers, 
@@ -10,13 +10,12 @@ import {
   apiToggleGps, 
   getFullPhotoUrl, 
   getSocket, 
-  apiExportBackup, 
-  apiImportBackup,
   autoRestoreAndSyncWithServer,
   removeUserFromVault,
   mergeUsersToVault,
   getMasterVault,
   saveMasterVault,
+  compressImageToBase64,
   isGpsActive
 } from '../api';
 
@@ -39,7 +38,7 @@ export default function AdminUsersView({ currentUser, theme }) {
     (currentUser.username || '').toLowerCase().includes('mauricio')
   );
 
-  // Formulario Crear
+  // Formulario Crear Usuario
   const [newUser, setNewUser] = useState({
     username: '',
     name: '',
@@ -47,10 +46,11 @@ export default function AdminUsersView({ currentUser, theme }) {
     email: '',
     password: '123',
     role: 'worker',
-    gps_tracking_enabled: false
+    gps_tracking_enabled: false,
+    has_credential: true
   });
 
-  // Formulario Editar Perfil
+  // Formulario Modificar Usuario
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({
     username: '',
@@ -59,89 +59,43 @@ export default function AdminUsersView({ currentUser, theme }) {
     email: '',
     password: '',
     role: 'worker',
-    gps_tracking_enabled: false
+    gps_tracking_enabled: false,
+    has_credential: true
   });
-  const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
-
-  // Estados de Backup Masivo (SuperAdmin)
-  const [backupLoading, setBackupLoading] = useState(false);
-  const fileInputRef = useRef(null);
-
-  const handleExportBackup = async () => {
-    setActionError('');
-    setActionSuccess('');
-    setBackupLoading(true);
-    try {
-      await apiExportBackup();
-      setActionSuccess('¡Exportación masiva descargada con éxito! Incluye usuarios, contraseñas, fotos, marcaciones y rutas GPS.');
-    } catch (err) {
-      setActionError(err.message || 'Error al generar la exportación');
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
-  const handleImportFileChange = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    if (!window.confirm('¿Desea restaurar esta copia de seguridad? Se importarán todos los trabajadores, contraseñas, fotos, marcaciones y rutas registradas.')) {
-      e.target.value = '';
-      return;
-    }
-
-    setActionError('');
-    setActionSuccess('');
-    setBackupLoading(true);
-
-    try {
-      const text = await file.text();
-      const backupJson = JSON.parse(text);
-      const res = await apiImportBackup(backupJson);
-      
-      const stats = res.stats || {};
-      setActionSuccess(`¡Restauración exitosa! (${stats.users || 0} trabajadores, ${stats.attendance || 0} marcaciones, ${stats.routes || 0} rutas GPS).`);
-      fetchUsers();
-    } catch (err) {
-      setActionError(err.message || 'Error al procesar archivo de copia de seguridad');
-    } finally {
-      setBackupLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+  const [editLoading, setEditLoading] = useState(false);
 
   const fetchUsers = async () => {
     try {
       const data = await apiGetUsers();
       if (Array.isArray(data) && data.length > 0) {
-        // El servidor en la nube es la fuente autoritativa: sincronizar exactamente
-        const cleanUsers = setVaultUsers(data);
-        setUsers(cleanUsers);
+        const merged = mergeUsersToVault(data);
+        setUsers(merged);
       } else {
         const vault = getMasterVault();
         if (vault.users.length > 0) {
-          setUsers(vault.users.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario'))));
+          setUsers(vault.users);
         }
       }
     } catch (err) {
       const vault = getMasterVault();
       if (vault.users.length > 0) {
-        setUsers(vault.users.filter(u => u && (u.name || u.username) && ((u.name && u.name.trim() !== '') || (u.username && u.username !== 'usuario'))));
+        setUsers(vault.users);
       }
     }
   };
 
-    useEffect(() => {
+  useEffect(() => {
     fetchUsers();
 
-    // Sincronizacin en tiempo real ultra-rpida va WebSockets
     const socket = getSocket();
 
     const onUserCreated = (created) => {
       if (created && created.id) {
         setUsers(prev => {
-          if (prev.some(u => u.id === created.id)) return prev.map(u => u.id === created.id ? created : u);
+          if (prev.some(u => u.id === created.id || u.username === created.username)) {
+            return prev.map(u => (u.id === created.id || u.username === created.username) ? created : u);
+          }
           return [...prev, created].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
         });
       }
@@ -150,9 +104,9 @@ export default function AdminUsersView({ currentUser, theme }) {
 
     const onUserUpdated = (updated) => {
       if (updated && updated.id) {
-        setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
+        setUsers(prev => prev.map(u => (u.id === updated.id || u.username === updated.username) ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
         const vault = getMasterVault();
-        vault.users = vault.users.map(u => u.id === updated.id ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        vault.users = vault.users.map(u => (u.id === updated.id || u.username === updated.username) ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
         saveMasterVault(vault);
       }
     };
@@ -183,7 +137,6 @@ export default function AdminUsersView({ currentUser, theme }) {
     socket.on('user_gps_toggled', onGpsToggled);
     socket.on('attendance_updated', fetchUsers);
 
-    // Respaldo de sincronizacin automtica cada 6 segundos para garantizar datos frescos
     const syncInterval = setInterval(() => {
       fetchUsers();
     }, 6000);
@@ -206,7 +159,8 @@ export default function AdminUsersView({ currentUser, theme }) {
     try {
       const payload = {
         ...newUser,
-        gps_tracking_enabled: newUser.gps_tracking_enabled ? 1 : 0
+        gps_tracking_enabled: newUser.gps_tracking_enabled ? 1 : 0,
+        has_credential: newUser.role === 'admin' ? (newUser.has_credential ? 1 : 0) : 1
       };
       const res = await apiCreateUser(payload);
       const created = res?.user || res;
@@ -215,7 +169,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       }
       setActionSuccess('Usuario ' + newUser.name + ' creado exitosamente.');
       setShowCreateModal(false);
-      setNewUser({ username: '', name: '', rut: '', email: '', password: '123', role: 'worker', gps_tracking_enabled: false });
+      setNewUser({ username: '', name: '', rut: '', email: '', password: '123', role: 'worker', gps_tracking_enabled: false, has_credential: true });
       fetchUsers();
     } catch (err) {
       setActionError(err.message || 'Error al crear usuario');
@@ -238,7 +192,8 @@ export default function AdminUsersView({ currentUser, theme }) {
       email: u.email || '',
       password: '',
       role: u.role || 'worker',
-      gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled)
+      gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled),
+      has_credential: u.has_credential !== undefined ? Boolean(u.has_credential) : true
     });
     setEditError('');
     setShowEditModal(true);
@@ -256,26 +211,23 @@ export default function AdminUsersView({ currentUser, theme }) {
         rut: editForm.rut,
         email: editForm.email,
         role: editForm.role,
-        gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0
+        gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0,
+        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : 1
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();
       }
 
-      // 1. Aplicar cambios inmediatamente al estado visual ordenado
       const updatedUser = { ...editingUser, ...payload };
       setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
 
-      // 2. Guardar en Bveda Maestra local
       const vault = getMasterVault();
       vault.users = vault.users.map(u => u.id === editingUser.id ? updatedUser : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
       saveMasterVault(vault);
 
-      // 3. Enviar al servidor / nube
       const res = await apiUpdateUser(editingUser.id, payload);
       const serverUser = res?.user || updatedUser;
 
-      // 4. Asegurar estado con respuesta del servidor
       setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
       vault.users = vault.users.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
       saveMasterVault(vault);
@@ -295,326 +247,251 @@ export default function AdminUsersView({ currentUser, theme }) {
   const handlePhotoUpload = async (userId, file) => {
     if (!file) return;
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64Data = e.target.result;
-        setUsers(prev => prev.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u));
-        const vault = getMasterVault();
-        vault.users = vault.users.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u);
-        saveMasterVault(vault);
-        try {
-          await apiUploadPhoto(userId, base64Data);
-          setActionSuccess('Fotografía actualizada y guardada permanentemente.');
-          setTimeout(() => setActionSuccess(''), 3500);
-        } catch (err) {
-          setActionError(err.message || 'Error al guardar foto en servidor');
-          setTimeout(() => setActionError(''), 4000);
-        }
-      };
-      reader.readAsDataURL(file);
+      const base64Data = await compressImageToBase64(file, 360, 0.82);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u));
+      const vault = getMasterVault();
+      vault.users = vault.users.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u);
+      saveMasterVault(vault);
+      try {
+        await apiUploadPhoto(userId, base64Data);
+        setActionSuccess('Fotografía actualizada y guardada permanentemente.');
+        setTimeout(() => setActionSuccess(''), 3500);
+      } catch (err) {
+        setActionError(err.message || 'Error al guardar foto en servidor');
+        setTimeout(() => setActionError(''), 4000);
+      }
     } catch (err) {
       setActionError(err.message || 'Error al procesar fotografía');
     }
   };
 
   const handleToggleGps = async (userId, currentVal) => {
-    const isCurrentlyActive = isGpsActive(currentVal);
-    const targetState = !isCurrentlyActive;
-    const targetNumeric = targetState ? 1 : 0;
-    
-    // 1. Actualizar estado local inmediatamente
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
-    
-    // 2. Actualizar en Bveda Maestra inmediatamente
+    const newVal = !isGpsActive(currentVal);
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: newVal ? 1 : 0 } : u));
     const vault = getMasterVault();
-    vault.users = vault.users.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    vault.users = vault.users.map(u => u.id === userId ? { ...u, gps_tracking_enabled: newVal ? 1 : 0 } : u);
     saveMasterVault(vault);
 
     try {
-      await apiToggleGps(userId, targetNumeric);
-      setActionSuccess(`GPS ${targetNumeric === 1 ? 'activado' : 'desactivado'} correctamente.`);
+      await apiToggleGps(userId, newVal);
+      setActionSuccess('Rastreo GPS ' + (newVal ? 'ACTIVADO' : 'DESACTIVADO') + ' correctamente');
       setTimeout(() => setActionSuccess(''), 3000);
     } catch (err) {
-      setActionError(err.message || 'Error al modificar estado de GPS');
+      setActionError(err.message || 'Error al cambiar estado GPS');
       fetchUsers();
     }
   };
 
-  const handleDelete = async (userToDelete) => {
-    if (!userToDelete) return;
-    
-    const isTargetMauricio = userToDelete.is_superadmin === 1 || 
-      (userToDelete.name && userToDelete.name.toLowerCase() === 'mauricio') || 
-      (userToDelete.username && userToDelete.username.toLowerCase() === 'mauricio');
-
+  const handleDelete = async (u) => {
+    const isTargetMauricio = u.is_superadmin === 1 || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
     if (isTargetMauricio) {
-      setActionError('ACCESO DENEGADO: Esta cuenta de Administrador está protegida contra eliminación.');
-      setTimeout(() => setActionError(''), 4000);
+      alert('ACCESO DENEGADO: El usuario Mauricio es el Administrador Principal y no puede ser eliminado.');
       return;
     }
 
-    const displayName = userToDelete.name || userToDelete.username || 'este registro incompleto';
-    if (!window.confirm('¿Está seguro de eliminar a ' + displayName + '?')) return;
+    if (!window.confirm('¿Está seguro de eliminar permanentemente a ' + u.name + '? Esta acción eliminará su usuario, foto y credencial QR.')) {
+      return;
+    }
 
     try {
-      // 1. Remover siempre de la Bóveda Maestra (LocalStorage)
-      if (userToDelete.id) {
-        removeUserFromVault(userToDelete.id);
-      } else {
-        const vault = getMasterVault();
-        vault.users = vault.users.filter(u => u !== userToDelete && (u.id || u.name || u.username));
-        saveMasterVault(vault);
-      }
-
-      // 2. Si tiene ID, eliminar en el servidor
-      if (userToDelete.id) {
-        try {
-          await apiDeleteUser(userToDelete.id);
-        } catch (serverErr) {
-          console.warn('Aviso al eliminar en servidor:', serverErr.message);
-        }
-      }
-
-      setActionSuccess('Usuario ' + displayName + ' eliminado correctamente.');
+      removeUserFromVault(u.id);
+      setUsers(prev => prev.filter(item => item.id !== u.id));
+      await apiDeleteUser(u.id);
+      setActionSuccess('Usuario ' + u.name + ' eliminado del sistema');
       fetchUsers();
+      setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
       setActionError(err.message || 'Error al eliminar usuario');
       fetchUsers();
     }
   };
 
+  const handleAutoGenerateLogin = (fullName) => {
+    if (!fullName) return;
+    const clean = fullName.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    const firstWord = fullName.trim().split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    setNewUser(prev => ({
+      ...prev,
+      name: fullName,
+      username: clean || firstWord || 'usuario',
+      email: (clean || firstWord || 'usuario') + '@asistentruck.cl'
+    }));
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300">
       
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header Principal de Gestión de Personal */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <Users className="w-7 h-7 text-orange-500" />
-            Gestión de Personal & Credenciales
+          <h2 className="text-lg sm:text-xl font-black tracking-tight flex items-center gap-2">
+            <Users className="w-5 h-5 text-orange-500" />
+            <span>Gestión de Personal y Cuentas</span>
           </h2>
-          <p className="text-xs text-orange-500 font-semibold">
-            Modifica nombres de usuario para login, RUT, correos, contraseñas, fotos y GPS
+          <p className="text-xs text-zinc-400">
+            Administración de trabajadores, credenciales QR, roles y contraseñas
           </p>
         </div>
 
         <button
           onClick={() => setShowCreateModal(true)}
-          className="bg-orange-500 hover:bg-orange-600 text-black text-xs font-black px-5 py-3 rounded-2xl shadow-xl shadow-orange-500/25 transition-all flex items-center justify-center gap-2"
+          className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
-          Registrar Nuevo Personal
+          <span>Crear Nuevo Usuario</span>
         </button>
       </div>
 
-      {/* SECCIÓN SUPERADMIN: EXPORTACIÓN E IMPORTACIÓN MASIVA TOTAL */}
-      {isSuperAdmin && (
-        <div className={'border-2 rounded-3xl p-5 shadow-2xl transition-all relative overflow-hidden ' + (isDark ? 'bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border-orange-500/40 text-white' : 'bg-gradient-to-r from-orange-50 via-white to-orange-50 border-orange-400 text-zinc-900')}>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-orange-500 text-black">
-                  <Database className="w-5 h-5" />
-                </span>
-                <h3 className="text-base font-black tracking-tight flex items-center gap-2">
-                  Copia de Seguridad Masiva (SuperAdmin)
-                  <span className="text-[10px] bg-orange-500/20 text-orange-500 border border-orange-500/30 px-2 py-0.5 rounded-full font-bold uppercase">
-                    Seguridad Total
-                  </span>
-                </h3>
-              </div>
-              <p className="text-xs text-zinc-400 max-w-2xl">
-                Exporta o restaura en 1 clic toda la información: <strong className="text-orange-400">usuarios, contraseñas, fotos de perfil, historial de marcaciones pasadas y rutas GPS</strong>. Ideal para respaldar o migrar sin perder ningún dato.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Botón Exportar */}
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                disabled={backupLoading}
-                className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-4 py-2.5 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>{backupLoading ? 'Procesando...' : 'Exportar Masivo (.json)'}</span>
-              </button>
-
-              {/* Botón Importar */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                disabled={backupLoading}
-                className={'active:scale-95 text-xs font-black px-4 py-2.5 rounded-xl border transition-all flex items-center gap-2 cursor-pointer ' + (isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700 hover:border-orange-500/40' : 'bg-white hover:bg-zinc-100 text-zinc-900 border-zinc-300 hover:border-orange-400')}
-              >
-                <UploadCloud className="w-4 h-4 text-orange-500" />
-                <span>Importar Masivo (.json)</span>
-              </button>
-
-              {/* Input de Archivo Oculto */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".json"
-                className="hidden"
-                onChange={handleImportFileChange}
-                disabled={backupLoading}
-              />
-            </div>
+      {actionError && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-2xl text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{actionError}</span>
           </div>
+          <button onClick={() => setActionError('')}><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      {/* Notificaciones Flotantes Tipo Toast (Burbuja Flotante sin mover el listado de personal) */}
-      {(actionError || actionSuccess) && (
-        <div className="fixed top-20 right-4 sm:right-8 z-50 max-w-md w-[calc(100%-2rem)] sm:w-auto pointer-events-auto transition-all duration-300">
-          {actionError && (
-            <div className="bg-zinc-950/95 backdrop-blur-xl border border-red-500/50 text-red-300 p-3.5 sm:p-4 rounded-2xl shadow-2xl shadow-red-950/80 flex items-center gap-3 text-xs font-semibold">
-              <div className="w-8 h-8 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-4 h-4 text-red-400" />
-              </div>
-              <span className="flex-1 leading-snug">{actionError}</span>
-              <button 
-                onClick={() => setActionError('')}
-                className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-                title="Cerrar notificacin"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {actionSuccess && (
-            <div className="bg-zinc-950/95 backdrop-blur-xl border border-emerald-500/50 text-emerald-300 p-3.5 sm:p-4 rounded-2xl shadow-2xl shadow-emerald-950/80 flex items-center gap-3 text-xs font-semibold">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-              </div>
-              <span className="flex-1 leading-snug">{actionSuccess}</span>
-              <button 
-                onClick={() => setActionSuccess('')}
-                className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-                title="Cerrar notificacin"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+      {actionSuccess && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-2xl text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{actionSuccess}</span>
+          </div>
+          <button onClick={() => setActionSuccess('')}><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {/* Grid de Tarjetas de Usuarios */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {users.map((u) => {
-          const isMauricio = u.is_superadmin === 1 || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
-          const canEditThis = true;
+          const isSuper = u.is_superadmin === 1 || u.role === 'superadmin' || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
+          const isAdminRole = u.role === 'admin' && !isSuper;
+          const hasCred = u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0';
 
           return (
             <div
-              key={u.id}
-              className={'border rounded-3xl p-6 shadow-xl relative overflow-hidden transition-all flex flex-col justify-between ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}
+              key={u.id || u.username || u.name}
+              className={'border rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-xl transition-all relative overflow-hidden group ' + (
+                isDark ? 'bg-zinc-950/90 border-zinc-800/80 hover:border-orange-500/40' : 'bg-white border-orange-100 hover:border-orange-300'
+              )}
             >
-              <div>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="relative group">
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-orange-500 bg-black flex items-center justify-center text-xl font-bold shadow-lg shadow-orange-500/20">
-                      {u.photo_url ? (
-                        <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-orange-500">{(u.name || 'U').charAt(0)}</span>
-                      )}
-                    </div>
-                    <label
-                      title="Cambiar Foto"
-                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 rounded-2xl cursor-pointer flex items-center justify-center text-white transition-opacity"
-                    >
-                      <Upload className="w-5 h-5" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handlePhotoUpload(u.id, e.target.files[0])}
-                      />
-                    </label>
-                  </div>
+              {/* Etiqueta de Rol */}
+              <div className="flex items-center justify-between mb-3">
+                <span className={'text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ' + (
+                  isSuper
+                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                    : isAdminRole
+                      ? (hasCred ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
+                      : 'bg-orange-500/20 text-orange-400 border-orange-500/40'
+                )}>
+                  {isSuper ? 'SUPERADMIN' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
+                </span>
 
-                  <div className="flex flex-col items-end gap-1.5">
-                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-500 text-black shadow-sm">
-                      {u.role === 'superadmin' || u.role === 'admin' ? 'Admin' : 'Trabajador'}
-                    </span>
-
-                    {isGpsActive(u.gps_tracking_enabled) && (
-                      <span className="text-[9px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                        <MapPin className="w-3 h-3 animate-pulse" /> GPS Activo
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <h3 className="text-base font-black tracking-tight">{u.name}</h3>
-                
-                <div className="space-y-1.5 my-2.5 font-mono text-xs">
-                  <div className="flex items-center justify-between text-zinc-400 bg-orange-500/10 px-2.5 py-1 rounded-xl border border-orange-500/20">
-                    <span className="font-sans text-[11px] font-bold text-orange-500">Usuario Login:</span>
-                    <strong className="text-orange-400 font-bold">{u.username || (u.name ? u.name.toLowerCase().replace(/\s+/g, '') : 'usuario')}</strong>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-400">
-                    <span className="font-sans text-[11px]">RUT:</span>
-                    <strong className="text-zinc-300 font-bold">{u.rut || 'Sin registrar'}</strong>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-400">
-                    <span className="font-sans text-[11px]">Correo:</span>
-                    <span className="text-zinc-400 truncate max-w-[170px]">{u.email}</span>
-                  </div>
-                  {isSuperAdmin && (
-                    <div className="flex items-center justify-between text-zinc-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/25 mt-1">
-                      <span className="font-sans text-[11px] font-bold text-amber-500 flex items-center gap-1">
-                        <Key className="w-3 h-3 flex-shrink-0" /> Clave:
-                      </span>
-                      <strong className="text-amber-400 font-mono font-black">{u.plain_password || '123'}</strong>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-zinc-800/80 mt-2 space-y-2">
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => openEditModal(u)}
-                    disabled={!canEditThis}
-                    className={'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + (canEditThis ? (isDark ? 'bg-zinc-900 hover:bg-zinc-800 text-orange-400 border border-zinc-700' : 'bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200') : 'bg-zinc-900/40 text-zinc-600 border border-zinc-800 cursor-not-allowed')}
+                    title="Modificar Perfil"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 transition-colors cursor-pointer"
                   >
-                    {canEditThis ? <Edit3 className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                    <span>{canEditThis ? 'Modificar Perfil' : 'Protegido'}</span>
+                    <Edit3 className="w-4 h-4" />
                   </button>
-
-                  <button
-                    onClick={() => setShowQrModal(u)}
-                    className="py-2 px-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 border border-orange-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center"
-                    title="Ver Código QR"
-                  >
-                    QR
-                  </button>
-
-                  {!isMauricio && (
+                  {!isSuper && (
                     <button
                       onClick={() => handleDelete(u)}
-                      className="py-2 px-3 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl text-xs transition-all flex items-center justify-center"
-                      title="Eliminar Trabajador"
+                      title="Eliminar Usuario"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
+              </div>
 
-                {/* Switch rápido de GPS */}
-                <div className="flex items-center justify-between pt-1 text-xs">
+              {/* Información y Foto */}
+              <div className="flex items-start space-x-3.5 mb-3.5">
+                <div className="relative group/photo flex-shrink-0">
+                  <div className="w-13 h-13 rounded-2xl overflow-hidden border-2 border-orange-500 bg-black flex items-center justify-center text-base font-black text-white shadow-md">
+                    {u.photo_url ? (
+                      <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-orange-500 text-lg font-black">{u.name?.charAt(0) || 'U'}</span>
+                    )}
+                  </div>
+                  <label 
+                    title="Subir o cambiar fotografía"
+                    className="absolute inset-0 bg-black/60 opacity-0 group-hover/photo:opacity-100 rounded-2xl flex items-center justify-center cursor-pointer transition-opacity text-white"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handlePhotoUpload(u.id, e.target.files[0]);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-black text-sm tracking-tight truncate">{u.name}</h4>
+                  <div className="text-[11px] text-orange-500 font-mono font-bold mt-0.5 truncate">
+                    Login: {u.username || 'usuario'}
+                  </div>
+                  <div className="text-[10px] text-zinc-400 truncate mt-0.5">
+                    RUT: {u.rut || 'Sin registrar'}
+                  </div>
+                  <div className="text-[10px] text-zinc-500 truncate">
+                    {u.email || 'Sin correo'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Datos de Clave */}
+              <div className={'p-2.5 rounded-2xl border mb-3 flex items-center justify-between ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Key className="w-3.5 h-3.5 text-orange-500" />
+                  <span className="text-[11px]">Clave:</span>
+                </div>
+                <span className="font-mono text-xs font-black text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
+                  {u.plain_password || '123'}
+                </span>
+              </div>
+
+              {/* Acciones Rápidas: QR y GPS */}
+              <div className="space-y-2 pt-1 border-t border-zinc-800/60">
+                <div className="flex items-center justify-between">
                   <span className="text-[11px] text-zinc-400 font-bold">Rastreo GPS en vivo:</span>
                   <button
                     onClick={() => handleToggleGps(u.id, u.gps_tracking_enabled)}
-                    className={'px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ' + (isGpsActive(u.gps_tracking_enabled) ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20' : 'bg-zinc-800 text-zinc-400 hover:text-white')}
+                    className={'px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ' + (
+                      isGpsActive(u.gps_tracking_enabled)
+                        ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
+                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                    )}
                   >
                     {isGpsActive(u.gps_tracking_enabled) ? 'ACTIVADO' : 'DESACTIVADO'}
                   </button>
                 </div>
+
+                {hasCred ? (
+                  <button
+                    onClick={() => setShowQrModal(u)}
+                    className={'w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all cursor-pointer ' + (
+                      isDark ? 'bg-zinc-900 hover:bg-orange-500 hover:text-black border-zinc-700' : 'bg-orange-50 hover:bg-orange-500 hover:text-black border-orange-200'
+                    )}
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Ver Credencial QR</span>
+                  </button>
+                ) : (
+                  <div className="w-full py-1.5 text-center text-[10px] font-bold text-zinc-500 bg-zinc-900/40 rounded-xl border border-zinc-800">
+                    Admin sin credencial QR (Acceso a Reportes)
+                  </div>
+                )}
               </div>
 
             </div>
@@ -622,257 +499,111 @@ export default function AdminUsersView({ currentUser, theme }) {
         })}
       </div>
 
-      {/* MODAL EDITAR PERFIL COMPLETO */}
-      {showEditModal && editingUser && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={'border rounded-3xl max-w-lg w-full p-6 shadow-2xl transition-all ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-            
-            <div className="flex items-center justify-between pb-3 border-b border-orange-500/20 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-bold">
-                  <Edit3 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black tracking-tight">Modificar Perfil de Usuario</h3>
-                  <p className="text-xs text-orange-500 font-semibold">{editingUser.name}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="p-1.5 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {editError && (
-              <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-red-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveEdit} className="space-y-3.5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    Nombre de Usuario (Para Login):
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.username}
-                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
-                    placeholder="Ej: bastian, juan"
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                    required
-                  />
-                  <span className="text-[9px] text-zinc-400 mt-0.5 block">Nombre corto para iniciar sesión</span>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    Nombre Completo:
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    placeholder="Ej: Bastián Soto"
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                    required
-                  />
-                  <span className="text-[9px] text-zinc-400 mt-0.5 block">Nombre visible en la credencial</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    RUT del Trabajador (Opcional):
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.rut}
-                    onChange={(e) => setEditForm({ ...editForm, rut: e.target.value })}
-                    placeholder="12.345.678-9"
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs font-mono border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    Correo Electrónico:
-                  </label>
-                  <input
-                    type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    placeholder="correo@empresa.cl"
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    Nueva Contraseña (Opcional):
-                  </label>
-                  <input
-                    type="password"
-                    value={editForm.password}
-                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                    placeholder="Dejar en blanco para mantener"
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">
-                    Rol en el Sistema:
-                  </label>
-                  <select
-                    value={editForm.role}
-                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                    disabled={editingUser && (editingUser.is_superadmin === 1 || (editingUser.name || '').toLowerCase() === 'mauricio' || (editingUser.username || '').toLowerCase() === 'mauricio')}
-                    className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  >
-                    <option value="worker">Trabajador (Solo Credencial y Horarios)</option>
-                    <option value="admin">Admin (Acceso a Gestión y GPS)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className={'p-3 rounded-xl border flex items-center justify-between ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
-                <div>
-                  <div className="text-xs font-bold">Activar Rastreo GPS Satelital</div>
-                  <div className="text-[10px] text-zinc-400">Transmite coordenadas del celular en terreno</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={editForm.gps_tracking_enabled}
-                  onChange={(e) => setEditForm({ ...editForm, gps_tracking_enabled: e.target.checked })}
-                  className="w-5 h-5 accent-orange-500 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-zinc-400 hover:bg-zinc-900"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-black font-black text-xs rounded-xl shadow-lg shadow-orange-500/25"
-                >
-                  {editLoading ? 'Guardando...' : 'Guardar Cambios'}
-                </button>
-              </div>
-            </form>
-
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CREAR NUEVO PERSONAL */}
+      {/* MODAL CREAR USUARIO */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-            <h3 className="text-lg font-black mb-4 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-orange-500" />
-              Registrar Nuevo Personal
-            </h3>
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4">
+          <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+            <div className="flex items-center justify-between pb-3 border-b border-orange-500/20">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-orange-500" />
+                <h3 className="text-base font-black">Crear Nuevo Usuario</h3>
+              </div>
+              <button onClick={() => setShowCreateModal(false)} className="text-zinc-400 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
 
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">
-                  Nombre de Usuario (Para Iniciar Sesión):
-                </label>
-                <input
-                  type="text"
-                  value={newUser.username}
-                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                  placeholder="Ej: bastian, juan, nperez"
-                  className={'w-full rounded-xl px-3 py-2 text-xs border font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  required
-                />
-                <span className="text-[9px] text-zinc-400 mt-0.5 block">
-                  El trabajador usará este usuario corto y su contraseña para entrar.
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">
-                  Nombre Completo del Trabajador:
-                </label>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Nombre Completo:</label>
                 <input
                   type="text"
                   value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  placeholder="Ej: Juan Carlos Pérez González"
-                  className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  onChange={(e) => handleAutoGenerateLogin(e.target.value)}
+                  placeholder="Ej: Bastian Soto, Nicolas Chamorro"
+                  className={'w-full rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-orange-500 ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   required
                 />
-                <span className="text-[9px] text-zinc-400 mt-0.5 block">
-                  Aparecerá en su credencial y reportes de asistencia.
-                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">RUT (Opcional):</label>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Usuario Login:</label>
+                  <input
+                    type="text"
+                    value={newUser.username}
+                    onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                    placeholder="bastiansoto"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">RUT (Opcional):</label>
                   <input
                     type="text"
                     value={newUser.rut}
                     onChange={(e) => setNewUser({ ...newUser, rut: e.target.value })}
                     placeholder="12.345.678-9"
-                    className={'w-full rounded-xl px-3 py-2 text-xs font-mono border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">Correo (Opcional):</label>
-                  <input
-                    type="email"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    placeholder="correo@empresa.cl"
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Correo Electrónico:</label>
+                <input
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  placeholder="usuario@asistentruck.cl"
+                  className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">Contraseña Inicial:</label>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Contraseña:</label>
                   <input
-                    type="password"
+                    type="text"
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    placeholder="123"
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold text-orange-500 uppercase mb-1">Rol en el Sistema:</label>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Rol de Usuario:</label>
                   <select
                     value={newUser.role}
                     onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
-                    <option value="worker">Trabajador (Solo Credencial y Horarios)</option>
-                    <option value="admin">Admin (Acceso a Gestión y GPS)</option>
+                    <option value="worker">Trabajador (Solo Credencial)</option>
+                    <option value="admin">Administrador (Gestión / Reportes)</option>
                   </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
+              {/* Pregunta si se desea crear la credencial para Administradores */}
+              {newUser.role === 'admin' && (
+                <div className={'p-3 rounded-2xl border flex items-center justify-between ' + (isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-orange-50/70 border-orange-200')}>
+                  <div className="pr-2">
+                    <div className="text-xs font-bold text-orange-400">¿Generar Credencial / Carnet QR?</div>
+                    <div className="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                      Si se desactiva, el Admin entrará directamente al panel de reportes y marcaciones sin credencial QR.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newUser.has_credential}
+                    onChange={(e) => setNewUser({ ...newUser, has_credential: e.target.checked })}
+                    className="w-5 h-5 accent-orange-500 rounded cursor-pointer flex-shrink-0"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
                   id="create-gps"
@@ -880,8 +611,8 @@ export default function AdminUsersView({ currentUser, theme }) {
                   onChange={(e) => setNewUser({ ...newUser, gps_tracking_enabled: e.target.checked })}
                   className="w-4 h-4 accent-orange-500 rounded"
                 />
-                <label htmlFor="create-gps" className="text-xs font-bold text-zinc-300">
-                  Habilitar Rastreo GPS para este usuario
+                <label htmlFor="create-gps" className="text-xs font-bold text-zinc-400 cursor-pointer">
+                  Habilitar Rastreo GPS en vivo (Predeterminado: Desactivado)
                 </label>
               </div>
 
@@ -889,15 +620,15 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:bg-zinc-800 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/25 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/20 cursor-pointer"
                 >
-                  Crear y Generar QR
+                  Crear Usuario
                 </button>
               </div>
             </form>
@@ -905,26 +636,174 @@ export default function AdminUsersView({ currentUser, theme }) {
         </div>
       )}
 
-      {/* MODAL VER CÓDIGO QR */}
+      {/* MODAL MODIFICAR USUARIO */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4">
+          <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+            <div className="flex items-center justify-between pb-3 border-b border-orange-500/20">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-orange-500" />
+                <h3 className="text-base font-black">Modificar Perfil: {editingUser.name}</h3>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-zinc-400 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+
+            {editError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-xl text-xs">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Nombre Completo:</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Usuario Login:</label>
+                  <input
+                    type="text"
+                    value={editForm.username}
+                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">RUT:</label>
+                  <input
+                    type="text"
+                    value={editForm.rut}
+                    onChange={(e) => setEditForm({ ...editForm, rut: e.target.value })}
+                    placeholder="12.345.678-9"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Correo Electrónico:</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Nueva Contraseña:</label>
+                  <input
+                    type="text"
+                    value={editForm.password}
+                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                    placeholder="Dejar en blanco para no cambiar"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Rol de Usuario:</label>
+                  <select
+                    value={editForm.role}
+                    disabled={editingUser.is_superadmin === 1}
+                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                  >
+                    <option value="worker">Trabajador</option>
+                    <option value="admin">Administrador</option>
+                    {editingUser.is_superadmin === 1 && <option value="superadmin">SuperAdmin</option>}
+                  </select>
+                </div>
+              </div>
+
+              {/* Opción de Credencial para Administrador */}
+              {editForm.role === 'admin' && (
+                <div className={'p-3 rounded-2xl border flex items-center justify-between ' + (isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-orange-50/70 border-orange-200')}>
+                  <div className="pr-2">
+                    <div className="text-xs font-bold text-orange-400">¿Generar Credencial / Carnet QR?</div>
+                    <div className="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                      Si se desactiva, no se generará carnet QR y su menú será la tabla de reportes.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editForm.has_credential}
+                    onChange={(e) => setEditForm({ ...editForm, has_credential: e.target.checked })}
+                    className="w-5 h-5 accent-orange-500 rounded cursor-pointer flex-shrink-0"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="edit-gps"
+                  checked={editForm.gps_tracking_enabled}
+                  onChange={(e) => setEditForm({ ...editForm, gps_tracking_enabled: e.target.checked })}
+                  className="w-4 h-4 accent-orange-500 rounded"
+                />
+                <label htmlFor="edit-gps" className="text-xs font-bold text-zinc-400 cursor-pointer">
+                  Activar Rastreo GPS Satelital
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="px-4 py-2.5 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/20 cursor-pointer"
+                >
+                  {editLoading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MOSTRAR QR */}
       {showQrModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
-          <div className={'border rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-            <h3 className="text-base font-black mb-1">{showQrModal.name}</h3>
-            <p className="text-xs text-orange-500 font-mono font-bold mb-1">Usuario: {showQrModal.username || showQrModal.name}</p>
-            <p className="text-xs text-zinc-400 font-mono mb-4">RUT: {showQrModal.rut || 'S/N'}</p>
-
-            <div className="p-4 bg-white rounded-2xl inline-block shadow-xl border-2 border-orange-500/30">
-              <QRCodeSVG value={showQrModal.qr_token} size={180} />
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setShowQrModal(null)}>
+          <div 
+            className={'border rounded-3xl max-w-xs w-full p-6 shadow-2xl text-center space-y-4 ' + (isDark ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-orange-500/20">
+              <h3 className="text-sm font-black truncate">{showQrModal.name}</h3>
+              <button onClick={() => setShowQrModal(null)} className="text-zinc-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
 
-            <div className="mt-5">
-              <button
-                onClick={() => setShowQrModal(null)}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-black font-black py-2.5 rounded-xl text-xs"
-              >
-                Cerrar
-              </button>
+            <div className="bg-white p-4 rounded-2xl shadow-inner inline-block mx-auto border-2 border-orange-500">
+              <QRCodeSVG value={showQrModal.qr_token || 'SIN_TOKEN'} size={180} level="H" />
             </div>
+
+            <div className="text-[11px] font-mono font-bold text-orange-400 break-all">
+              {showQrModal.qr_token}
+            </div>
+
+            <button
+              onClick={() => setShowQrModal(null)}
+              className="w-full py-2 bg-orange-500 text-black font-black text-xs rounded-xl cursor-pointer"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

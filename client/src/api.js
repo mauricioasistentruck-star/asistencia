@@ -355,9 +355,46 @@ export const apiSyncVault = (vaultData) => apiRequest('/api/sync/vault', {
 });
 
 // =========================================================================
+// =========================================================================
 // SISTEMA DE BÓVEDA MAESTRA PERSISTENTE (MASTER VAULT)
 // Protege todos los trabajadores, fotos, contraseñas y marcaciones contra reinicios de Render
 // =========================================================================
+
+export const compressImageToBase64 = (fileOrDataUrl, maxDim = 360, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      resolve(dataUrl);
+    };
+    img.onerror = (err) => reject(err);
+    if (typeof fileOrDataUrl === 'string') {
+      img.src = fileOrDataUrl;
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target.result; };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(fileOrDataUrl);
+    }
+  });
+};
 
 export const isUserValid = (u) => {
   if (!u || typeof u !== 'object') return false;
@@ -449,29 +486,50 @@ export const saveMasterVault = (vault) => {
 
 export const setVaultUsers = (serverUsers) => {
   if (!Array.isArray(serverUsers)) return getMasterVault().users;
-  const validUsers = serverUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-  const vault = getMasterVault();
-  vault.users = validUsers;
-  saveMasterVault(vault);
-  return validUsers;
+  return mergeUsersToVault(serverUsers);
 };
 
 export const mergeUsersToVault = (incomingUsers) => {
   if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) return getMasterVault().users;
   const vault = getMasterVault();
-  const currentMap = new Map();
-  vault.users.filter(isUserValid).forEach(u => currentMap.set(String(u.id || u.rut || u.username), u));
+  const currentUsers = [...vault.users.filter(isUserValid)];
 
-  incomingUsers.filter(isUserValid).forEach(u => {
-    const key = String(u.id || u.rut || u.username);
-    if (currentMap.has(key)) {
-      currentMap.set(key, { ...currentMap.get(key), ...u });
+  incomingUsers.filter(isUserValid).forEach(inc => {
+    const normIncName = (inc.name || '').toLowerCase().trim();
+    const normIncUser = (inc.username || '').toLowerCase().trim();
+    const normIncRut = (inc.rut || '').trim();
+
+    const existingIdx = currentUsers.findIndex(u => {
+      if (inc.id && u.id && String(inc.id) === String(u.id)) return true;
+      if (normIncUser && u.username && normIncUser === u.username.toLowerCase().trim()) return true;
+      if (normIncRut && u.rut && normIncRut === u.rut.trim()) return true;
+      if (normIncName && u.name && normIncName === u.name.toLowerCase().trim()) return true;
+      return false;
+    });
+
+    if (existingIdx !== -1) {
+      const existing = currentUsers[existingIdx];
+      currentUsers[existingIdx] = {
+        ...existing,
+        ...inc,
+        id: inc.id || existing.id,
+        photo_url: inc.photo_url || existing.photo_url || null,
+        plain_password: (inc.plain_password && inc.plain_password !== '123') ? inc.plain_password : (existing.plain_password || inc.plain_password || '123'),
+        password_hash: (inc.plain_password && inc.plain_password !== '123') ? (inc.password_hash || existing.password_hash) : (existing.password_hash || inc.password_hash),
+        gps_tracking_enabled: inc.gps_tracking_enabled !== undefined ? inc.gps_tracking_enabled : (existing.gps_tracking_enabled || 0),
+        has_credential: inc.has_credential !== undefined ? inc.has_credential : (existing.has_credential !== undefined ? existing.has_credential : 1)
+      };
     } else {
-      currentMap.set(key, u);
+      currentUsers.push({
+        ...inc,
+        plain_password: inc.plain_password || '123',
+        gps_tracking_enabled: inc.gps_tracking_enabled || 0,
+        has_credential: inc.has_credential !== undefined ? inc.has_credential : 1
+      });
     }
   });
 
-  vault.users = Array.from(currentMap.values()).filter(isUserValid);
+  vault.users = currentUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
   saveMasterVault(vault);
   return vault.users;
 };
@@ -487,6 +545,27 @@ export const removeUserFromVault = (userId) => {
   });
   saveMasterVault(vault);
   return vault.users;
+};
+
+
+export const mergeRoutesToVault = (incomingRoutes) => {
+  if (!Array.isArray(incomingRoutes) || incomingRoutes.length === 0) return getMasterVault().gps_routes;
+  const vault = getMasterVault();
+  const currentMap = new Map();
+  vault.gps_routes.forEach(r => currentMap.set(String(r.id || r.name || r.start_time), r));
+
+  incomingRoutes.forEach(r => {
+    const key = String(r.id || r.name || r.start_time);
+    if (currentMap.has(key)) {
+      currentMap.set(key, { ...currentMap.get(key), ...r });
+    } else {
+      currentMap.set(key, r);
+    }
+  });
+
+  vault.gps_routes = Array.from(currentMap.values());
+  saveMasterVault(vault);
+  return vault.gps_routes;
 };
 
 export const mergeAttendanceToVault = (incomingRecords) => {
@@ -507,26 +586,6 @@ export const mergeAttendanceToVault = (incomingRecords) => {
   vault.attendance = Array.from(map.values()).slice(0, 500);
   saveMasterVault(vault);
   return vault.attendance;
-};
-
-export const mergeRoutesToVault = (incomingRoutes) => {
-  if (!Array.isArray(incomingRoutes) || incomingRoutes.length === 0) return getMasterVault().gps_routes;
-  const vault = getMasterVault();
-  const currentMap = new Map();
-  vault.gps_routes.forEach(r => currentMap.set(String(r.id || r.name || r.start_time), r));
-
-  incomingRoutes.forEach(r => {
-    const key = String(r.id || r.name || r.start_time);
-    if (currentMap.has(key)) {
-      currentMap.set(key, { ...currentMap.get(key), ...r });
-    } else {
-      currentMap.set(key, r);
-    }
-  });
-
-  vault.gps_routes = Array.from(currentMap.values());
-  saveMasterVault(vault);
-  return vault.gps_routes;
 };
 
 // Sincronizacin Automtica Bidireccional con el Servidor (Auto-Restauracin de Render)
