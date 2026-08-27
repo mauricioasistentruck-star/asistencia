@@ -324,16 +324,18 @@ export default function AdminAttendanceView({ user, theme }) {
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300 print:p-0 print:m-0">
       
-      {/* Alerta de Escaneo en Vivo */}
+      {/* Toast Flotante de Escaneo en Vivo */}
       {lastLiveAlert && (
-        <div className="bg-orange-500 text-black px-4 py-2.5 rounded-2xl flex items-center justify-between font-bold text-xs shadow-xl animate-bounce print:hidden">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 animate-pulse" />
-            <span>
-              ¡Nueva Marcación en Vivo! <strong>{lastLiveAlert.user?.name || 'Personal'}</strong> ({lastLiveAlert.label}) a las {lastLiveAlert.time}
-            </span>
+        <div className="fixed bottom-6 right-6 z-[999999] max-w-sm w-[90%] sm:w-auto animate-in fade-in slide-in-from-bottom-4 duration-300 pointer-events-auto print:hidden">
+          <div className="bg-black/95 text-orange-400 border-2 border-orange-500 p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-xs font-black shadow-orange-500/20">
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 animate-pulse text-orange-500 flex-shrink-0" />
+              <span>
+                ¡Marcación en Vivo! <strong>{lastLiveAlert.user?.name || 'Personal'}</strong> ({lastLiveAlert.label}) a las {lastLiveAlert.time}
+              </span>
+            </div>
+            <button onClick={() => setLastLiveAlert(null)} className="text-zinc-400 hover:text-white cursor-pointer"><CheckCircle2 className="w-4 h-4" /></button>
           </div>
-          <button onClick={() => setLastLiveAlert(null)}><CheckCircle2 className="w-4 h-4" /></button>
         </div>
       )}
 

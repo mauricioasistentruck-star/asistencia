@@ -3,7 +3,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 
-const dbPath = path.join(__dirname, 'asistencia.db');
+const dbFilePath = path.join(__dirname, 'asistencia.db');
 const uploadsDir = path.join(__dirname, 'uploads');
 const audioUploadsDir = path.join(uploadsDir, 'audio');
 
@@ -14,7 +14,7 @@ if (!fs.existsSync(audioUploadsDir)) {
   fs.mkdirSync(audioUploadsDir, { recursive: true });
 }
 
-const db = new sqlite3.Database(dbPath, (err) => {
+const db = new sqlite3.Database(dbFilePath, (err) => {
   if (err) {
     console.error('Error al conectar con SQLite:', err.message);
   } else {
@@ -51,6 +51,13 @@ db.serialize(() => {
   db.run("UPDATE users SET username = LOWER(REPLACE(name, ' ', '')) WHERE username IS NULL OR username = ''", () => {});
   db.run("DELETE FROM users WHERE (name IS NULL OR TRIM(name) = '') AND (username IS NULL OR TRIM(username) = '' OR username = 'usuario')", () => {});
 
+  // Deduplicación en base de datos: conserva solo un registro por nombre de trabajador
+  db.run(`
+    DELETE FROM users WHERE id NOT IN (
+      SELECT MIN(id) FROM users GROUP BY LOWER(TRIM(name))
+    )
+  `, () => {});
+
   db.run(`
     CREATE TABLE IF NOT EXISTS attendance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +91,6 @@ db.serialize(() => {
     )
   `);
 
-  // Tabla para el Registro y Guardado de Rutas en Terreno
   db.run(`
     CREATE TABLE IF NOT EXISTS gps_routes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,7 +113,6 @@ db.serialize(() => {
     )
   `);
 
-  // Tabla para el Historial de Mensajes de Voz / Walkie-Talkie
   db.run(`
     CREATE TABLE IF NOT EXISTS voice_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +140,7 @@ db.serialize(() => {
     )
   `);
 
-  // Restaurar respaldo persistente si existe al iniciar el servidor (Para evitar borrado en reinicios de Render)
+  // Restaurar respaldo persistente de forma segura
   const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
   if (fs.existsSync(persistentBackupPath)) {
     try {
@@ -145,31 +150,47 @@ db.serialize(() => {
         for (let u of data.users) {
           const hasCred = (u.has_credential !== undefined && u.has_credential !== null) ? (u.has_credential ? 1 : 0) : 1;
           const gpsVal = (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0;
-          db.run(
-            `INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET
-               username = COALESCE(excluded.username, users.username),
-               rut = COALESCE(excluded.rut, users.rut),
-               name = COALESCE(excluded.name, users.name),
-               email = COALESCE(excluded.email, users.email),
-               password_hash = COALESCE(excluded.password_hash, users.password_hash),
-               plain_password = COALESCE(excluded.plain_password, users.plain_password),
-               role = COALESCE(excluded.role, users.role),
-               is_superadmin = COALESCE(excluded.is_superadmin, users.is_superadmin),
-               photo_url = COALESCE(excluded.photo_url, users.photo_url),
-               qr_token = COALESCE(excluded.qr_token, users.qr_token),
-               gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled),
-               has_credential = COALESCE(excluded.has_credential, users.has_credential)`,
-            [u.id, u.username, u.rut, u.name, u.email, u.password_hash, u.plain_password || '123', u.role, u.is_superadmin ? 1 : 0, u.photo_url, u.qr_token, gpsVal, hasCred, u.created_at || new Date().toISOString()]
+          const cleanName = (u.name || '').trim();
+          const cleanUser = (u.username || cleanName.toLowerCase().replace(/\s+/g, '')).trim();
+
+          db.get(
+            "SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?) OR id = ?",
+            [cleanUser, cleanName, u.id || 0],
+            (findErr, existingUser) => {
+              if (existingUser) {
+                db.run(
+                  `UPDATE users SET 
+                     username = ?,
+                     rut = COALESCE(?, rut),
+                     name = ?,
+                     email = ?,
+                     password_hash = COALESCE(?, password_hash),
+                     plain_password = COALESCE(?, plain_password),
+                     role = ?,
+                     is_superadmin = ?,
+                     photo_url = COALESCE(?, photo_url),
+                     gps_tracking_enabled = ?,
+                     has_credential = ?
+                   WHERE id = ?`,
+                  [cleanUser, u.rut || null, cleanName, u.email, u.password_hash || null, u.plain_password || '123', u.role || 'worker', u.is_superadmin ? 1 : 0, u.photo_url || null, gpsVal, hasCred, existingUser.id]
+                );
+              } else {
+                const qrToken = u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase());
+                db.run(
+                  `INSERT OR IGNORE INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [cleanUser, u.rut || null, cleanName, u.email, u.password_hash, u.plain_password || '123', u.role || 'worker', u.is_superadmin ? 1 : 0, u.photo_url || null, qrToken, gpsVal, hasCred, u.created_at || new Date().toISOString()]
+                );
+              }
+            }
           );
         }
       }
       if (data && Array.isArray(data.attendance)) {
         for (let a of data.attendance) {
           db.run(
-            `INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO attendance (user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(user_id, date) DO UPDATE SET
                entry_time = COALESCE(attendance.entry_time, excluded.entry_time),
                lunch_out_time = COALESCE(attendance.lunch_out_time, excluded.lunch_out_time),
@@ -178,7 +199,7 @@ db.serialize(() => {
                total_hours = MAX(COALESCE(attendance.total_hours, 0), COALESCE(excluded.total_hours, 0)),
                modified_by_admin = MAX(COALESCE(attendance.modified_by_admin, 0), COALESCE(excluded.modified_by_admin, 0)),
                admin_note = COALESCE(attendance.admin_note, excluded.admin_note)`,
-            [a.id, a.user_id, a.date, a.entry_time, a.lunch_out_time, a.lunch_in_time, a.exit_time, a.total_hours || 0, a.modified_by_admin ? 1 : 0, a.admin_note, a.created_at, a.updated_at]
+            [a.user_id, a.date, a.entry_time, a.lunch_out_time, a.lunch_in_time, a.exit_time, a.total_hours || 0, a.modified_by_admin ? 1 : 0, a.admin_note, a.created_at || new Date().toISOString(), a.updated_at || new Date().toISOString()]
           );
         }
       }
@@ -200,7 +221,7 @@ db.serialize(() => {
           );
         }
       }
-      console.log('Respaldo persistente de datos, audios y rutas GPS cargado correctamente.');
+      console.log('Respaldo persistente de datos cargado correctamente.');
     } catch (e) {
       console.warn('Advertencia restaurando persistent backup:', e);
     }
@@ -221,7 +242,6 @@ db.serialize(() => {
         }
       );
     } else {
-      // Asegurar rol y privilegios de SuperAdmin sin tocar la clave cambiada por el usuario
       db.run("UPDATE users SET is_superadmin = 1, role = 'superadmin' WHERE id = ?", [row.id]);
     }
   });

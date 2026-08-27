@@ -431,6 +431,40 @@ export const unlockIOSAudio = () => {
   } catch (e) {}
 };
 
+
+export const deduplicateUsers = (userList) => {
+  if (!Array.isArray(userList)) return [];
+  const map = new Map();
+  userList.filter(isUserValid).forEach(u => {
+    const nameKey = (u.name || '').toLowerCase().trim();
+    const userKey = (u.username || '').toLowerCase().trim();
+    const rutKey = (u.rut || '').trim();
+    const key = nameKey || userKey || rutKey || String(u.id);
+
+    if (map.has(key)) {
+      const existing = map.get(key);
+      map.set(key, {
+        ...existing,
+        ...u,
+        id: u.id || existing.id,
+        photo_url: u.photo_url || existing.photo_url || null,
+        plain_password: (u.plain_password && u.plain_password !== '123') ? u.plain_password : (existing.plain_password || '123'),
+        password_hash: (u.plain_password && u.plain_password !== '123') ? (u.password_hash || existing.password_hash) : (existing.password_hash || u.password_hash),
+        gps_tracking_enabled: (u.gps_tracking_enabled !== undefined && u.gps_tracking_enabled !== null) ? (isGpsActive(u.gps_tracking_enabled) ? 1 : 0) : (isGpsActive(existing.gps_tracking_enabled) ? 1 : 0),
+        has_credential: u.has_credential !== undefined ? u.has_credential : (existing.has_credential !== undefined ? existing.has_credential : 1)
+      });
+    } else {
+      map.set(key, {
+        ...u,
+        plain_password: u.plain_password || '123',
+        gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled) ? 1 : 0,
+        has_credential: u.has_credential !== undefined ? u.has_credential : 1
+      });
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+};
+
 export const getMasterVault = () => {
   try {
     const raw = localStorage.getItem('asistencia_master_vault');
@@ -439,7 +473,7 @@ export const getMasterVault = () => {
       if (parsed && typeof parsed === 'object') {
         const rawUsers = Array.isArray(parsed.users) ? parsed.users : [];
         return {
-          users: rawUsers.filter(isUserValid),
+          users: deduplicateUsers(rawUsers),
           attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
           voice_messages: Array.isArray(parsed.voice_messages) ? parsed.voice_messages : [],
           gps_routes: Array.isArray(parsed.gps_routes) ? parsed.gps_routes : []
@@ -470,7 +504,7 @@ export const saveMasterVault = (vault) => {
   try {
     const rawUsers = Array.isArray(vault?.users) ? vault.users : [];
     const safeVault = {
-      users: rawUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)),
+      users: deduplicateUsers(rawUsers),
       attendance: Array.isArray(vault?.attendance) ? vault.attendance.slice(0, 500) : [],
       voice_messages: Array.isArray(vault?.voice_messages) ? vault.voice_messages.slice(0, 300) : [],
       gps_routes: Array.isArray(vault?.gps_routes) ? vault.gps_routes.slice(0, 200) : []
@@ -529,7 +563,7 @@ export const mergeUsersToVault = (incomingUsers) => {
     }
   });
 
-  vault.users = currentUsers.filter(isUserValid).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+  vault.users = deduplicateUsers(currentUsers);
   saveMasterVault(vault);
   return vault.users;
 };

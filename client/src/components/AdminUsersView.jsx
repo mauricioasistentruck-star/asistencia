@@ -342,23 +342,27 @@ export default function AdminUsersView({ currentUser, theme }) {
         </button>
       </div>
 
-      {actionError && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-2xl text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>{actionError}</span>
-          </div>
-          <button onClick={() => setActionError('')}><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
-      {actionSuccess && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-2xl text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{actionSuccess}</span>
-          </div>
-          <button onClick={() => setActionSuccess('')}><X className="w-4 h-4" /></button>
+      {/* Toast Flotante de Notificaciones para evitar saltos en la pantalla */}
+      {(actionSuccess || actionError) && (
+        <div className="fixed bottom-6 right-6 z-[999999] max-w-sm w-[90%] sm:w-auto animate-in fade-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
+          {actionSuccess && (
+            <div className="bg-black/95 text-emerald-400 border-2 border-emerald-500/80 p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-xs font-black shadow-emerald-500/20">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>{actionSuccess}</span>
+              </div>
+              <button onClick={() => setActionSuccess('')} className="text-zinc-400 hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+          {actionError && (
+            <div className="bg-black/95 text-red-400 border-2 border-red-500/80 p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-xs font-black shadow-red-500/20 mt-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+              <button onClick={() => setActionError('')} className="text-zinc-400 hover:text-white cursor-pointer"><X className="w-4 h-4" /></button>
+            </div>
+          )}
         </div>
       )}
 
