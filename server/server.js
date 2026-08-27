@@ -669,15 +669,7 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req,
         `);
 
         for (let u of backup.users) {
-          let photoUrl = u.photo_url;
-          if (u.photo_base64) {
-            try {
-              const fname = u.photo_filename || `user_${u.id}_${Date.now()}.jpg`;
-              const filePath = path.join(uploadsDir, fname);
-              fs.writeFileSync(filePath, Buffer.from(u.photo_base64, 'base64'));
-              photoUrl = '/uploads/' + fname;
-            } catch (err) {}
-          }
+          let photoUrl = u.photo_url || (u.photo_base64 ? ('data:image/jpeg;base64,' + u.photo_base64) : null);
 
           stmtUser.run(
             u.id || null,

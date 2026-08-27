@@ -162,11 +162,16 @@ export const setApiBaseUrl = (url) => {
 };
 
 export const getFullPhotoUrl = (photoPath) => {
-  if (!photoPath) return null;
-  if (photoPath.startsWith('data:') || photoPath.startsWith('http://') || photoPath.startsWith('https://') || photoPath.startsWith('blob:')) {
-    return photoPath;
+  if (!photoPath || typeof photoPath !== 'string') return null;
+  const trimmed = photoPath.trim();
+  if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return null;
+  if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:')) {
+    return trimmed;
   }
-  return getApiBaseUrl() + photoPath;
+  let base = (getApiBaseUrl() || DEFAULT_CLOUD_API).trim();
+  if (base.endsWith('/')) base = base.slice(0, -1);
+  const cleanPath = trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+  return base + cleanPath;
 };
 
 export async function apiRequest(endpoint, options = {}) {
@@ -554,7 +559,7 @@ export const mergeUsersToVault = (incomingUsers) => {
         ...existing,
         ...inc,
         id: inc.id || existing.id,
-        photo_url: inc.photo_url || existing.photo_url || null,
+        photo_url: (inc.photo_url && inc.photo_url !== 'null') ? inc.photo_url : (existing.photo_url || null),
         plain_password: (inc.plain_password && inc.plain_password !== '123') ? inc.plain_password : (existing.plain_password || inc.plain_password || '123'),
         password_hash: (inc.plain_password && inc.plain_password !== '123') ? (inc.password_hash || existing.password_hash) : (existing.password_hash || inc.password_hash),
         gps_tracking_enabled: inc.gps_tracking_enabled !== undefined ? inc.gps_tracking_enabled : (existing.gps_tracking_enabled || 0),
