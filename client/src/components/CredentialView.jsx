@@ -214,15 +214,15 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
         
-        {/* Capa de Brillo Metálico Holográfico Lateral Naranja Opaco hacia los lados */}
+        {/* Capa de Brillo Metálico Holográfico Lateral Suave y Elegante en las Rayas */}
         <div 
           className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-150"
           style={{
-            background: `linear-gradient(90deg, transparent ${metallicX - 35}%, rgba(234, 88, 12, 0.5) ${metallicX - 18}%, rgba(255, 185, 65, 0.9) ${metallicX}%, rgba(249, 115, 22, 0.6) ${metallicX + 18}%, transparent ${metallicX + 35}%)`,
+            background: `linear-gradient(90deg, transparent ${metallicX - 30}%, rgba(234, 88, 12, 0.2) ${metallicX - 14}%, rgba(255, 175, 60, 0.42) ${metallicX}%, rgba(249, 115, 22, 0.25) ${metallicX + 14}%, transparent ${metallicX + 30}%)`,
             WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             mixBlendMode: 'screen',
-            opacity: 0.95
+            opacity: 0.65
           }}
         />
 
