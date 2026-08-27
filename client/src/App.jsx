@@ -119,6 +119,17 @@ export default function App() {
     (user.username && user.username.toLowerCase().includes('mauricio'))
   );
 
+  const hasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0';
+  const isAdminWithoutCredential = user?.role === 'admin' && !hasCredential && !isMauricio;
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin' || user?.is_superadmin === 1 || isMauricio;
+
+  // Enforce default tab for admin without credential
+  useEffect(() => {
+    if (user && isAdminWithoutCredential && activeTab === 'credential') {
+      setActiveTab('admin_attendance');
+    }
+  }, [user, isAdminWithoutCredential, activeTab]);
+
   // =========================================================================
   // GESTIÓN DE BOTÓN ATRÁS Y GESTOS DE CELULAR (Navegación / Salir de la App)
   // =========================================================================
@@ -567,17 +578,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
   }
 
-  const hasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0';
-  const isAdminWithoutCredential = user?.role === 'admin' && !hasCredential && !isMauricio;
 
-  // Enforce default tab for admin without credential
-  useEffect(() => {
-    if (user && isAdminWithoutCredential && activeTab === 'credential') {
-      setActiveTab('admin_attendance');
-    }
-  }, [user, isAdminWithoutCredential, activeTab]);
-
-  const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.is_superadmin === 1 || isMauricio;
 
   return (
     <div className={'min-h-screen h-screen flex flex-col overflow-hidden ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
