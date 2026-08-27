@@ -163,7 +163,7 @@ export default function AdminAttendanceView({ user, theme }) {
       const params = {};
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
-      if (selectedUserId) params.user_id = selectedUserId;
+      // Siempre obtener todas las marcaciones del rango para que el Resumen contenga siempre a todos los trabajadores
       const data = await apiGetAttendanceRecords(params);
       if (Array.isArray(data)) {
         setRecords(data);
@@ -205,15 +205,13 @@ export default function AdminAttendanceView({ user, theme }) {
       socket.off('attendance_updated', handleAttendanceLive);
       socket.off('scan_registered', handleAttendanceLive);
     };
-  }, [dateFrom, dateTo, selectedUserId]);
+  }, [dateFrom, dateTo]);
 
   // Cálculos Consolidados por Trabajador
   const workingDaysInRange = getWorkingDaysInRange(dateFrom, dateTo);
 
-  const workersSummary = (selectedUserId 
-    ? usersList.filter(u => String(u.id) === String(selectedUserId))
-    : usersList
-  ).map(worker => {
+  // El Resumen Consolidado SIEMPRE muestra a todos los trabajadores
+  const workersSummary = usersList.map(worker => {
     const userRecords = records.filter(r => String(r.user_id) === String(worker.id));
     const attendedDates = new Set(userRecords.map(r => r.date));
     
@@ -653,8 +651,17 @@ export default function AdminAttendanceView({ user, theme }) {
           <div className="p-4 border-b border-zinc-800/80 flex items-center justify-between">
             <h3 className="text-sm font-black flex items-center gap-2">
               <Layers className="w-4 h-4 text-orange-500" />
-              <span>Registros Individuales de Asistencia ({records.length})</span>
+              <span>Registros Individuales de Asistencia ({displayedDetailsRecords.length})</span>
             </h3>
+            {selectedUserId && (
+              <button
+                type="button"
+                onClick={() => setSelectedUserId('')}
+                className="text-[11px] font-bold text-orange-500 hover:text-orange-400 underline cursor-pointer"
+              >
+                Mostrar todos los trabajadores
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -673,14 +680,14 @@ export default function AdminAttendanceView({ user, theme }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
-                {records.length === 0 ? (
+                {displayedDetailsRecords.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-8 text-center text-zinc-500 font-bold">
                       No se encontraron registros de marcaciones para el período seleccionado.
                     </td>
                   </tr>
                 ) : (
-                  records.map((r) => {
+                  displayedDetailsRecords.map((r) => {
                     const delay = calculateDelayMinutes(r.entry_time);
                     const recordMins = calculateRecordMinutes(r);
 
