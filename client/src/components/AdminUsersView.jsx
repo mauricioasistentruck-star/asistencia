@@ -147,8 +147,10 @@ export default function AdminUsersView({ currentUser, theme }) {
     const onUserUpdated = (updated) => {
       if (updated && updated.id) {
         setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
+        const vault = getMasterVault();
+        vault.users = vault.users.map(u => u.id === updated.id ? { ...u, ...updated } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        saveMasterVault(vault);
       }
-      fetchUsers();
     };
 
     const onUserDeleted = (payload) => {
@@ -157,16 +159,17 @@ export default function AdminUsersView({ currentUser, theme }) {
         removeUserFromVault(targetId);
         setUsers(prev => prev.filter(u => u.id !== targetId));
       }
-      fetchUsers();
     };
 
     const onGpsToggled = (payload) => {
       const targetId = payload?.userId || payload?.id;
       const enabled = payload?.gps_tracking_enabled ?? payload?.enabled;
       if (targetId !== undefined) {
-        setUsers(prev => prev.map(u => u.id === targetId ? { ...u, gps_tracking_enabled: enabled } : u));
+        setUsers(prev => prev.map(u => u.id === targetId ? { ...u, gps_tracking_enabled: enabled } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
+        const vault = getMasterVault();
+        vault.users = vault.users.map(u => u.id === targetId ? { ...u, gps_tracking_enabled: enabled } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        saveMasterVault(vault);
       }
-      fetchUsers();
     };
 
     socket.on('connect', fetchUsers);
@@ -255,14 +258,31 @@ export default function AdminUsersView({ currentUser, theme }) {
         payload.password = editForm.password.trim();
       }
 
-      await apiUpdateUser(editingUser.id, payload);
-      setActionSuccess('Perfil de ' + editForm.name + ' actualizado correctamente.');
+      // 1. Aplicar cambios inmediatamente al estado visual ordenado
+      const updatedUser = { ...editingUser, ...payload };
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
+
+      // 2. Guardar en Bveda Maestra local
+      const vault = getMasterVault();
+      vault.users = vault.users.map(u => u.id === editingUser.id ? updatedUser : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      saveMasterVault(vault);
+
+      // 3. Enviar al servidor / nube
+      const res = await apiUpdateUser(editingUser.id, payload);
+      const serverUser = res?.user || updatedUser;
+
+      // 4. Asegurar estado con respuesta del servidor
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
+      vault.users = vault.users.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      saveMasterVault(vault);
+
+      setActionSuccess('Perfil de ' + (serverUser.name || editForm.name) + ' actualizado correctamente.');
       setShowEditModal(false);
       setEditingUser(null);
-      fetchUsers();
       setTimeout(() => setActionSuccess(''), 4000);
     } catch (err) {
       setEditError(err.message || 'Error al actualizar perfil');
+      fetchUsers();
     } finally {
       setEditLoading(false);
     }
@@ -285,15 +305,17 @@ export default function AdminUsersView({ currentUser, theme }) {
     const targetNumeric = targetState ? 1 : 0;
     
     // 1. Actualizar estado local inmediatamente
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u));
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
     
-    // 2. Actualizar en Bóveda Maestra inmediatamente
+    // 2. Actualizar en Bveda Maestra inmediatamente
     const vault = getMasterVault();
-    vault.users = vault.users.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u);
+    vault.users = vault.users.map(u => u.id === userId ? { ...u, gps_tracking_enabled: targetNumeric } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
     saveMasterVault(vault);
 
     try {
       await apiToggleGps(userId, targetNumeric);
+      setActionSuccess(`GPS ${targetNumeric === 1 ? 'activado' : 'desactivado'} correctamente.`);
+      setTimeout(() => setActionSuccess(''), 3000);
     } catch (err) {
       setActionError(err.message || 'Error al modificar estado de GPS');
       fetchUsers();

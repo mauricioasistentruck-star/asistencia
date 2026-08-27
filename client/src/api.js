@@ -172,12 +172,22 @@ export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('asistencia_token');
   const headers = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
     ...(token ? { Authorization: 'Bearer ' + token } : {}),
     ...(options.headers || {})
   };
 
+  const isGet = !options.method || options.method.toUpperCase() === 'GET';
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const finalEndpoint = isGet ? `${endpoint}${sep}_t=${Date.now()}` : endpoint;
+
   try {
-    const res = await fetch(baseUrl + endpoint, { ...options, headers });
+    const res = await fetch(baseUrl + finalEndpoint, {
+      ...options,
+      headers,
+      cache: 'no-store'
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 || (res.status === 403 && data.error && (data.error.includes('Token') || data.error.includes('expirado') || data.error.includes('autorizado')))) {
