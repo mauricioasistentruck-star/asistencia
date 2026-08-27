@@ -340,6 +340,37 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
 app.post('/api/users/:id/photo', authenticateToken, requireAdmin, upload.single('photo'), (req, res) => {
   const userId = req.params.id;
   if (!req.file) return res.status(400).json({ error: 'No se subió archivo' });
+  try {
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const photoUrl = 'data:' + mimeType + ';base64,' + fileBuffer.toString('base64');
+    db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photoUrl, userId], (err) => {
+      if (err) return res.status(500).json({ error: 'Error al actualizar foto: ' + err.message });
+      db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
+        io.emit('user_updated', updatedUser || { id: Number(userId), photo_url: photoUrl });
+        savePersistentBackup();
+        res.json({ message: 'Foto actualizada exitosamente', photo_url: photoUrl, user: updatedUser });
+      });
+    });
+  } catch (e) {
+    console.error('Error procesando foto:', e);
+    res.status(500).json({ error: 'Error procesando foto: ' + e.message });
+  }
+});
+
+app.post('/api/users/:id/photo-base64', authenticateToken, requireAdmin, (req, res) => {
+  const userId = req.params.id;
+  const { photo_base64 } = req.body;
+  if (!photo_base64) return res.status(400).json({ error: 'No se proporcionó imagen' });
+  db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photo_base64, userId], (err) => {
+    if (err) return res.status(500).json({ error: 'Error al actualizar foto: ' + err.message });
+    db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [userId], (fetchErr, updatedUser) => {
+      io.emit('user_updated', updatedUser || { id: Number(userId), photo_url: photo_base64 });
+      savePersistentBackup();
+      res.json({ message: 'Foto actualizada exitosamente', photo_url: photo_base64, user: updatedUser });
+    });
+  });
+});
   const photoUrl = '/uploads/' + req.file.filename;
   db.run('UPDATE users SET photo_url = ? WHERE id = ?', [photoUrl, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar foto' });
@@ -418,9 +449,10 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
         return res.status(400).json({ error: 'El Nombre de Usuario, Correo o RUT ya está en uso por otro usuario.' });
       }
 
+      const finalPhotoUrl = (req.body.photo_url || req.body.photo_base64) ? (req.body.photo_url || req.body.photo_base64) : targetUser.photo_url;
       db.run(
-        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ? WHERE id = ?',
-        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, targetId],
+        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ?, photo_url = ? WHERE id = ?',
+        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, finalPhotoUrl, targetId],
         (upErr) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
           db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {

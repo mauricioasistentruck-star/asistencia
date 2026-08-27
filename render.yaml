@@ -3,7 +3,7 @@ services:
     name: asistentruck-botam
     env: node
     plan: free
-    buildCommand: npm install && cd server && npm install
+    buildCommand: npm run build
     startCommand: node server/server.js
     envVars:
       - key: NODE_ENV

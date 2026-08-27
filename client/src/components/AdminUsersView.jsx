@@ -295,11 +295,25 @@ export default function AdminUsersView({ currentUser, theme }) {
   const handlePhotoUpload = async (userId, file) => {
     if (!file) return;
     try {
-      await apiUploadPhoto(userId, file);
-      setActionSuccess('Fotografía actualizada correctamente');
-      fetchUsers();
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target.result;
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u));
+        const vault = getMasterVault();
+        vault.users = vault.users.map(u => u.id === userId ? { ...u, photo_url: base64Data } : u);
+        saveMasterVault(vault);
+        try {
+          await apiUploadPhoto(userId, base64Data);
+          setActionSuccess('Fotografía actualizada y guardada permanentemente.');
+          setTimeout(() => setActionSuccess(''), 3500);
+        } catch (err) {
+          setActionError(err.message || 'Error al guardar foto en servidor');
+          setTimeout(() => setActionError(''), 4000);
+        }
+      };
+      reader.readAsDataURL(file);
     } catch (err) {
-      setActionError(err.message || 'Error al subir fotografía');
+      setActionError(err.message || 'Error al procesar fotografía');
     }
   };
 

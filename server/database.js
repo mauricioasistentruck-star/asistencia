@@ -1,4 +1,4 @@
-const sqlite3 = require('sqlite3').verbose();
+﻿const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -34,6 +34,7 @@ db.serialize(() => {
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      plain_password TEXT DEFAULT '123',
       role TEXT NOT NULL DEFAULT 'worker',
       is_superadmin INTEGER NOT NULL DEFAULT 0,
       photo_url TEXT,
@@ -45,7 +46,6 @@ db.serialize(() => {
 
   db.run("ALTER TABLE users ADD COLUMN username TEXT", () => {});
   db.run("ALTER TABLE users ADD COLUMN plain_password TEXT", () => {});
-  db.run("UPDATE users SET plain_password = '123' WHERE plain_password IS NULL", () => {});
   db.run("UPDATE users SET username = LOWER(REPLACE(name, ' ', '')) WHERE username IS NULL OR username = ''", () => {});
   db.run("DELETE FROM users WHERE (name IS NULL OR TRIM(name) = '') AND (username IS NULL OR TRIM(username) = '' OR username = 'usuario')", () => {});
 
@@ -133,25 +133,6 @@ db.serialize(() => {
     )
   `);
 
-  // Crear o actualizar Super Admin Mauricio para garantizar acceso inmediato
-  db.get("SELECT id FROM users WHERE name = 'Mauricio' OR is_superadmin = 1 OR username = 'mauricio'", (err, row) => {
-    const salt = bcrypt.genSaltSync(10);
-    const validHash = bcrypt.hashSync('123', salt);
-    if (!row) {
-      db.run(
-        `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0],
-        (insertErr) => {
-          if (insertErr) console.error('Error creando Super Admin Mauricio:', insertErr.message);
-          else console.log('Super Admin listo: Mauricio (Usuario: mauricio, Clave: 123)');
-        }
-      );
-    } else {
-      db.run("UPDATE users SET username = 'mauricio', plain_password = '123', password_hash = ? WHERE id = ?", [validHash, row.id]);
-    }
-  });
-
   // Restaurar respaldo persistente si existe al iniciar el servidor (Para evitar borrado en reinicios de Render)
   const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
   if (fs.existsSync(persistentBackupPath)) {
@@ -161,8 +142,16 @@ db.serialize(() => {
       if (data && Array.isArray(data.users)) {
         for (let u of data.users) {
           db.run(
-            `INSERT OR IGNORE INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               username = COALESCE(users.username, excluded.username),
+               rut = COALESCE(users.rut, excluded.rut),
+               name = COALESCE(users.name, excluded.name),
+               email = COALESCE(users.email, excluded.email),
+               photo_url = COALESCE(users.photo_url, excluded.photo_url),
+               qr_token = COALESCE(users.qr_token, excluded.qr_token),
+               gps_tracking_enabled = COALESCE(users.gps_tracking_enabled, excluded.gps_tracking_enabled)`,
             [u.id, u.username, u.rut, u.name, u.email, u.password_hash, u.plain_password || '123', u.role, u.is_superadmin ? 1 : 0, u.photo_url, u.qr_token, u.gps_tracking_enabled ? 1 : 0, u.created_at || new Date().toISOString()]
           );
         }
@@ -170,8 +159,16 @@ db.serialize(() => {
       if (data && Array.isArray(data.attendance)) {
         for (let a of data.attendance) {
           db.run(
-            `INSERT OR IGNORE INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, date) DO UPDATE SET
+               entry_time = COALESCE(attendance.entry_time, excluded.entry_time),
+               lunch_out_time = COALESCE(attendance.lunch_out_time, excluded.lunch_out_time),
+               lunch_in_time = COALESCE(attendance.lunch_in_time, excluded.lunch_in_time),
+               exit_time = COALESCE(attendance.exit_time, excluded.exit_time),
+               total_hours = MAX(COALESCE(attendance.total_hours, 0), COALESCE(excluded.total_hours, 0)),
+               modified_by_admin = MAX(COALESCE(attendance.modified_by_admin, 0), COALESCE(excluded.modified_by_admin, 0)),
+               admin_note = COALESCE(attendance.admin_note, excluded.admin_note)`,
             [a.id, a.user_id, a.date, a.entry_time, a.lunch_out_time, a.lunch_in_time, a.exit_time, a.total_hours || 0, a.modified_by_admin ? 1 : 0, a.admin_note, a.created_at, a.updated_at]
           );
         }
@@ -199,6 +196,26 @@ db.serialize(() => {
       console.warn('Advertencia restaurando persistent backup:', e);
     }
   }
+
+  // Garantizar que exista Super Admin Mauricio solo si no existe
+  db.get("SELECT id FROM users WHERE name = 'Mauricio' OR is_superadmin = 1 OR username = 'mauricio'", (err, row) => {
+    if (!row) {
+      const salt = bcrypt.genSaltSync(10);
+      const validHash = bcrypt.hashSync('123', salt);
+      db.run(
+        `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0],
+        (insertErr) => {
+          if (insertErr) console.error('Error creando Super Admin Mauricio:', insertErr.message);
+          else console.log('Super Admin listo: Mauricio (Usuario: mauricio, Clave: 123)');
+        }
+      );
+    } else {
+      // Asegurar rol y privilegios de SuperAdmin sin tocar la clave cambiada por el usuario
+      db.run("UPDATE users SET is_superadmin = 1, role = 'superadmin' WHERE id = ?", [row.id]);
+    }
+  });
 });
 
 module.exports = db;

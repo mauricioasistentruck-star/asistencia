@@ -163,7 +163,9 @@ export const setApiBaseUrl = (url) => {
 
 export const getFullPhotoUrl = (photoPath) => {
   if (!photoPath) return null;
-  if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
+  if (photoPath.startsWith('data:') || photoPath.startsWith('http://') || photoPath.startsWith('https://') || photoPath.startsWith('blob:')) {
+    return photoPath;
+  }
   return getApiBaseUrl() + photoPath;
 };
 
@@ -241,12 +243,24 @@ export const apiUpdateUser = (id, userData) => apiRequest('/api/users/' + id, { 
 export const apiDeleteUser = (id) => apiRequest('/api/users/' + id, { method: 'DELETE' });
 export const apiToggleGps = (id, enabled) => apiRequest('/api/users/' + id + '/toggle-gps', { method: 'PATCH', body: JSON.stringify({ enabled }) });
 
-export const apiUploadPhoto = async (id, file) => {
+export const apiUploadPhoto = async (id, fileOrBase64) => {
   const baseUrl = getApiBaseUrl();
   const token = localStorage.getItem('asistencia_token');
+  if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
+    const res = await fetch(baseUrl + '/api/users/' + id + '/photo-base64', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: 'Bearer ' + token } : {})
+      },
+      body: JSON.stringify({ photo_base64: fileOrBase64 })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al subir foto');
+    return data;
+  }
   const formData = new FormData();
-  formData.append('photo', file);
-
+  formData.append('photo', fileOrBase64);
   const res = await fetch(baseUrl + '/api/users/' + id + '/photo', {
     method: 'POST',
     headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}) },
