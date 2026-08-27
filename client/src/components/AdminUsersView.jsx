@@ -446,17 +446,40 @@ export default function AdminUsersView({ currentUser, theme }) {
         </div>
       )}
 
-      {actionError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 text-red-400 text-xs">
-          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-          <span>{actionError}</span>
-        </div>
-      )}
+      {/* Notificaciones Flotantes Tipo Toast (Burbuja Flotante sin mover el listado de personal) */}
+      {(actionError || actionSuccess) && (
+        <div className="fixed top-20 right-4 sm:right-8 z-50 max-w-md w-[calc(100%-2rem)] sm:w-auto pointer-events-auto transition-all duration-300">
+          {actionError && (
+            <div className="bg-zinc-950/95 backdrop-blur-xl border border-red-500/50 text-red-300 p-3.5 sm:p-4 rounded-2xl shadow-2xl shadow-red-950/80 flex items-center gap-3 text-xs font-semibold">
+              <div className="w-8 h-8 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+              </div>
+              <span className="flex-1 leading-snug">{actionError}</span>
+              <button 
+                onClick={() => setActionError('')}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                title="Cerrar notificacin"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
-      {actionSuccess && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center gap-3 text-emerald-400 text-xs">
-          <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{actionSuccess}</span>
+          {actionSuccess && (
+            <div className="bg-zinc-950/95 backdrop-blur-xl border border-emerald-500/50 text-emerald-300 p-3.5 sm:p-4 rounded-2xl shadow-2xl shadow-emerald-950/80 flex items-center gap-3 text-xs font-semibold">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+              </div>
+              <span className="flex-1 leading-snug">{actionSuccess}</span>
+              <button 
+                onClick={() => setActionSuccess('')}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                title="Cerrar notificacin"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
