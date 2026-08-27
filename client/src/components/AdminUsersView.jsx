@@ -193,7 +193,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       password: '',
       role: u.role || 'worker',
       gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled),
-      has_credential: u.has_credential !== undefined ? Boolean(u.has_credential) : true
+      has_credential: (u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0' && u.has_credential !== 'false' && u.has_credential !== null)
     });
     setEditError('');
     setShowEditModal(true);

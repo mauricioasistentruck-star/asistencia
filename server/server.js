@@ -248,14 +248,15 @@ app.post('/api/auth/login', (req, res) => {
         is_superadmin: user.is_superadmin,
         photo_url: user.photo_url,
         qr_token: user.qr_token,
-        gps_tracking_enabled: user.gps_tracking_enabled
+        gps_tracking_enabled: user.gps_tracking_enabled,
+        has_credential: user.has_credential !== undefined ? user.has_credential : 1
       }
     });
   });
 });
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-  db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled FROM users WHERE id = ?', [req.user.id], (err, user) => {
+  db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential FROM users WHERE id = ?', [req.user.id], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json(user);
   });
@@ -263,7 +264,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // CRUD Usuarios
 app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
-  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, plain_password, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar usuarios' });
     res.json(rows);
   });
@@ -509,7 +510,7 @@ app.get('/api/admin/backup/export', authenticateToken, requireAdmin, async (req,
 
     // 1. Obtener Usuarios con fotos Base64
     const users = await new Promise((resolve, reject) => {
-      db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+      db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
         if (err) reject(err);
         else resolve(rows || []);
       });

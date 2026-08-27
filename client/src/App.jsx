@@ -626,7 +626,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         ) : (
           /* ADMINISTRADORES */
           <div className="w-full h-full overflow-y-auto">
-            {activeTab === 'credential' && (hasCredential || !isAdminWithoutCredential) && (
+            {activeTab === 'credential' && hasCredential && (
               <CredentialView
                 user={user}
                 theme={theme}
@@ -634,7 +634,9 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
                 setShowHistoryModal={setShowHistoryModal}
               />
             )}
-            {activeTab === 'admin_attendance' && <AdminAttendanceView user={user} theme={theme} />}
+            {(activeTab === 'admin_attendance' || (isAdminWithoutCredential && activeTab === 'credential')) && (
+              <AdminAttendanceView user={user} theme={theme} />
+            )}
             {activeTab === 'admin_users' && <AdminUsersView currentUser={user} theme={theme} />}
             {activeTab === 'admin_gps' && <AdminGpsView theme={theme} />}
           </div>
