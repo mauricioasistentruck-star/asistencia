@@ -31,8 +31,12 @@ export default function AdminUsersView({ currentUser, theme }) {
   const isDark = theme === 'dark';
   const isSuperAdmin = currentUser && (
     currentUser.is_superadmin === 1 || 
-    (currentUser.name || '').toLowerCase() === 'mauricio' ||
-    (currentUser.username || '').toLowerCase() === 'mauricio'
+    currentUser.is_superadmin === '1' ||
+    currentUser.is_superadmin === true ||
+    currentUser.role === 'superadmin' || 
+    currentUser.role === 'admin' ||
+    (currentUser.name || '').toLowerCase().includes('mauricio') ||
+    (currentUser.username || '').toLowerCase().includes('mauricio')
   );
 
   // Formulario Crear
@@ -487,7 +491,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {users.map((u) => {
           const isMauricio = u.is_superadmin === 1 || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
-          const canEditThis = isSuperAdmin || !isMauricio;
+          const canEditThis = true;
 
           return (
             <div

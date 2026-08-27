@@ -144,7 +144,7 @@ export default function AdminAttendanceView({ user, theme }) {
 
     const socket = getSocket();
     const handleAttendanceLive = (data) => {
-      setLastLiveAlert(data);
+      if (!data?.silent) setLastLiveAlert(data);
       fetchRecords(true);
       setTimeout(() => setLastLiveAlert(null), 5000);
     };
@@ -193,14 +193,29 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   
-  const handleDeleteRecord = async (recordId) => {
-    if (!window.confirm('Est seguro de eliminar esta marcacin de asistencia?')) return;
+  const openDeleteConfirm = () => {
+    setSuperAdminPass('');
+    setDeleteError('');
+    setShowDeleteModal(true);
+  };
+
+  const confirmSuperAdminDelete = async (e) => {
+    e.preventDefault();
+    if (!superAdminPass) {
+      setDeleteError('Debe ingresar la contrasea de SuperAdmin');
+      return;
+    }
+    setDeleteLoading(true);
+    setDeleteError('');
     try {
-      await apiDeleteAttendanceRecord(recordId);
+      await apiDeleteAttendanceRecord(editingRecord.id, superAdminPass);
+      setShowDeleteModal(false);
       setEditingRecord(null);
       fetchRecords(true);
     } catch (err) {
-      alert(err.message || 'Error al eliminar marcacin');
+      setDeleteError(err.message || 'Contrasea incorrecta o error al eliminar');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 

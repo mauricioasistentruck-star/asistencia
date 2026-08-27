@@ -366,7 +366,7 @@ export default function AdminGpsView({ theme }) {
           </p>
           <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/30 text-[11px] font-bold text-orange-400">
             <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>Horario GPS: Lun-Jue 08:00 - 19:00 hrs | Vie 08:00 - 18:00 hrs (SuperAdmin 24/7)</span>
+            <span>Horario GPS: Lun-Jue 08:00 - 19:00 hrs | Vie 08:00 - 18:00 hrs</span>
           </div>
         </div>
 
