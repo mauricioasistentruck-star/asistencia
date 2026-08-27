@@ -366,12 +366,6 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
   }
 
   const gpsVal = (enabled === true || enabled === 1 || enabled === '1' || enabled === 'true') ? 1 : 0;
-  if (gpsVal === 1) {
-    const gpsCheck = isGpsScheduleAllowed(req.user);
-    if (!gpsCheck.allowed) {
-      return res.status(403).json({ error: gpsCheck.reason });
-    }
-  }
   db.run('UPDATE users SET gps_tracking_enabled = ? WHERE id = ?', [gpsVal, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar estado GPS' });
     io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
@@ -406,12 +400,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
       : targetUser.gps_tracking_enabled;
-    if (assignedGps === 1 && targetUser.gps_tracking_enabled !== 1) {
-      const gpsCheck = isGpsScheduleAllowed(req.user);
-      if (!gpsCheck.allowed) {
-        return res.status(403).json({ error: gpsCheck.reason });
-      }
-    }
+
     const finalUsername = (username && username.trim() !== '') ? username.trim().toLowerCase().replace(/\s+/g, '') : (targetUser.username || (targetUser.name ? targetUser.name.toLowerCase().replace(/\s+/g, '') : `user${targetId}`));
     const finalRut = (rut && rut.trim() !== '') ? rut.trim() : null;
     const finalEmail = (email && email.trim() !== '') ? email.trim().toLowerCase() : targetUser.email;

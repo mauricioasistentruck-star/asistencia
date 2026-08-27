@@ -104,32 +104,44 @@ export const formatChileDateTime = (val) => {
 
 export const isNativeApp = () => {
   if (typeof window === 'undefined') return false;
-  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return true;
-  if (window.location && window.location.protocol === 'capacitor:') return true;
-  if (typeof navigator !== 'undefined' && navigator.userAgent && /android/i.test(navigator.userAgent) && window.location.port === '' && (window.location.hostname === 'localhost' || window.location.hostname === '')) return true;
+  if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) return true;
+  if (window.Capacitor && window.Capacitor.platform === 'android') return true;
+  if (window.location && (window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:')) return true;
+  if (window.location && window.location.hostname === 'localhost' && (!window.location.port || window.location.port === '')) return true;
+  if (typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent) && (!window.location.port || window.location.port === '')) return true;
   return false;
 };
 
 export const getApiBaseUrl = () => {
+  const isNative = isNativeApp();
   const saved = localStorage.getItem('asistencia_api_url');
-  if (saved && saved.trim() !== '') return saved.trim();
 
-  // Si corre dentro del APK nativo de Android, apuntar a Render central en la nube
-  if (isNativeApp()) {
+  if (saved && saved.trim() !== '') {
+    const cleanSaved = saved.trim();
+    // Si corre dentro del APK y la URL guardada es localhost, purgarla
+    if (isNative && (cleanSaved.includes('localhost') || cleanSaved.includes('127.0.0.1'))) {
+      localStorage.removeItem('asistencia_api_url');
+    } else {
+      return cleanSaved;
+    }
+  }
+
+  // Si corre dentro del APK nativo de Android, SIEMPRE conectar a Render en la nube
+  if (isNative) {
     return DEFAULT_CLOUD_API;
   }
 
   if (typeof window !== 'undefined' && window.location) {
     const hostname = window.location.hostname;
-    // Si corre en navegador web de PC en desarrollo local
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
+    // Si corre en navegador web de PC en desarrollo local con puerto 5173 / 5174
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
       if (window.location.port === '5173' || window.location.port === '5174') {
         return `${window.location.protocol || 'http:'}//${hostname}:3001`;
       }
+    }
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '') {
       return window.location.origin;
     }
-    // Si está desplegado en Render / Nube
-    return window.location.origin;
   }
 
   return DEFAULT_CLOUD_API;
