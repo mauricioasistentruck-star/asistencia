@@ -342,6 +342,11 @@ export default function AdminAttendanceView({ user, theme }) {
     setEditSuccess('');
   };
 
+  const displayedDetailsRecords = (records || []).filter(r => {
+    if (!selectedUserId) return true;
+    return String(r.user_id) === String(selectedUserId);
+  });
+
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300 print:p-0 print:m-0">
       
