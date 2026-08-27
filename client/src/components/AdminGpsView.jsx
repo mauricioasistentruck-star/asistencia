@@ -309,8 +309,14 @@ export default function AdminGpsView({ theme }) {
     socket.on('user_deleted', handleUserSync);
     socket.on('gps_route_started', () => { fetchSavedRoutes(); fetchLiveGps(); });
     socket.on('gps_route_finished', () => { fetchSavedRoutes(); fetchLiveGps(); });
+    socket.on('routes_updated', () => { fetchSavedRoutes(); fetchLiveGps(); });
+
+    const liveInterval = setInterval(() => {
+      fetchLiveGps();
+    }, 6000);
 
     return () => {
+      clearInterval(liveInterval);
       socket.off('gps_position_updated', handleLiveGpsSocket);
       socket.off('user_gps_toggled', handleUserSync);
       socket.off('user_updated', handleUserSync);
@@ -318,6 +324,7 @@ export default function AdminGpsView({ theme }) {
       socket.off('user_deleted', handleUserSync);
       socket.off('gps_route_started');
       socket.off('gps_route_finished');
+      socket.off('routes_updated');
     };
   }, [selectedUser, selectedSavedRoute]);
 

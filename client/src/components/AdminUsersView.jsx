@@ -128,35 +128,67 @@ export default function AdminUsersView({ currentUser, theme }) {
     }
   };
 
-  useEffect(() => {
+    useEffect(() => {
     fetchUsers();
 
-    // Sincronización en tiempo real vía WebSockets entre PC y APK
+    // Sincronizacin en tiempo real ultra-rpida va WebSockets
     const socket = getSocket();
-    const handleUserUpdate = () => {
+
+    const onUserCreated = (created) => {
+      if (created && created.id) {
+        setUsers(prev => {
+          if (prev.some(u => u.id === created.id)) return prev;
+          return [...prev, created];
+        });
+      }
+      fetchUsers();
+    };
+
+    const onUserUpdated = (updated) => {
+      if (updated && updated.id) {
+        setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u));
+      }
+      fetchUsers();
+    };
+
+    const onUserDeleted = (payload) => {
+      const targetId = payload?.id || payload?.userId;
+      if (targetId) {
+        removeUserFromVault(targetId);
+        setUsers(prev => prev.filter(u => u.id !== targetId));
+      }
+      fetchUsers();
+    };
+
+    const onGpsToggled = (payload) => {
+      const targetId = payload?.userId || payload?.id;
+      const enabled = payload?.gps_tracking_enabled ?? payload?.enabled;
+      if (targetId !== undefined) {
+        setUsers(prev => prev.map(u => u.id === targetId ? { ...u, gps_tracking_enabled: enabled } : u));
+      }
       fetchUsers();
     };
 
     socket.on('connect', fetchUsers);
-    socket.on('user_created', handleUserUpdate);
-    socket.on('user_updated', handleUserUpdate);
-    socket.on('user_deleted', (payload) => {
-      if (payload && payload.id) {
-        removeUserFromVault(payload.id);
-        setUsers(prev => prev.filter(u => u.id !== payload.id));
-      }
+    socket.on('user_created', onUserCreated);
+    socket.on('user_updated', onUserUpdated);
+    socket.on('user_deleted', onUserDeleted);
+    socket.on('user_gps_toggled', onGpsToggled);
+    socket.on('attendance_updated', fetchUsers);
+
+    // Respaldo de sincronizacin automtica cada 6 segundos para garantizar datos frescos
+    const syncInterval = setInterval(() => {
       fetchUsers();
-    });
-    socket.on('user_gps_toggled', handleUserUpdate);
-    socket.on('attendance_updated', handleUserUpdate);
+    }, 6000);
 
     return () => {
+      clearInterval(syncInterval);
       socket.off('connect', fetchUsers);
-      socket.off('user_created', handleUserUpdate);
-      socket.off('user_updated', handleUserUpdate);
-      socket.off('user_deleted', handleUserUpdate);
-      socket.off('user_gps_toggled', handleUserUpdate);
-      socket.off('attendance_updated', handleUserUpdate);
+      socket.off('user_created', onUserCreated);
+      socket.off('user_updated', onUserUpdated);
+      socket.off('user_deleted', onUserDeleted);
+      socket.off('user_gps_toggled', onGpsToggled);
+      socket.off('attendance_updated', fetchUsers);
     };
   }, []);
 

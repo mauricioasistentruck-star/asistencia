@@ -189,10 +189,23 @@ export async function apiRequest(endpoint, options = {}) {
 let socketInstance = null;
 export const getSocket = () => {
   if (!socketInstance) {
-    socketInstance = io(getApiBaseUrl(), {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000
+    const url = getApiBaseUrl();
+    socketInstance = io(url, {
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      autoConnect: true
+    });
+
+    socketInstance.on('connect', () => {
+      console.log(' Conectado en tiempo real al servidor ASISTENTRUCK:', url);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.warn(' Desconectado de WebSockets (' + reason + '), reconectando...');
     });
   }
   return socketInstance;

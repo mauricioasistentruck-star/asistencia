@@ -138,11 +138,10 @@ export default function AdminAttendanceView({ user, theme }) {
     }
   };
 
-  useEffect(() => {
+    useEffect(() => {
     fetchUsers();
     fetchRecords();
 
-    // Sincronización en tiempo real vía WebSockets
     const socket = getSocket();
     const handleAttendanceLive = (data) => {
       setLastLiveAlert(data);
@@ -150,18 +149,32 @@ export default function AdminAttendanceView({ user, theme }) {
       setTimeout(() => setLastLiveAlert(null), 5000);
     };
 
+    const handleUsersChange = () => {
+      fetchUsers();
+      fetchRecords(true);
+    };
+
+    socket.on('connect', handleUsersChange);
     socket.on('attendance_marked', handleAttendanceLive);
     socket.on('attendance_updated', handleAttendanceLive);
     socket.on('scan_registered', handleAttendanceLive);
-    socket.on('user_created', () => fetchUsers());
-    socket.on('user_updated', () => { fetchUsers(); fetchRecords(true); });
+    socket.on('user_created', handleUsersChange);
+    socket.on('user_updated', handleUsersChange);
+    socket.on('user_deleted', handleUsersChange);
+
+    const autoSyncTimer = setInterval(() => {
+      fetchRecords(true);
+    }, 6000);
 
     return () => {
+      clearInterval(autoSyncTimer);
+      socket.off('connect', handleUsersChange);
       socket.off('attendance_marked', handleAttendanceLive);
       socket.off('attendance_updated', handleAttendanceLive);
       socket.off('scan_registered', handleAttendanceLive);
-      socket.off('user_created');
-      socket.off('user_updated');
+      socket.off('user_created', handleUsersChange);
+      socket.off('user_updated', handleUsersChange);
+      socket.off('user_deleted', handleUsersChange);
     };
   }, [dateFrom, dateTo, selectedUserId]);
 
