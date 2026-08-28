@@ -371,7 +371,8 @@ export default function AdminUsersView({ currentUser, theme }) {
         {users.map((u) => {
           const isSuper = u.is_superadmin === 1 || u.role === 'superadmin' || (u.name || '').toLowerCase() === 'mauricio' || (u.username || '').toLowerCase() === 'mauricio';
           const showSuperBadge = isSuper && isSuperAdmin;
-          const isAdminRole = (u.role === 'admin' || isSuper) && !showSuperBadge;
+          const isKioskRole = u.role === 'kiosk';
+          const isAdminRole = (u.role === 'admin' || isSuper) && !showSuperBadge && !isKioskRole;
           const hasCred = u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0';
 
           return (
@@ -384,11 +385,13 @@ export default function AdminUsersView({ currentUser, theme }) {
               {/* Etiqueta de Rol */}
               <div className="flex items-center justify-between mb-3">
                 <span className={'text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ' + (
-                  showSuperBadge ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : isAdminRole
+                  showSuperBadge ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : isKioskRole
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                      : isAdminRole
                       ? (hasCred ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
                       : 'bg-orange-500/20 text-orange-400 border-orange-500/40'
                 )}>
-                  {showSuperBadge ? 'SUPERADMIN' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
+                  {showSuperBadge ? 'SUPERADMIN' : isKioskRole ? 'PUESTO KIOSCO QR' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
                 </span>
 
                 <div className="flex items-center gap-1">
@@ -595,6 +598,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
                     <option value="worker">Trabajador (Solo Credencial)</option>
+                    <option value="kiosk">Puesto Kiosco QR (Solo Escáner)</option>
                     <option value="admin">Administrador (Gestión / Reportes)</option>
                   </select>
                 </div>
