@@ -185,8 +185,8 @@ function calculateWorkHours(entry, lunchOut, lunchIn, exit) {
 }
 
 // Health Checks para Railway / Nube
-app.get('/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString() }));
-app.get('/api/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString(), database: db.isTurso ? 'TURSO_CLOUD_PERSISTENT_24_7' : 'LOCAL_SQLITE' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString(), database: db.isTurso ? 'TURSO_CLOUD_PERSISTENT_24_7' : 'LOCAL_SQLITE' }));
 
 // Validar contraseña admin
 app.post('/api/auth/verify-admin-pass', (req, res) => {
