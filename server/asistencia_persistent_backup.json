@@ -79,6 +79,22 @@
       "username": "bastiansoto",
       "plain_password": "123",
       "has_credential": 1
+    },
+    {
+      "id": 20,
+      "rut": "99.999.999-K",
+      "name": "Puesto Control QR",
+      "email": "kiosco@asistentruck.cl",
+      "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
+      "role": "kiosk",
+      "is_superadmin": 0,
+      "photo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMDI4NGM3O3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzAzNmU5ZDtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgcng9IjQwIiBmaWxsPSJ1cmwoI2cpIiAvPjxwYXRoIGQ9Ik01MCw1MCBMMTUwLDUwIEwxNTAsMTUwIEw1MCwxNTAgWiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjEyIiByeD0iMTYiIC8+PHJlY3QgeD0iNzUiIHk9Ijc1IiB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHJ4PSI4IiBmaWxsPSIjZmZmZmZmIiAvPjwvc3ZnPg==",
+      "qr_token": "QR_KIOSCO_ESTACION_BOTAM",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-28T15:53:42.667Z",
+      "username": "kiosco",
+      "plain_password": "123",
+      "has_credential": 0
     }
   ],
   "attendance": [],

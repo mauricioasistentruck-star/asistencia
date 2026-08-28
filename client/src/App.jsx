@@ -574,6 +574,10 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} />;
   }
 
+  if (user.role === 'kiosk') {
+    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} />;
+  }
+
   if (kioskMode) {
     return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
   }

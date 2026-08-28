@@ -743,7 +743,8 @@ export default function AdminUsersView({ currentUser, theme }) {
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                     className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
                   >
-                    <option value="worker">Trabajador</option>
+                    <option value="worker">Trabajador (Carnet QR / Asistencia)</option>
+                    <option value="kiosk">Puesto Kiosco QR (Solo Escáner)</option>
                     <option value="admin">Administrador</option>
                   </select>
                 </div>
