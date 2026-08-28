@@ -538,46 +538,12 @@ export const setVaultUsers = (serverUsers) => {
 export const mergeUsersToVault = (incomingUsers) => {
   if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) return getMasterVault().users;
   const vault = getMasterVault();
-  const currentUsers = [...vault.users.filter(isUserValid)];
-
-  incomingUsers.filter(isUserValid).forEach(inc => {
-    const normIncName = (inc.name || '').toLowerCase().trim();
-    const normIncUser = (inc.username || '').toLowerCase().trim();
-    const normIncRut = (inc.rut || '').trim();
-
-    const existingIdx = currentUsers.findIndex(u => {
-      if (inc.id && u.id && String(inc.id) === String(u.id)) return true;
-      if (normIncUser && u.username && normIncUser === u.username.toLowerCase().trim()) return true;
-      if (normIncRut && u.rut && normIncRut === u.rut.trim()) return true;
-      if (normIncName && u.name && normIncName === u.name.toLowerCase().trim()) return true;
-      return false;
-    });
-
-    if (existingIdx !== -1) {
-      const existing = currentUsers[existingIdx];
-      currentUsers[existingIdx] = {
-        ...existing,
-        ...inc,
-        id: inc.id || existing.id,
-        photo_url: (inc.photo_url && inc.photo_url !== 'null') ? inc.photo_url : (existing.photo_url || null),
-        plain_password: (inc.plain_password && inc.plain_password !== '123') ? inc.plain_password : (existing.plain_password || inc.plain_password || '123'),
-        password_hash: (inc.plain_password && inc.plain_password !== '123') ? (inc.password_hash || existing.password_hash) : (existing.password_hash || inc.password_hash),
-        gps_tracking_enabled: inc.gps_tracking_enabled !== undefined ? inc.gps_tracking_enabled : (existing.gps_tracking_enabled || 0),
-        has_credential: inc.has_credential !== undefined ? inc.has_credential : (existing.has_credential !== undefined ? existing.has_credential : 1)
-      };
-    } else {
-      currentUsers.push({
-        ...inc,
-        plain_password: inc.plain_password || '123',
-        gps_tracking_enabled: inc.gps_tracking_enabled || 0,
-        has_credential: inc.has_credential !== undefined ? inc.has_credential : 1
-      });
-    }
-  });
-
-  vault.users = deduplicateUsers(currentUsers);
+  
+  // Cleanly deduplicate incoming server users
+  const cleanIncoming = deduplicateUsers(incomingUsers);
+  vault.users = cleanIncoming;
   saveMasterVault(vault);
-  return vault.users;
+  return cleanIncoming;
 };
 
 export const removeUserFromVault = (userId) => {

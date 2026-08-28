@@ -68,8 +68,9 @@ export default function AdminUsersView({ currentUser, theme }) {
     try {
       const data = await apiGetUsers();
       if (Array.isArray(data) && data.length > 0) {
-        const merged = mergeUsersToVault(data);
-        setUsers(merged);
+        const cleanUsers = deduplicateUsers(data);
+        mergeUsersToVault(cleanUsers);
+        setUsers(cleanUsers);
       } else {
         const vault = getMasterVault();
         if (vault.users.length > 0) {
