@@ -188,8 +188,6 @@ function initDatabase() {
       db.run("ALTER TABLE users ADD COLUMN username TEXT", () => {});
       db.run("ALTER TABLE users ADD COLUMN plain_password TEXT", () => {});
       db.run("ALTER TABLE users ADD COLUMN has_credential INTEGER DEFAULT 1", () => {});
-      db.run("UPDATE users SET username = LOWER(REPLACE(name, ' ', '')) WHERE username IS NULL OR username = ''", () => {});
-      db.run("DELETE FROM users WHERE (name IS NULL OR TRIM(name) = '') AND (username IS NULL OR TRIM(username) = '' OR username = 'usuario')", () => {});
     });
 
     db.run(`
@@ -274,108 +272,37 @@ function initDatabase() {
       )
     `);
 
-    // Restaurar respaldo persistente inicial si existe
-    const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
-    if (fs.existsSync(persistentBackupPath)) {
-      try {
-        const content = fs.readFileSync(persistentBackupPath, 'utf8');
-        const data = JSON.parse(content);
-        if (data && Array.isArray(data.users)) {
-          for (let u of data.users) {
-            const hasCred = (u.has_credential !== undefined && u.has_credential !== null) ? (u.has_credential ? 1 : 0) : 1;
-            const gpsVal = (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0;
-            const cleanName = (u.name || '').trim();
-            const cleanUser = (u.username || cleanName.toLowerCase().replace(/\s+/g, '')).trim();
-
-            db.get(
-              "SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(name) = LOWER(?) OR id = ?",
-              [cleanUser, cleanName, u.id || 0],
-              (findErr, existingUser) => {
-                if (existingUser) {
-                  db.run(
-                    `UPDATE users SET 
-                       username = ?,
-                       rut = COALESCE(?, rut),
-                       name = ?,
-                       email = ?,
-                       password_hash = COALESCE(?, password_hash),
-                       plain_password = COALESCE(?, plain_password),
-                       role = ?,
-                       is_superadmin = ?,
-                       photo_url = COALESCE(?, photo_url),
-                       gps_tracking_enabled = ?,
-                       has_credential = ?
-                     WHERE id = ?`,
-                    [cleanUser, u.rut || null, cleanName, u.email, u.password_hash || null, u.plain_password || '123', u.role || 'worker', u.is_superadmin ? 1 : 0, u.photo_url || null, gpsVal, hasCred, existingUser.id]
-                  );
-                } else {
-                  const qrToken = u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase());
-                  db.run(
-                    `INSERT OR IGNORE INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [cleanUser, u.rut || null, cleanName, u.email, u.password_hash, u.plain_password || '123', u.role || 'worker', u.is_superadmin ? 1 : 0, u.photo_url || null, qrToken, gpsVal, hasCred, u.created_at || new Date().toISOString()]
-                  );
-                }
+    // SÓLO sembrar datos iniciales si la tabla de usuarios está completamente vacía
+    db.get("SELECT COUNT(*) as count FROM users", (cntErr, row) => {
+      const userCount = row ? (row.count !== undefined ? row.count : row['COUNT(*)']) : 0;
+      if (userCount === 0) {
+        console.log('[DATABASE] Base de datos nueva detectada. Sembrando usuarios iniciales...');
+        const persistentBackupPath = path.join(__dirname, 'asistencia_persistent_backup.json');
+        if (fs.existsSync(persistentBackupPath)) {
+          try {
+            const content = fs.readFileSync(persistentBackupPath, 'utf8');
+            const data = JSON.parse(content);
+            if (data && Array.isArray(data.users)) {
+              for (let u of data.users) {
+                const hasCred = (u.has_credential !== undefined && u.has_credential !== null) ? (u.has_credential ? 1 : 0) : 1;
+                const gpsVal = (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0;
+                const cleanName = (u.name || '').trim();
+                const cleanUser = (u.username || cleanName.toLowerCase().replace(/\s+/g, '')).trim();
+                const qrToken = u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase());
+                
+                db.run(
+                  `INSERT OR IGNORE INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [u.id || null, cleanUser, u.rut || null, cleanName, u.email, u.password_hash || defaultHash, u.plain_password || '123', u.role || 'worker', u.is_superadmin ? 1 : 0, u.photo_url || null, qrToken, gpsVal, hasCred, u.created_at || new Date().toISOString()]
+                );
               }
-            );
+            }
+          } catch (e) {
+            console.warn('Advertencia sembrando usuarios iniciales:', e);
           }
         }
-        if (data && Array.isArray(data.attendance)) {
-          for (let a of data.attendance) {
-            db.run(
-              `INSERT INTO attendance (user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(user_id, date) DO UPDATE SET
-                 entry_time = COALESCE(attendance.entry_time, excluded.entry_time),
-                 lunch_out_time = COALESCE(attendance.lunch_out_time, excluded.lunch_out_time),
-                 lunch_in_time = COALESCE(attendance.lunch_in_time, excluded.lunch_in_time),
-                 exit_time = COALESCE(attendance.exit_time, excluded.exit_time),
-                 total_hours = MAX(COALESCE(attendance.total_hours, 0), COALESCE(excluded.total_hours, 0)),
-                 modified_by_admin = MAX(COALESCE(attendance.modified_by_admin, 0), COALESCE(excluded.modified_by_admin, 0)),
-                 admin_note = COALESCE(attendance.admin_note, excluded.admin_note)`,
-              [a.user_id, a.date, a.entry_time, a.lunch_out_time, a.lunch_in_time, a.exit_time, a.total_hours || 0, a.modified_by_admin ? 1 : 0, a.admin_note, a.created_at || new Date().toISOString(), a.updated_at || new Date().toISOString()]
-            );
-          }
-        }
-        if (data && Array.isArray(data.voice_messages)) {
-          for (let v of data.voice_messages) {
-            db.run(
-              `INSERT OR IGNORE INTO voice_messages (id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [v.id, v.sender_id, v.sender_name, v.sender_photo, v.receiver_ids, v.receiver_names, v.audio_url, v.audio_data, v.duration_seconds || 0, v.created_at || new Date().toISOString()]
-            );
-          }
-        }
-        if (data && Array.isArray(data.gps_routes)) {
-          for (let r of data.gps_routes) {
-            db.run(
-              `INSERT OR IGNORE INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [r.id, r.user_id, r.user_name || 'Personal', r.name, r.date, r.start_time, r.end_time || null, r.start_lat, r.start_lng, r.end_lat || null, r.end_lng || null, r.total_distance_km || 0, r.total_points || 0, r.points_json || '[]', r.status || 'completed', r.created_at || new Date().toISOString()]
-            );
-          }
-        }
-      } catch (e) {
-        console.warn('Advertencia restaurando persistent backup:', e);
-      }
-    }
-
-    // Garantizar Super Admin Mauricio
-    db.get("SELECT id FROM users WHERE name = 'Mauricio' OR is_superadmin = 1 OR username = 'mauricio'", (err, row) => {
-      if (!row) {
-        const salt = bcrypt.genSaltSync(10);
-        const validHash = bcrypt.hashSync('123', salt);
-        db.run(
-          `INSERT INTO users (username, rut, name, email, password_hash, plain_password, role, is_superadmin, qr_token, gps_tracking_enabled, has_credential)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ['mauricio', '12.345.678-9', 'Mauricio', 'mauricio@asistentruck.cl', validHash, '123', 'superadmin', 1, 'QR_MAURICIO_041118', 0, 1],
-          (insertErr) => {
-            if (insertErr) console.error('Error creando Super Admin Mauricio:', insertErr.message);
-            else console.log('Super Admin listo: Mauricio (Usuario: mauricio, Clave: 123)');
-          }
-        );
       } else {
-        db.run("UPDATE users SET is_superadmin = 1, role = 'superadmin' WHERE id = ?", [row.id]);
+        console.log(`[DATABASE] Base de datos lista con ${userCount} usuarios existentes. (No se sobreescriben datos)`);
       }
     });
   });

@@ -879,9 +879,10 @@ export default function AdminAttendanceView({ user, theme }) {
                 <button
                   type="submit"
                   disabled={editLoading}
-                  className="px-4 py-2.5 rounded-xl text-xs font-black bg-orange-500 hover:bg-orange-600 text-black shadow-lg shadow-orange-500/20 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black shadow-lg shadow-orange-500/30 flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
                 >
-                  {editLoading ? 'Guardando...' : 'Autorizar y Guardar'}
+                  <Save className="w-4 h-4" />
+                  <span>{editLoading ? 'Guardando...' : 'Autorizar y Guardar Permanentemente'}</span>
                 </button>
               </div>
             </form>

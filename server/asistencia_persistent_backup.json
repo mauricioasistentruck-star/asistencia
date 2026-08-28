@@ -1,10 +1,10 @@
 {
   "users": [
     {
-      "id": 6,
-      "rut": "12.345.678-9",
-      "name": "Mauricio",
-      "email": "mauricio@asistentruck.cl",
+      "id": 2,
+      "rut": "18.828.428-0",
+      "name": "Mauricio Chamorro",
+      "email": "bodega.asistentruck@gmail.com",
       "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
       "role": "superadmin",
       "is_superadmin": 1,
@@ -17,23 +17,23 @@
       "has_credential": 1
     },
     {
-      "id": 8,
+      "id": 1,
       "rut": null,
-      "name": "Bastian Soto",
-      "email": "bastian.asistentruck@gmail.com",
+      "name": "Juan Poblete",
+      "email": "juan.asistentruck@gmail.com",
       "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
       "role": "worker",
       "is_superadmin": 0,
-      "photo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMjU2M2ViO3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzNiODJmNjtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgcng9IjQwIiBmaWxsPSJ1cmwoI2cpIiAvPjxjaXJjbGUgY3g9IjEwMCIgY3k9IjgwIiByPSIzOCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjxwYXRoIGQ9Ik00MCwxNzUgQzQwLDEzMCA3MCwxMjAgMTAwLDEyMCBDMTMwLDEyMCAxNjAsMTMwIDE2MCwxNzUgWiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjx0ZXh0IHg9IjEwMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkJTPC90ZXh0Pjwvc3ZnPg==",
-      "qr_token": "QR_BASTIAN_SOTO_S2NYCV_1787340614145",
+      "photo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMDU5NjY5O3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzEwYjk4MTtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgcng9IjQwIiBmaWxsPSJ1cmwoI2cpIiAvPjxjaXJjbGUgY3g9IjEwMCIgY3k9IjgwIiByPSIzOCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjxwYXRoIGQ9Ik00MCwxNzUgQzQwLDEzMCA3MCwxMjAgMTAwLDEyMCBDMTMwLDEyMCAxNjAsMTMwIDE2MCwxNzUgWiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjx0ZXh0IHg9IjEwMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkpQPC90ZXh0Pjwvc3ZnPg==",
+      "qr_token": "QR_JUAN_POBLETE_041118",
       "gps_tracking_enabled": 0,
-      "created_at": "2026-08-21 19:30:14",
-      "username": "bastiansoto",
+      "created_at": "2026-08-26 23:00:35",
+      "username": "juanpoblete",
       "plain_password": "123",
       "has_credential": 1
     },
     {
-      "id": 10,
+      "id": 4,
       "rut": null,
       "name": "Boris Aguirre",
       "email": "baguirre.asistentruck@gmail.com",
@@ -49,26 +49,10 @@
       "has_credential": 1
     },
     {
-      "id": 11,
+      "id": 5,
       "rut": null,
-      "name": "Juan Poblete",
-      "email": "juan.poblete.asistentruck@gmail.com",
-      "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
-      "role": "worker",
-      "is_superadmin": 0,
-      "photo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMDU5NjY5O3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzEwYjk4MTtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgcng9IjQwIiBmaWxsPSJ1cmwoI2cpIiAvPjxjaXJjbGUgY3g9IjEwMCIgY3k9IjgwIiByPSIzOCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjxwYXRoIGQ9Ik00MCwxNzUgQzQwLDEzMCA3MCwxMjAgMTAwLDEyMCBDMTMwLDEyMCAxNjAsMTMwIDE2MCwxNzUgWiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjx0ZXh0IHg9IjEwMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkpQPC90ZXh0Pjwvc3ZnPg==",
-      "qr_token": "QR_JUAN_POBLETE_041118",
-      "gps_tracking_enabled": 0,
-      "created_at": "2026-08-26 23:00:35",
-      "username": "juanpoblete",
-      "plain_password": "123",
-      "has_credential": 1
-    },
-    {
-      "id": 13,
-      "rut": null,
-      "name": "Nicolas Chamorro",
-      "email": "nicolas.chamorro.asistentruck@gmail.com",
+      "name": "Nicolás Chamorro",
+      "email": "nicolaschamorro.asistentruck@gmail.com",
       "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
       "role": "worker",
       "is_superadmin": 0,
@@ -79,10 +63,26 @@
       "username": "nicolaschamorro",
       "plain_password": "123",
       "has_credential": 1
+    },
+    {
+      "id": 6,
+      "rut": null,
+      "name": "Bastián Soto",
+      "email": "bastian.asistentruck@gmail.com",
+      "password_hash": "$2b$10$H917UZ/BlpPa3u1wQ106p.oIT2lKgVSxCnpyEDzN8UPbT6OtGAvty",
+      "role": "worker",
+      "is_superadmin": 0,
+      "photo_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMjU2M2ViO3N0b3Atb3BhY2l0eToxIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6IzNiODJmNjtzdG9wLW9wYWNpdHk6MSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgcng9IjQwIiBmaWxsPSJ1cmwoI2cpIiAvPjxjaXJjbGUgY3g9IjEwMCIgY3k9IjgwIiByPSIzOCIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjxwYXRoIGQ9Ik00MCwxNzUgQzQwLDEzMCA3MCwxMjAgMTAwLDEyMCBDMTMwLDEyMCAxNjAsMTMwIDE2MCwxNzUgWiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjIpIiAvPjx0ZXh0IHg9IjEwMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkJTPC90ZXh0Pjwvc3ZnPg==",
+      "qr_token": "QR_BASTIAN_SOTO_S2NYCV_1787340614145",
+      "gps_tracking_enabled": 0,
+      "created_at": "2026-08-21 19:30:14",
+      "username": "bastiansoto",
+      "plain_password": "123",
+      "has_credential": 1
     }
   ],
   "attendance": [],
   "voice_messages": [],
   "gps_routes": [],
-  "saved_at": "2026-08-27T19:41:40.657Z"
+  "saved_at": "2026-08-28T14:11:06.655Z"
 }
