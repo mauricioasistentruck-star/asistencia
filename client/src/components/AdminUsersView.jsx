@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, ShieldCheck, QrCode } from 'lucide-react';
+import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, ShieldCheck, QrCode, Save, Plus, Camera, Search, Download, FileSpreadsheet } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   apiGetUsers, 
