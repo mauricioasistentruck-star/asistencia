@@ -160,7 +160,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       const payload = {
         ...newUser,
         gps_tracking_enabled: newUser.gps_tracking_enabled ? 1 : 0,
-        has_credential: newUser.role === 'admin' ? (newUser.has_credential ? 1 : 0) : 1
+        has_credential: newUser.role === 'admin' ? (newUser.has_credential ? 1 : 0) : (newUser.role === 'kiosk' ? 0 : 1)
       };
       const res = await apiCreateUser(payload);
       const created = res?.user || res;
@@ -212,7 +212,7 @@ export default function AdminUsersView({ currentUser, theme }) {
         email: editForm.email,
         role: editForm.role,
         gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0,
-        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : 1
+        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : (editForm.role === 'kiosk' ? 0 : 1)
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();
