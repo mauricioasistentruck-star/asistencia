@@ -707,3 +707,5 @@ export const autoRestoreAndSyncWithServer = async () => {
     return getMasterVault().users || [];
   }
 };
+
+export const apiLockAsBase = () => apiRequest('/api/admin/backup/lock-as-base', { method: 'POST' });

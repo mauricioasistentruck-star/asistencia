@@ -542,6 +542,41 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 // Excluye exclusivamente los audios de walkie-talkie.
 // =========================================================================
 
+
+// Endpoint para fijar y asegurar inmediatamente el estado base permanente
+app.post('/api/admin/backup/lock-as-base', authenticateToken, requireAdmin, (req, res) => {
+  db.all('SELECT * FROM users ORDER BY id ASC', (uErr, users) => {
+    if (uErr) return res.status(500).json({ error: 'Error leyendo usuarios: ' + uErr.message });
+    db.all('SELECT * FROM attendance ORDER BY date ASC, id ASC', (aErr, att) => {
+      db.all('SELECT * FROM voice_messages ORDER BY id DESC LIMIT 500', (vErr, voiceMsgs) => {
+        db.all('SELECT * FROM gps_routes ORDER BY id DESC LIMIT 100', (gErr, routes) => {
+          const data = {
+            users: users || [],
+            attendance: att || [],
+            voice_messages: voiceMsgs || [],
+            gps_routes: routes || [],
+            locked_by: req.user.name || 'Admin',
+            saved_at: new Date().toISOString()
+          };
+          try {
+            fs.writeFileSync(persistentBackupPath, JSON.stringify(data, null, 2), 'utf8');
+            console.log('[BACKUP] Estado base fijado y asegurado con exito:', (users || []).length, 'usuarios registrados.');
+            res.json({
+              success: true,
+              message: '¡Datos y fotos base registrados y asegurados de forma permanente!',
+              usersCount: (users || []).length,
+              attendanceCount: (att || []).length
+            });
+          } catch (e) {
+            console.error('Error escribiendo respaldo base:', e);
+            res.status(500).json({ error: 'Error al asegurar archivo base: ' + e.message });
+          }
+        });
+      });
+    });
+  });
+});
+
 app.get('/api/admin/backup/export', authenticateToken, requireSuperAdmin, async (req, res) => {
   try {
     const backup = {

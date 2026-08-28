@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Database, Download, UploadCloud, ShieldCheck, X, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
-import { apiExportBackup, apiImportBackup, autoRestoreAndSyncWithServer } from '../api';
+import { apiExportBackup, apiImportBackup, autoRestoreAndSyncWithServer, apiLockAsBase } from '../api';
 
 export default function BackupModal({ isOpen, onClose, theme }) {
   const [backupLoading, setBackupLoading] = useState(false);
@@ -11,6 +11,21 @@ export default function BackupModal({ isOpen, onClose, theme }) {
   if (!isOpen) return null;
 
   const isDark = theme === 'dark';
+
+  
+  const handleLockCurrentAsBase = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setBackupLoading(true);
+    try {
+      const res = await apiLockAsBase();
+      setSuccessMsg('¡ESTADO BASE REGISTRADO CON ÉXITO! Todos los perfiles, fotos y marcaciones actuales han quedado fijados como la base indestructible del sistema.');
+    } catch (err) {
+      setErrorMsg(err.message || 'Error al fijar el estado base');
+    } finally {
+      setBackupLoading(false);
+    }
+  };
 
   const handleExportBackup = async () => {
     setErrorMsg('');
@@ -109,7 +124,18 @@ export default function BackupModal({ isOpen, onClose, theme }) {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={handleLockCurrentAsBase}
+            disabled={backupLoading}
+            className="w-full mb-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-black text-xs font-black p-3.5 rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>{backupLoading ? 'Guardando Base...' : 'Fijar Datos y Fotos Actuales como Estado Base Permanente'}</span>
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           {/* Botón Exportar */}
           <button
             type="button"

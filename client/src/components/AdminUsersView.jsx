@@ -5,7 +5,7 @@ import {
   apiGetUsers, 
   apiCreateUser, 
   apiUpdateUser, 
-  apiDeleteUser, 
+  apiDeleteUser, apiLockAsBase, 
   apiUploadPhoto, 
   apiToggleGps, 
   getFullPhotoUrl, 
