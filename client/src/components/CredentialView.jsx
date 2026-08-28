@@ -467,7 +467,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             </div>
 
             {/* TABLA PRINCIPAL: VISTA SEMANA (DÍA A DÍA) O VISTA MES (RESUMEN 4 SEMANAS) */}
-            <div className={'flex-1 overflow-y-auto rounded-2xl border ' + (isDark ? 'border-zinc-800' : 'border-orange-200')}>
+            <div className={'flex-1 overflow-x-auto overflow-y-auto rounded-2xl border ' + (isDark ? 'border-zinc-800' : 'border-orange-200')} style={{ WebkitOverflowScrolling: 'touch' }}>
               {historyRange === 'week' ? (
                 /* VISTA SEMANA: DÍA A DÍA */
                 <table className="w-full text-left text-xs">
@@ -528,7 +528,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
                 </table>
               ) : (
                 /* VISTA MES: RESUMEN DE LAS 4 SEMANAS DEL MES */
-                <table className="w-full text-left text-xs">
+                <table className="min-w-[420px] w-full text-left text-xs table-auto">
                   <thead className={'sticky top-0 uppercase font-bold text-[10px] tracking-wider border-b ' + (isDark ? 'bg-black text-zinc-400 border-zinc-800' : 'bg-orange-50 text-zinc-700 border-orange-200')}>
                     <tr>
                       <th className="py-3 px-4">Semana del Mes</th>

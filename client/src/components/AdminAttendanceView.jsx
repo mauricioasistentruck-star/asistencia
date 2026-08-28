@@ -566,66 +566,66 @@ export default function AdminAttendanceView({ user, theme }) {
             <span className="text-xs text-zinc-400 font-bold">{workersSummary.length} Trabajadores evaluados</span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto w-full pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="min-w-[900px] w-full text-left text-xs border-collapse table-auto">
               <thead>
                 <tr className={'border-b ' + (isDark ? 'bg-zinc-900/90 border-zinc-800 text-zinc-400 font-black' : 'bg-orange-50/80 border-orange-200 text-zinc-800 font-black')}>
-                  <th className="py-3 px-4">Trabajador</th>
-                  <th className="py-3 px-3">RUT</th>
-                  <th className="py-3 px-3 text-center">Días Asistidos</th>
-                  <th className="py-3 px-3 text-center">Días No Marcados</th>
-                  <th className="py-3 px-3 text-center">Atrasos</th>
-                  <th className="py-3 px-3 text-center">Horas Extras</th>
-                  <th className="py-3 px-3 text-right">Total Horas</th>
-                  <th className="py-3 px-3 text-right print:hidden">Acciones</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap min-w-[210px]">Trabajador</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap min-w-[120px]">RUT</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[130px]">Días Asistidos</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[150px]">Días No Marcados</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[120px]">Atrasos</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[120px]">Horas Extras</th>
+                  <th className="py-3.5 px-3 text-right whitespace-nowrap min-w-[110px]">Total Horas</th>
+                  <th className="py-3.5 px-4 text-right print:hidden whitespace-nowrap min-w-[120px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
                 {workersSummary.map(({ worker, daysWorked, missingDays, totalMinutesWorked, totalDelayMinutes, delayCount, totalOvertimeMinutes }) => (
                   <tr key={worker.id || worker.username} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/50'}>
-                    <td className="py-3 px-4">
-                      <div className="font-black text-sm">{worker.name}</div>
-                      <div className="text-[10px] text-zinc-500">{worker.email || worker.username}</div>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <div className="font-black text-sm whitespace-nowrap">{worker.name}</div>
+                      <div className="text-[10px] text-zinc-500 whitespace-nowrap">{worker.email || worker.username}</div>
                     </td>
-                    <td className="py-3 px-3 text-zinc-400 font-mono text-[11px]">
+                    <td className="py-3.5 px-3 text-zinc-400 font-mono text-[11px] whitespace-nowrap">
                       {worker.rut || 'Sin RUT'}
                     </td>
-                    <td className="py-3 px-3 text-center">
-                      <span className="bg-emerald-500/20 text-emerald-400 font-black px-2.5 py-1 rounded-full text-xs border border-emerald-500/30">
+                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center bg-emerald-500/20 text-emerald-400 font-black px-3 py-1 rounded-full text-xs border border-emerald-500/30 whitespace-nowrap leading-none">
                         {daysWorked} días
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-center">
+                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
                       {missingDays > 0 ? (
-                        <span className="bg-red-500/20 text-red-400 font-black px-2.5 py-1 rounded-full text-xs border border-red-500/30">
+                        <span className="inline-flex items-center justify-center bg-red-500/20 text-red-400 font-black px-3 py-1 rounded-full text-xs border border-red-500/30 whitespace-nowrap leading-none">
                           {missingDays} días faltantes
                         </span>
                       ) : (
-                        <span className="text-zinc-500 text-xs font-bold">0 días</span>
+                        <span className="text-zinc-500 text-xs font-bold whitespace-nowrap">0 días</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-center">
+                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
                       {totalDelayMinutes > 0 ? (
-                        <span className="text-amber-400 font-bold text-xs">
+                        <span className="text-amber-400 font-bold text-xs whitespace-nowrap">
                           {delayCount} ({formatMinutesToHHMM(totalDelayMinutes)})
                         </span>
                       ) : (
-                        <span className="text-zinc-500 text-xs">0 min</span>
+                        <span className="text-zinc-500 text-xs whitespace-nowrap">0 min</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-center">
+                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
                       {totalOvertimeMinutes > 0 ? (
-                        <span className="text-emerald-400 font-bold text-xs">
+                        <span className="text-emerald-400 font-bold text-xs whitespace-nowrap">
                           +{formatMinutesToHHMM(totalOvertimeMinutes)}
                         </span>
                       ) : (
-                        <span className="text-zinc-500 text-xs">0 min</span>
+                        <span className="text-zinc-500 text-xs whitespace-nowrap">0 min</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right font-black text-sm text-orange-400 font-mono">
+                    <td className="py-3.5 px-3 text-right font-black text-sm text-orange-400 font-mono whitespace-nowrap">
                       {formatMinutesToHHMM(totalMinutesWorked)}
                     </td>
-                    <td className="py-3 px-3 text-right print:hidden">
+                    <td className="py-3.5 px-4 text-right print:hidden whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
@@ -634,7 +634,7 @@ export default function AdminAttendanceView({ user, theme }) {
                             setActiveSubTab('details');
                           }}
                           title="Ver y Gestionar Marcaciones de este Trabajador"
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 whitespace-nowrap"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Ver / Editar</span>
@@ -669,25 +669,25 @@ export default function AdminAttendanceView({ user, theme }) {
             )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto w-full pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="min-w-[920px] w-full text-left text-xs border-collapse table-auto">
               <thead>
                 <tr className={'border-b ' + (isDark ? 'bg-zinc-900/90 border-zinc-800 text-zinc-400 font-black' : 'bg-orange-50/80 border-orange-200 text-zinc-800 font-black')}>
-                  <th className="py-3 px-3">Fecha</th>
-                  <th className="py-3 px-4">Trabajador</th>
-                  <th className="py-3 px-2 text-center">1. Entrada</th>
-                  <th className="py-3 px-2 text-center">2. Sal. Colación</th>
-                  <th className="py-3 px-2 text-center">3. Ent. Colación</th>
-                  <th className="py-3 px-2 text-center">4. Salida</th>
-                  <th className="py-3 px-3 text-center">Total Horas</th>
-                  <th className="py-3 px-3 text-center">Atraso</th>
-                  <th className="py-3 px-3 text-right print:hidden">Acciones</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap min-w-[105px]">Fecha</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap min-w-[210px]">Trabajador</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[95px]">1. Entrada</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[105px]">2. Sal. Colación</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[105px]">3. Ent. Colación</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[95px]">4. Salida</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[100px]">Total Horas</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[95px]">Atraso</th>
+                  <th className="py-3.5 px-3 text-right print:hidden whitespace-nowrap min-w-[95px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
                 {displayedDetailsRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-zinc-500 font-bold">
+                    <td colSpan={9} className="py-8 text-center text-zinc-500 font-bold whitespace-nowrap">
                       No se encontraron registros de marcaciones para el período seleccionado.
                     </td>
                   </tr>
@@ -698,36 +698,36 @@ export default function AdminAttendanceView({ user, theme }) {
 
                     return (
                       <tr key={r.id} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/50'}>
-                        <td className="py-3 px-3 font-mono text-[11px] font-bold text-orange-400 whitespace-nowrap">
+                        <td className="py-3.5 px-3 font-mono text-[11px] font-bold text-orange-400 whitespace-nowrap">
                           {r.date}
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="font-black text-sm">{r.user_name || r.name || 'Personal'}</div>
-                          <div className="text-[10px] text-zinc-500 font-mono">{r.user_rut || r.rut || ''}</div>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <div className="font-black text-sm whitespace-nowrap">{r.user_name || r.name || 'Personal'}</div>
+                          <div className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">{r.user_rut || r.rut || ''}</div>
                         </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold">
+                        <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                           {r.entry_time ? <span className="text-emerald-400">{r.entry_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold">
+                        <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                           {r.lunch_out_time ? <span className="text-amber-400">{r.lunch_out_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold">
+                        <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                           {r.lunch_in_time ? <span className="text-amber-400">{r.lunch_in_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
-                        <td className="py-3 px-2 text-center font-mono font-bold">
+                        <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                           {r.exit_time ? <span className="text-blue-400">{r.exit_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
-                        <td className="py-3 px-3 text-center font-mono font-black text-orange-400">
+                        <td className="py-3.5 px-3 text-center font-mono font-black text-orange-400 whitespace-nowrap">
                           {formatMinutesToHHMM(recordMins)}
                         </td>
-                        <td className="py-3 px-3 text-center">
+                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
                           {delay > 0 ? (
-                            <span className="text-amber-400 font-bold text-[11px]">+{delay}m</span>
+                            <span className="text-amber-400 font-bold text-[11px] whitespace-nowrap">+{delay}m</span>
                           ) : (
-                            <span className="text-emerald-500 text-[11px]">Puntual</span>
+                            <span className="text-emerald-500 text-[11px] whitespace-nowrap">Puntual</span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right print:hidden">
+                        <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
