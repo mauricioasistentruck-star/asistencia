@@ -280,8 +280,8 @@ function initDatabase() {
       )
     `, () => {
       const defaultSchedule = JSON.stringify({
-        monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
-        friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+        monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 30 },
+        friday: { entry: "09:00", exit: "17:30", lunch_minutes: 30 }
       });
       db.run("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('work_schedule', ?)", [defaultSchedule]);
     });

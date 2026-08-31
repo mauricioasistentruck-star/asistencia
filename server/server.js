@@ -184,6 +184,75 @@ function calculateWorkHours(entry, lunchOut, lunchIn, exit) {
   return totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : 0;
 }
 
+function calculateDelayMinutesServer(record, schedule = cachedWorkSchedule) {
+  if (!record) return 0;
+  let stdEntry = '09:00';
+  let isWeekend = false;
+  if (record.date) {
+    try {
+      const [y, m, d] = record.date.split('-').map(Number);
+      const dayOfWeek = new Date(y, m - 1, d).getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) isWeekend = true;
+      else if (dayOfWeek === 5) stdEntry = schedule?.friday?.entry || '09:00';
+      else stdEntry = schedule?.monday_thursday?.entry || '09:00';
+    } catch (e) {}
+  }
+
+  let delay = 0;
+  if (!isWeekend && record.entry_time) {
+    const entryMin = parseTimeToMinutes(record.entry_time);
+    const stdMin = parseTimeToMinutes(stdEntry);
+    if (entryMin !== null && stdMin !== null && entryMin > stdMin) {
+      delay += Math.round(entryMin - stdMin);
+    }
+  }
+
+  // Atraso de colación: más de 30 minutos desde la salida de colación
+  const lunchOutMin = parseTimeToMinutes(record.lunch_out_time);
+  const lunchInMin = parseTimeToMinutes(record.lunch_in_time);
+  const maxLunch = Number(schedule?.monday_thursday?.lunch_minutes) || 30;
+  if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+    const taken = lunchInMin - lunchOutMin;
+    if (taken > maxLunch) {
+      delay += Math.round(taken - maxLunch);
+    }
+  }
+  return delay;
+}
+
+function calculateOvertimeMinutesServer(record, schedule = cachedWorkSchedule) {
+  if (!record) return 0;
+  let dayOfWeek = null;
+  if (record.date) {
+    try {
+      const [y, m, d] = record.date.split('-').map(Number);
+      dayOfWeek = new Date(y, m - 1, d).getDay();
+    } catch (e) {}
+  }
+
+  const worked = calculateWorkMinutes(record.entry_time, record.lunch_out_time, record.lunch_in_time, record.exit_time);
+
+  // Todo tiempo trabajado en sábado o domingo es hora extra
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return worked;
+  }
+
+  const exitMin = parseTimeToMinutes(record.exit_time);
+  if (exitMin === null) return 0;
+
+  // Viernes: salida después de 17:30
+  if (dayOfWeek === 5) {
+    const offExit = parseTimeToMinutes(schedule?.friday?.exit || '17:30') || (17 * 60 + 30);
+    if (exitMin > offExit) return Math.round(exitMin - offExit);
+    return 0;
+  }
+
+  // Lun-Jue: salida después de 18:00
+  const offExit = parseTimeToMinutes(schedule?.monday_thursday?.exit || '18:00') || (18 * 60);
+  if (exitMin > offExit) return Math.round(exitMin - offExit);
+  return 0;
+}
+
 // Health Checks para Railway / Nube
 app.get('/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString(), database: db.isTurso ? 'TURSO_CLOUD_PERSISTENT_24_7' : 'LOCAL_SQLITE' }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', serverTime: new Date().toISOString(), database: db.isTurso ? 'TURSO_CLOUD_PERSISTENT_24_7' : 'LOCAL_SQLITE' }));
@@ -589,8 +658,8 @@ app.post('/api/admin/backup/lock-as-base', authenticateToken, requireAdmin, (req
 // CONFIGURACIÓN DE HORARIO LABORAL OFICIAL
 // =========================================================================
 let cachedWorkSchedule = {
-  monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
-  friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+  monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 30 },
+  friday: { entry: "09:00", exit: "17:30", lunch_minutes: 30 }
 };
 
 function loadCachedSchedule() {
@@ -629,12 +698,12 @@ app.put('/api/settings/work-schedule', authenticateToken, requireSuperAdmin, (re
     monday_thursday: {
       entry: monday_thursday.entry || "09:00",
       exit: monday_thursday.exit || "18:00",
-      lunch_minutes: Number(monday_thursday.lunch_minutes) || 60
+      lunch_minutes: Number(monday_thursday.lunch_minutes) || 30
     },
     friday: {
       entry: friday.entry || "09:00",
       exit: friday.exit || "17:30",
-      lunch_minutes: Number(friday.lunch_minutes) || 60
+      lunch_minutes: Number(friday.lunch_minutes) || 30
     }
   };
 
@@ -1363,6 +1432,9 @@ const handleExportExcel = (req, res) => {
       const formattedHours = formatMinutesToHoursMinutes(workedMinutes);
       const decimalHours = workedMinutes > 0 ? Number((workedMinutes / 60).toFixed(2)) : 0;
 
+      const delayMinutes = calculateDelayMinutesServer(r);
+      const overtimeMinutes = calculateOvertimeMinutesServer(r);
+
       excelRows.push({
         'Fecha': r.date,
         'Trabajador': r.name,
@@ -1373,6 +1445,8 @@ const handleExportExcel = (req, res) => {
         '4. Salida Jornada': r.exit_time || '--:--:--',
         'Total Horas Trabajadas (HH:MM)': formattedHours,
         'Horas Decimales': decimalHours,
+        'Atraso (Minutos)': delayMinutes > 0 ? `+${delayMinutes}m` : '0m',
+        'Horas Extras (HH:MM)': formatMinutesToHoursMinutes(overtimeMinutes),
         'Editado por Admin': r.modified_by_admin === 1 ? 'Si (Admin)' : 'No',
         'Nota Auditoria': r.admin_note || ''
       });

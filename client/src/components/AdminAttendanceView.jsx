@@ -55,8 +55,8 @@ export default function AdminAttendanceView({ user, theme }) {
 
   // Horario Laboral Oficial
   const [workSchedule, setWorkSchedule] = useState({
-    monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
-    friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+    monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 30 },
+    friday: { entry: "09:00", exit: "17:30", lunch_minutes: 30 }
   });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleForm, setScheduleForm] = useState(null);
@@ -79,6 +79,18 @@ export default function AdminAttendanceView({ user, theme }) {
     return parts[0] * 60 + parts[1] + (parts[2] ? parts[2] / 60 : 0);
   };
 
+  const getChileNowMinutes = () => {
+    try {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    } catch (e) {
+      const d = new Date();
+      return d.getHours() * 60 + d.getMinutes();
+    }
+  };
+
   const formatMinutesToHHMM = (totalMins) => {
     if (!totalMins || totalMins <= 0) return '0h 00m';
     const h = Math.floor(totalMins / 60);
@@ -86,116 +98,159 @@ export default function AdminAttendanceView({ user, theme }) {
     return `${h}h ${m.toString().padStart(2, '0')}m`;
   };
 
+  // CÁLCULO DE HORAS TRABAJADAS:
+  // Si ya marcó salida: (salida - entrada) - colación tomada
+  // Si está en curso hoy: calcula el tiempo acumulado hasta ahora restando colación
   const calculateRecordMinutes = (r) => {
     if (!r) return 0;
     const entryMin = parseTimeToMinutes(r.entry_time);
-    const exitMin = parseTimeToMinutes(r.exit_time);
-    if (entryMin !== null && exitMin !== null && exitMin >= entryMin) {
-      let mins = exitMin - entryMin;
-      const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
-      const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
-      if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
-        mins -= (lunchInMin - lunchOutMin);
+    if (entryMin === null) return 0;
+
+    let exitMin = parseTimeToMinutes(r.exit_time);
+    const isToday = r.date === getChileTodayString();
+
+    // Si aún no marca salida
+    if (exitMin === null) {
+      if (isToday) {
+        const nowMin = getChileNowMinutes();
+        const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+        const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+
+        if (lunchOutMin !== null && lunchInMin === null) {
+          // Actualmente en colación
+          return Math.max(0, Math.round(lunchOutMin - entryMin));
+        } else if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+          // Ya regresó de colación y sigue trabajando hoy
+          const lunchDuration = lunchInMin - lunchOutMin;
+          return Math.max(0, Math.round((nowMin - entryMin) - lunchDuration));
+        } else {
+          // Aún no toma colación hoy
+          return Math.max(0, Math.round(nowMin - entryMin));
+        }
+      } else {
+        // Día pasado sin marcación de salida: si tiene total_hours guardado
+        if (r.total_hours && Number(r.total_hours) > 0) {
+          return Math.round(Number(r.total_hours) * 60);
+        }
+        const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+        if (lunchOutMin !== null && lunchOutMin > entryMin) {
+          return Math.max(0, Math.round(lunchOutMin - entryMin));
+        }
+        return 0;
       }
-      return Math.max(0, Math.round(mins));
     }
-    if (r.total_hours) {
-      return Math.round(r.total_hours * 60);
+
+    // Salida ya registrada:
+    let mins = exitMin - entryMin;
+    const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+    const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+    if (lunchOutMin !== null && lunchInMin !== null && lunchInMin > lunchOutMin) {
+      mins -= (lunchInMin - lunchOutMin);
     }
-    return 0;
+    return Math.max(0, Math.round(mins));
   };
 
-  const calculateDelayMinutes = (entryTime, recordDate) => {
-    if (!entryTime) return 0;
+  // CÁLCULO DE ATRASOS:
+  // 1. Atraso en Entrada: después de las 09:00
+  // 2. Atraso en Colación: después de 30 minutos desde la salida a colación
+  const calculateDelayMinutes = (r) => {
+    if (!r) return { total: 0, entryDelay: 0, lunchDelay: 0 };
     let stdEntry = '09:00';
-    if (recordDate) {
+    let isWeekend = false;
+    if (r.date) {
       try {
-        const [y, m, d] = recordDate.split('-').map(Number);
-        const dayOfWeek = new Date(y, m - 1, d).getDay();
-        if (dayOfWeek === 5) {
+        const [y, m, d] = r.date.split('-').map(Number);
+        const dayOfWeek = new Date(y, m - 1, d).getDay(); // 0: Dom, 5: Vie, 6: Sáb
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          isWeekend = true;
+        } else if (dayOfWeek === 5) {
           stdEntry = workSchedule?.friday?.entry || '09:00';
         } else {
           stdEntry = workSchedule?.monday_thursday?.entry || '09:00';
         }
       } catch (e) {}
     }
-    const entryMin = parseTimeToMinutes(entryTime);
-    const stdMin = parseTimeToMinutes(stdEntry);
-    if (entryMin === null || stdMin === null) return 0;
-    if (entryMin > stdMin) {
-      return Math.round(entryMin - stdMin);
+
+    // 1. Atraso en Entrada (solo días hábiles)
+    let entryDelay = 0;
+    if (!isWeekend && r.entry_time) {
+      const entryMin = parseTimeToMinutes(r.entry_time);
+      const stdMin = parseTimeToMinutes(stdEntry);
+      if (entryMin !== null && stdMin !== null && entryMin > stdMin) {
+        entryDelay = Math.round(entryMin - stdMin);
+      }
+    }
+
+    // 2. Atraso en Colación: la colación es de 30 minutos y corre desde salida de colación
+    let lunchDelay = 0;
+    const lunchOutMin = parseTimeToMinutes(r.lunch_out_time);
+    const lunchInMin = parseTimeToMinutes(r.lunch_in_time);
+    const standardLunchMins = Number(workSchedule?.monday_thursday?.lunch_minutes) || 30;
+
+    if (lunchOutMin !== null) {
+      if (lunchInMin !== null && lunchInMin > lunchOutMin) {
+        const takenMins = lunchInMin - lunchOutMin;
+        if (takenMins > standardLunchMins) {
+          lunchDelay = Math.round(takenMins - standardLunchMins);
+        }
+      } else if (lunchInMin === null && r.date === getChileTodayString()) {
+        const nowMin = getChileNowMinutes();
+        if (nowMin > lunchOutMin + standardLunchMins) {
+          lunchDelay = Math.round(nowMin - (lunchOutMin + standardLunchMins));
+        }
+      }
+    }
+
+    const total = entryDelay + lunchDelay;
+    return { total, entryDelay, lunchDelay };
+  };
+
+  // CÁLCULO DE HORAS EXTRAS:
+  // - Lunes a Jueves: después de las 18:00
+  // - Viernes: después de las 17:30
+  // - Sábado o Domingo: todo tiempo trabajado es hora extra
+  const calculateOvertimeMinutes = (r) => {
+    if (!r) return 0;
+    let dayOfWeek = null;
+    if (r.date) {
+      try {
+        const [y, m, d] = r.date.split('-').map(Number);
+        dayOfWeek = new Date(y, m - 1, d).getDay(); // 0: Dom, 5: Vie, 6: Sáb
+      } catch (e) {}
+    }
+
+    // Sábado o Domingo: 100% de las horas trabajadas son horas extras
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return calculateRecordMinutes(r);
+    }
+
+    let exitMin = parseTimeToMinutes(r.exit_time);
+    const isToday = r.date === getChileTodayString();
+    if (exitMin === null && isToday) {
+      exitMin = getChileNowMinutes();
+    }
+    if (exitMin === null) return 0;
+
+    // Viernes: salida después de 17:30
+    if (dayOfWeek === 5) {
+      const officialExitStr = workSchedule?.friday?.exit || '17:30';
+      const officialExitMin = parseTimeToMinutes(officialExitStr) || (17 * 60 + 30);
+      if (exitMin > officialExitMin) {
+        return Math.round(exitMin - officialExitMin);
+      }
+      return 0;
+    }
+
+    // Lunes a Jueves: salida después de 18:00
+    const officialExitStr = workSchedule?.monday_thursday?.exit || '18:00';
+    const officialExitMin = parseTimeToMinutes(officialExitStr) || (18 * 60);
+    if (exitMin > officialExitMin) {
+      return Math.round(exitMin - officialExitMin);
     }
     return 0;
   };
 
-  const calculateOvertimeMinutes = (workedMinutes, recordDate) => {
-    if (!workedMinutes) return 0;
-    let standardDailyMinutes = 480; // Lun-Jue: 8 hrs netas
-    if (recordDate) {
-      try {
-        const [y, m, d] = recordDate.split('-').map(Number);
-        const dayOfWeek = new Date(y, m - 1, d).getDay();
-        if (dayOfWeek === 5) {
-          standardDailyMinutes = 450; // Viernes: 7.5 hrs netas (09:00 a 17:30 menos 1h colacion)
-        }
-      } catch (e) {}
-    }
-    if (workedMinutes <= standardDailyMinutes) return 0;
-    return Math.round(workedMinutes - standardDailyMinutes);
-  };
-
-  const getWorkingDaysInRange = (fromStr, toStr) => {
-    if (!fromStr || !toStr) return [];
-    try {
-      const dates = [];
-      const [y1, m1, d1] = fromStr.split('-').map(Number);
-      const [y2, m2, d2] = toStr.split('-').map(Number);
-      const start = new Date(y1, m1 - 1, d1);
-      const end = new Date(y2, m2 - 1, d2);
-
-      const curr = new Date(start);
-      while (curr <= end) {
-        const dayOfWeek = curr.getDay(); // 0 = Domingo, 6 = Sábado
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Lunes a Viernes
-          const yyyy = curr.getFullYear();
-          const mm = String(curr.getMonth() + 1).padStart(2, '0');
-          const dd = String(curr.getDate()).padStart(2, '0');
-          dates.push(`${yyyy}-${mm}-${dd}`);
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-      return dates;
-    } catch (e) {
-      return [];
-    }
-  };
-
-  const setDatePreset = (preset) => {
-    const today = new Date();
-    const todayStr = getChileTodayString(today);
-
-    if (preset === 'today') {
-      setDateFrom(todayStr);
-      setDateTo(todayStr);
-    } else if (preset === 'yesterday') {
-      const yest = new Date(today);
-      yest.setDate(yest.getDate() - 1);
-      const yestStr = getChileTodayString(yest);
-      setDateFrom(yestStr);
-      setDateTo(yestStr);
-    } else if (preset === 'week') {
-      const d = new Date(today);
-      d.setDate(d.getDate() - 6);
-      setDateFrom(getChileTodayString(d));
-      setDateTo(todayStr);
-    } else if (preset === 'month') {
-      const d = new Date(today.getFullYear(), today.getMonth(), 1);
-      setDateFrom(getChileTodayString(d));
-      setDateTo(todayStr);
-    }
-  };
-
-  const fetchUsers = async () => {
+    const fetchUsers = async () => {
     try {
       const data = await apiGetUsers();
       if (Array.isArray(data) && data.length > 0) {
@@ -283,12 +338,12 @@ export default function AdminAttendanceView({ user, theme }) {
     userRecords.forEach(r => {
       const recordMins = calculateRecordMinutes(r);
       totalMins += recordMins;
-      const delay = calculateDelayMinutes(r.entry_time, r.date);
-      if (delay > 0) {
-        delayMins += delay;
+      const delay = calculateDelayMinutes(r);
+      if (delay.total > 0) {
+        delayMins += delay.total;
         delayCount++;
       }
-      overtimeMins += calculateOvertimeMinutes(recordMins, r.date);
+      overtimeMins += calculateOvertimeMinutes(r);
     });
 
     const daysWorked = attendedDates.size;
@@ -759,22 +814,26 @@ export default function AdminAttendanceView({ user, theme }) {
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[105px]">2. Sal. Colación</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[105px]">3. Ent. Colación</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[95px]">4. Salida</th>
-                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[100px]">Total Horas</th>
-                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[95px]">Atraso</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[110px]">Total Horas</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[110px]">Atraso</th>
+                  <th className="py-3.5 px-3 text-center whitespace-nowrap min-w-[110px]">Horas Extras</th>
                   <th className="py-3.5 px-3 text-right print:hidden whitespace-nowrap min-w-[95px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
                 {displayedDetailsRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-zinc-500 font-bold whitespace-nowrap">
+                    <td colSpan={10} className="py-8 text-center text-zinc-500 font-bold whitespace-nowrap">
                       No se encontraron registros de marcaciones para el período seleccionado.
                     </td>
                   </tr>
                 ) : (
                   displayedDetailsRecords.map((r) => {
-                    const delay = calculateDelayMinutes(r.entry_time, r.date);
+                    const delay = calculateDelayMinutes(r);
+                    const overtime = calculateOvertimeMinutes(r);
                     const recordMins = calculateRecordMinutes(r);
+                    const isToday = r.date === getChileTodayString();
+                    const isInProgress = isToday && !r.exit_time && Boolean(r.entry_time);
 
                     return (
                       <tr key={r.id} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/50'}>
@@ -792,19 +851,54 @@ export default function AdminAttendanceView({ user, theme }) {
                           {r.lunch_out_time ? <span className="text-amber-400">{r.lunch_out_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
                         <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
-                          {r.lunch_in_time ? <span className="text-amber-400">{r.lunch_in_time}</span> : <span className="text-zinc-600">--:--</span>}
+                          {r.lunch_in_time ? (
+                            <div>
+                              <span className="text-amber-400">{r.lunch_in_time}</span>
+                              {delay.lunchDelay > 0 && (
+                                <span className="block text-[9px] text-red-400 font-sans font-bold">
+                                  +{delay.lunchDelay}m colación
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-zinc-600">--:--</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                           {r.exit_time ? <span className="text-blue-400">{r.exit_time}</span> : <span className="text-zinc-600">--:--</span>}
                         </td>
                         <td className="py-3.5 px-3 text-center font-mono font-black text-orange-400 whitespace-nowrap">
-                          {formatMinutesToHHMM(recordMins)}
+                          <div className="flex flex-col items-center">
+                            <span>{formatMinutesToHHMM(recordMins)}</span>
+                            {isInProgress && (
+                              <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 animate-pulse">
+                                En curso
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                          {delay > 0 ? (
-                            <span className="text-amber-400 font-bold text-[11px] whitespace-nowrap">+{delay}m</span>
+                          {delay.total > 0 ? (
+                            <div className="flex flex-col items-center">
+                              <span className="text-amber-400 font-black text-xs">+{delay.total}m</span>
+                              {(delay.entryDelay > 0 && delay.lunchDelay > 0) && (
+                                <span className="text-[9px] text-zinc-400">Ent: +{delay.entryDelay}m | Col: +{delay.lunchDelay}m</span>
+                              )}
+                              {(delay.entryDelay === 0 && delay.lunchDelay > 0) && (
+                                <span className="text-[9px] text-amber-300 font-bold">Colación: +{delay.lunchDelay}m</span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-emerald-500 text-[11px] whitespace-nowrap">Puntual</span>
+                            <span className="text-emerald-500 text-[11px] font-bold">Puntual</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono font-bold">
+                          {overtime > 0 ? (
+                            <span className="text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-lg text-xs font-black">
+                              +{formatMinutesToHHMM(overtime)}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-600 text-xs">--</span>
                           )}
                         </td>
                         <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
@@ -1014,7 +1108,7 @@ export default function AdminAttendanceView({ user, theme }) {
               <div className={'p-3.5 rounded-2xl border space-y-2 ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
                 <div className="text-xs font-black text-orange-500 uppercase flex items-center justify-between">
                   <span>Lunes a Jueves</span>
-                  <span className="text-[10px] text-zinc-400 font-normal">8 hrs laborales</span>
+                  <span className="text-[10px] text-zinc-400 font-normal">8.5 hrs (09:00-18:00 | 30 min colación)</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -1050,7 +1144,7 @@ export default function AdminAttendanceView({ user, theme }) {
               <div className={'p-3.5 rounded-2xl border space-y-2 ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
                 <div className="text-xs font-black text-orange-500 uppercase flex items-center justify-between">
                   <span>Viernes</span>
-                  <span className="text-[10px] text-zinc-400 font-normal">7.5 hrs laborales</span>
+                  <span className="text-[10px] text-zinc-400 font-normal">8 hrs (09:00-17:30 | 30 min colación)</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
