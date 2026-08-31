@@ -29,6 +29,58 @@ function isExcludedFromAttendance(u) {
   return false;
 }
 
+export function parseTimeToMinutes(t) {
+  if (!t) return null;
+  const parts = t.trim().split(':').map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+  return parts[0] * 60 + parts[1] + (parts[2] ? parts[2] / 60 : 0);
+}
+
+export function getChileNowMinutes() {
+  try {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+  } catch (e) {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
+}
+
+export function formatMinutesToHHMM(totalMins) {
+  if (!totalMins || totalMins <= 0) return '0h 00m';
+  const h = Math.floor(totalMins / 60);
+  const m = Math.round(totalMins % 60);
+  return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
+
+export function getWorkingDaysInRange(fromStr, toStr) {
+  if (!fromStr || !toStr) return [];
+  try {
+    const dates = [];
+    const [y1, m1, d1] = fromStr.split('-').map(Number);
+    const [y2, m2, d2] = toStr.split('-').map(Number);
+    const start = new Date(y1, m1 - 1, d1);
+    const end = new Date(y2, m2 - 1, d2);
+
+    const curr = new Date(start);
+    while (curr <= end) {
+      const dayOfWeek = curr.getDay(); // 0 = Domingo, 6 = Sábado
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Lunes a Viernes
+        const yyyy = curr.getFullYear();
+        const mm = String(curr.getMonth() + 1).padStart(2, '0');
+        const dd = String(curr.getDate()).padStart(2, '0');
+        dates.push(`${yyyy}-${mm}-${dd}`);
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  } catch (e) {
+    return [];
+  }
+}
+
 export default function AdminAttendanceView({ user, theme }) {
   const [records, setRecords] = useState([]);
   const [usersList, setUsersList] = useState([]);
@@ -250,31 +302,7 @@ export default function AdminAttendanceView({ user, theme }) {
     return 0;
   };
 
-  const getWorkingDaysInRange = (fromStr, toStr) => {
-    if (!fromStr || !toStr) return [];
-    try {
-      const dates = [];
-      const [y1, m1, d1] = fromStr.split('-').map(Number);
-      const [y2, m2, d2] = toStr.split('-').map(Number);
-      const start = new Date(y1, m1 - 1, d1);
-      const end = new Date(y2, m2 - 1, d2);
 
-      const curr = new Date(start);
-      while (curr <= end) {
-        const dayOfWeek = curr.getDay(); // 0 = Domingo, 6 = Sábado
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Lunes a Viernes
-          const yyyy = curr.getFullYear();
-          const mm = String(curr.getMonth() + 1).padStart(2, '0');
-          const dd = String(curr.getDate()).padStart(2, '0');
-          dates.push(`${yyyy}-${mm}-${dd}`);
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-      return dates;
-    } catch (e) {
-      return [];
-    }
-  };
 
   const fetchUsers = async () => {
     try {
