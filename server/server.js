@@ -1099,6 +1099,12 @@ app.get('/api/attendance/admin/all', authenticateToken, requireAdmin, (req, res)
     FROM attendance a
     JOIN users u ON a.user_id = u.id
     WHERE 1=1
+      AND LOWER(u.name) NOT LIKE '%boris aguirre%'
+      AND LOWER(u.username) NOT LIKE '%boris%'
+      AND LOWER(u.name) NOT LIKE '%puesto%'
+      AND LOWER(u.name) NOT LIKE '%kiosco%'
+      AND u.role NOT IN ('kiosk', 'kiosco')
+      AND u.id NOT IN (10, 20)
   `;
   const params = [];
   if (date_from) {
@@ -1128,6 +1134,12 @@ app.get('/api/attendance/records', authenticateToken, requireAdmin, (req, res) =
     FROM attendance a
     JOIN users u ON a.user_id = u.id
     WHERE 1=1
+      AND LOWER(u.name) NOT LIKE '%boris aguirre%'
+      AND LOWER(u.username) NOT LIKE '%boris%'
+      AND LOWER(u.name) NOT LIKE '%puesto%'
+      AND LOWER(u.name) NOT LIKE '%kiosco%'
+      AND u.role NOT IN ('kiosk', 'kiosco')
+      AND u.id NOT IN (10, 20)
   `;
   const params = [];
   if (date_from) {

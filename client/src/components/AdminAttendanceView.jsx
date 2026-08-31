@@ -13,6 +13,22 @@ import {
   apiUpdateWorkSchedule
 } from '../api';
 
+function isExcludedFromAttendance(u) {
+  if (!u) return false;
+  const name = String(u.name || u.user_name || '').toLowerCase();
+  const username = String(u.username || '').toLowerCase();
+  const role = String(u.role || u.user_role || '').toLowerCase();
+  const id = Number(u.id || u.user_id);
+
+  if (id === 10 || id === 20) return true;
+  if (name.includes('boris aguirre') || name.includes('boris')) return true;
+  if (username.includes('boris') || username.includes('borisaguirre')) return true;
+  if (name.includes('puesto') || name.includes('kiosco')) return true;
+  if (username === 'kiosco') return true;
+  if (role === 'kiosk' || role === 'kiosco') return true;
+  return false;
+}
+
 export default function AdminAttendanceView({ user, theme }) {
   const [records, setRecords] = useState([]);
   const [usersList, setUsersList] = useState([]);
@@ -183,7 +199,8 @@ export default function AdminAttendanceView({ user, theme }) {
     try {
       const data = await apiGetUsers();
       if (Array.isArray(data) && data.length > 0) {
-        setUsersList(data);
+        const filtered = data.filter(u => !isExcludedFromAttendance(u));
+        setUsersList(filtered);
       }
     } catch (err) {
       console.error(err);
@@ -199,9 +216,10 @@ export default function AdminAttendanceView({ user, theme }) {
       // Siempre obtener todas las marcaciones del rango para que el Resumen contenga siempre a todos los trabajadores
       const data = await apiGetAttendanceRecords(params);
       if (Array.isArray(data)) {
-        setRecords(data);
-        if (data.length > 0) {
-          mergeAttendanceToVault(data);
+        const filtered = data.filter(r => !isExcludedFromAttendance(r));
+        setRecords(filtered);
+        if (filtered.length > 0) {
+          mergeAttendanceToVault(filtered);
         }
       }
     } catch (err) {
@@ -384,10 +402,12 @@ export default function AdminAttendanceView({ user, theme }) {
     setEditSuccess('');
   };
 
-  const displayedDetailsRecords = (records || []).filter(r => {
-    if (!selectedUserId) return true;
-    return String(r.user_id) === String(selectedUserId);
-  });
+  const displayedDetailsRecords = (records || [])
+    .filter(r => !isExcludedFromAttendance(r))
+    .filter(r => {
+      if (!selectedUserId) return true;
+      return String(r.user_id) === String(selectedUserId);
+    });
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300 print:p-0 print:m-0">
