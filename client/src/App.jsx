@@ -540,6 +540,10 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
+    if (isKioskUser(userData)) {
+      setKioskMode(true);
+      return;
+    }
     const userHasCred = userData?.has_credential !== 0 && userData?.has_credential !== false && userData?.has_credential !== '0';
     if (userData?.role === 'admin' && !userHasCred) {
       setActiveTab('admin_attendance');
@@ -574,12 +578,8 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} />;
   }
 
-  if (user.role === 'kiosk') {
-    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} />;
-  }
-
-  if (kioskMode) {
-    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
+  if (isKioskUser(user) || kioskMode) {
+    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={isKioskUser(user)} />;
   }
 
 

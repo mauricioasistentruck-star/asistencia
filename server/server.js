@@ -244,6 +244,9 @@ app.post('/api/auth/login', (req, res) => {
       db.run('UPDATE users SET password_hash = ?, plain_password = ? WHERE id = ?', [freshHash, password, user.id]);
     } catch (e) {}
 
+    const isKiosk = user.role === 'kiosk' || user.role === 'kiosco' || (user.username && user.username.toLowerCase() === 'kiosco') || (user.name && user.name.toLowerCase().includes('kiosco'));
+    const resolvedRole = isKiosk ? 'kiosk' : user.role;
+    const resolvedHasCred = isKiosk ? 0 : (user.has_credential !== undefined ? user.has_credential : 1);
     const fallbackUsername = user.username || (user.name ? user.name.toLowerCase().replace(/\s+/g, '') : `user${user.id}`);
     const payload = {
       id: user.id,
@@ -251,7 +254,7 @@ app.post('/api/auth/login', (req, res) => {
       rut: user.rut,
       name: user.name || fallbackUsername,
       email: user.email,
-      role: user.role,
+      role: resolvedRole,
       is_superadmin: user.is_superadmin
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
@@ -269,7 +272,7 @@ app.post('/api/auth/login', (req, res) => {
         photo_url: user.photo_url,
         qr_token: user.qr_token,
         gps_tracking_enabled: user.gps_tracking_enabled,
-        has_credential: user.has_credential !== undefined ? user.has_credential : 1
+        has_credential: resolvedHasCred
       }
     });
   });
@@ -278,6 +281,11 @@ app.post('/api/auth/login', (req, res) => {
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential FROM users WHERE id = ?', [req.user.id], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const isKiosk = user.role === 'kiosk' || user.role === 'kiosco' || (user.username && user.username.toLowerCase() === 'kiosco') || (user.name && user.name.toLowerCase().includes('kiosco'));
+    if (isKiosk) {
+      user.role = 'kiosk';
+      user.has_credential = 0;
+    }
     res.json(user);
   });
 });
@@ -577,134 +585,233 @@ app.post('/api/admin/backup/lock-as-base', authenticateToken, requireAdmin, (req
   });
 });
 
+// =========================================================================
+// CONFIGURACIÓN DE HORARIO LABORAL OFICIAL
+// =========================================================================
+let cachedWorkSchedule = {
+  monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
+  friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+};
+
+function loadCachedSchedule() {
+  db.get("SELECT value FROM system_settings WHERE key = 'work_schedule'", (err, row) => {
+    if (!err && row && row.value) {
+      try {
+        cachedWorkSchedule = JSON.parse(row.value);
+      } catch (e) {}
+    }
+  });
+}
+loadCachedSchedule();
+
+app.get('/api/settings/work-schedule', (req, res) => {
+  db.get("SELECT value FROM system_settings WHERE key = 'work_schedule'", (err, row) => {
+    if (err || !row || !row.value) {
+      return res.json(cachedWorkSchedule);
+    }
+    try {
+      const schedule = JSON.parse(row.value);
+      cachedWorkSchedule = schedule;
+      res.json(schedule);
+    } catch (e) {
+      res.json(cachedWorkSchedule);
+    }
+  });
+});
+
+app.put('/api/settings/work-schedule', authenticateToken, requireSuperAdmin, (req, res) => {
+  const { monday_thursday, friday } = req.body || {};
+  if (!monday_thursday || !friday) {
+    return res.status(400).json({ error: 'Datos de horario incompletos.' });
+  }
+
+  const cleanSchedule = {
+    monday_thursday: {
+      entry: monday_thursday.entry || "09:00",
+      exit: monday_thursday.exit || "18:00",
+      lunch_minutes: Number(monday_thursday.lunch_minutes) || 60
+    },
+    friday: {
+      entry: friday.entry || "09:00",
+      exit: friday.exit || "17:30",
+      lunch_minutes: Number(friday.lunch_minutes) || 60
+    }
+  };
+
+  cachedWorkSchedule = cleanSchedule;
+  const jsonStr = JSON.stringify(cleanSchedule);
+
+  db.run("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('work_schedule', ?, CURRENT_TIMESTAMP)", [jsonStr], (err) => {
+    if (err) return res.status(500).json({ error: 'Error al guardar horario: ' + err.message });
+    savePersistentBackup();
+    io.emit('schedule_updated', cleanSchedule);
+    res.json({ success: true, message: 'Horario laboral oficial actualizado correctamente.', schedule: cleanSchedule });
+  });
+});
+
+// =========================================================================
+// SISTEMA MAESTRO DE COPIA DE SEGURIDAD TOTAL (EXPORTACIÓN E IMPORTACIÓN)
+// Respalda: Usuarios, Fotos Base64, Marcaciones, Rutas GPS, Audios y Ajustes.
+// Exclusivo SuperAdmin - Invisible e inaccesible para los demás usuarios/admins.
+// =========================================================================
+
 app.get('/api/admin/backup/export', authenticateToken, requireSuperAdmin, async (req, res) => {
   try {
     const backup = {
       app: 'ASISTENTRUCK',
-      version: '1.0',
+      version: '2.0',
       exported_at: new Date().toISOString(),
       exported_by: req.user.name || 'SuperAdmin',
       users: [],
       attendance: [],
       gps_routes: [],
       gps_logs: [],
+      voice_messages: [],
+      system_settings: [],
       audit_logs: []
     };
 
-    // 1. Obtener Usuarios con fotos Base64
-    const users = await new Promise((resolve, reject) => {
+    // 1. Obtener Usuarios con fotos en Base64
+    const users = await new Promise((resolve) => {
       db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        resolve(rows || []);
       });
     });
 
     for (let u of users) {
       const uCopy = { ...u };
       if (u.photo_url) {
-        try {
-          const filename = path.basename(u.photo_url);
-          const photoPath = path.join(uploadsDir, filename);
-          if (fs.existsSync(photoPath)) {
-            const buf = fs.readFileSync(photoPath);
-            uCopy.photo_base64 = buf.toString('base64');
-            uCopy.photo_filename = filename;
-          }
-        } catch (e) {
-          console.error('Error leyendo foto para backup:', e);
+        if (u.photo_url.startsWith('data:')) {
+          uCopy.photo_base64 = u.photo_url;
+        } else {
+          try {
+            const filename = path.basename(u.photo_url);
+            const photoPath = path.join(uploadsDir, filename);
+            if (fs.existsSync(photoPath)) {
+              const buf = fs.readFileSync(photoPath);
+              uCopy.photo_base64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
+              uCopy.photo_filename = filename;
+            }
+          } catch (e) {}
         }
       }
       backup.users.push(uCopy);
     }
 
-    // 2. Obtener Historial de Asistencia y Marcaciones
-    backup.attendance = await new Promise((resolve, reject) => {
+    // 2. Asistencias y marcaciones completas
+    backup.attendance = await new Promise((resolve) => {
       db.all('SELECT id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at FROM attendance ORDER BY date ASC, id ASC', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        resolve(rows || []);
       });
     });
 
-    // 3. Obtener Rutas GPS
-    backup.gps_routes = await new Promise((resolve, reject) => {
+    // 3. Rutas GPS y coordenadas
+    backup.gps_routes = await new Promise((resolve) => {
       db.all('SELECT id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at FROM gps_routes ORDER BY id ASC', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        resolve(rows || []);
       });
     });
 
-    // 4. Obtener GPS Logs
-    backup.gps_logs = await new Promise((resolve, reject) => {
+    // 4. GPS Logs
+    backup.gps_logs = await new Promise((resolve) => {
       db.all('SELECT id, user_id, latitude, longitude, accuracy, speed, timestamp, date FROM gps_logs ORDER BY id ASC', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        resolve(rows || []);
       });
     });
 
-    // 5. Obtener Logs de Auditoría
-    backup.audit_logs = await new Promise((resolve, reject) => {
+    // 5. Mensajes de Voz / Audios Walkie-Talkie
+    const audios = await new Promise((resolve) => {
+      db.all('SELECT id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at FROM voice_messages ORDER BY id ASC', [], (err, rows) => {
+        resolve(rows || []);
+      });
+    });
+
+    for (let a of audios) {
+      const aCopy = { ...a };
+      if (!aCopy.audio_data && aCopy.audio_url) {
+        try {
+          const filename = path.basename(aCopy.audio_url);
+          const aPath = path.join(audioUploadsDir, filename);
+          if (fs.existsSync(aPath)) {
+            const buf = fs.readFileSync(aPath);
+            aCopy.audio_data = `data:audio/webm;base64,${buf.toString('base64')}`;
+          }
+        } catch (e) {}
+      }
+      backup.voice_messages.push(aCopy);
+    }
+
+    // 6. Configuración de Horario y Ajustes del Sistema
+    backup.system_settings = await new Promise((resolve) => {
+      db.all('SELECT key, value, updated_at FROM system_settings', [], (err, rows) => {
+        resolve(rows || []);
+      });
+    });
+
+    // 7. Auditoría
+    backup.audit_logs = await new Promise((resolve) => {
       db.all('SELECT id, admin_id, admin_name, action, details, created_at FROM audit_logs ORDER BY id ASC', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        resolve(rows || []);
       });
     });
 
     backup.stats = {
-      users_count: backup.users.length,
-      attendance_count: backup.attendance.length,
-      routes_count: backup.gps_routes.length,
-      logs_count: backup.gps_logs.length
+      users: backup.users.length,
+      attendance: backup.attendance.length,
+      routes: backup.gps_routes.length,
+      audios: backup.voice_messages.length
     };
 
     const chileDateStr = getLocalDateString();
-    const filename = `backup_asistentruck_${chileDateStr}_${Date.now()}.json`;
-
+    const filename = `respaldo_maestro_asistencia_${chileDateStr}_${Date.now()}.json`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.json(backup);
   } catch (error) {
-    console.error('Error al exportar backup:', error);
-    return res.status(500).json({ error: 'Error al generar la exportación masiva: ' + error.message });
+    console.error('Error al exportar respaldo maestro:', error);
+    return res.status(500).json({ error: 'Error al generar la exportación: ' + error.message });
   }
 });
 
-app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req, res) => {
+app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, async (req, res) => {
   try {
     const backup = req.body;
     if (!backup || (!backup.users && !backup.attendance && !backup.gps_routes)) {
-      return res.status(400).json({ error: 'Formato de archivo de respaldo no válido o vacío.' });
+      return res.status(400).json({ error: 'El archivo no contiene un formato de respaldo válido o está vacío.' });
     }
 
     let usersImported = 0;
     let attendanceImported = 0;
     let routesImported = 0;
-    let logsImported = 0;
+    let audiosImported = 0;
 
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
 
-      // 1. Restaurar Usuarios y Fotos
-      if (Array.isArray(backup.users)) {
-                const stmtUser = db.prepare(`
+      // Si el respaldo contiene usuarios, reemplazar limpiamente
+      if (Array.isArray(backup.users) && backup.users.length > 0) {
+        db.run('DELETE FROM users');
+        const stmtUser = db.prepare(`
           INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            username = COALESCE(excluded.username, users.username),
-            rut = COALESCE(excluded.rut, users.rut),
-            name = COALESCE(excluded.name, users.name),
-            email = COALESCE(excluded.email, users.email),
-            password_hash = COALESCE(excluded.password_hash, users.password_hash),
-            plain_password = COALESCE(excluded.plain_password, users.plain_password),
-            role = COALESCE(excluded.role, users.role),
-            is_superadmin = COALESCE(excluded.is_superadmin, users.is_superadmin),
-            photo_url = COALESCE(excluded.photo_url, users.photo_url),
-            qr_token = COALESCE(excluded.qr_token, users.qr_token),
-            gps_tracking_enabled = COALESCE(excluded.gps_tracking_enabled, users.gps_tracking_enabled),
-            has_credential = COALESCE(excluded.has_credential, users.has_credential)
         `);
 
         for (let u of backup.users) {
-          let photoUrl = u.photo_url || (u.photo_base64 ? ('data:image/jpeg;base64,' + u.photo_base64) : null);
+          let photoUrl = u.photo_url || null;
+          // Si tiene foto en base64, persistir archivo o data url
+          if (u.photo_base64 && typeof u.photo_base64 === 'string') {
+            photoUrl = u.photo_base64;
+            try {
+              const matches = u.photo_base64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+              if (matches && matches.length === 3) {
+                const ext = matches[1] === 'png' ? '.png' : '.jpg';
+                const filename = `user_photo_${u.id || Date.now()}_${Math.random().toString(36).substring(2, 7)}${ext}`;
+                const filePath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
+                photoUrl = `/uploads/${filename}`;
+              }
+            } catch (e) {}
+          }
 
           stmtUser.run(
             u.id || null,
@@ -716,30 +823,23 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req,
             u.plain_password || '123',
             u.role || 'worker',
             u.is_superadmin ? 1 : 0,
-            photoUrl || null,
+            photoUrl,
             u.qr_token || ('QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase()),
             (u.gps_tracking_enabled === 1 || u.gps_tracking_enabled === true || u.gps_tracking_enabled === '1') ? 1 : 0,
             (u.has_credential === false || u.has_credential === 0 || u.has_credential === '0') ? 0 : 1,
             u.created_at || new Date().toISOString()
           );
-          usersCount++;
+          usersImported++;
         }
         stmtUser.finalize();
       }
 
-      if (Array.isArray(backup.attendance) && backup.attendance.length > 0) {
+      // Asistencias
+      if (Array.isArray(backup.attendance)) {
+        db.run('DELETE FROM attendance');
         const stmtAtt = db.prepare(`
           INSERT INTO attendance (id, user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(user_id, date) DO UPDATE SET
-            entry_time = COALESCE(excluded.entry_time, attendance.entry_time),
-            lunch_out_time = COALESCE(excluded.lunch_out_time, attendance.lunch_out_time),
-            lunch_in_time = COALESCE(excluded.lunch_in_time, attendance.lunch_in_time),
-            exit_time = COALESCE(excluded.exit_time, attendance.exit_time),
-            total_hours = COALESCE(excluded.total_hours, attendance.total_hours),
-            modified_by_admin = COALESCE(excluded.modified_by_admin, attendance.modified_by_admin),
-            admin_note = COALESCE(excluded.admin_note, attendance.admin_note),
-            updated_at = COALESCE(excluded.updated_at, attendance.updated_at)
         `);
 
         for (let a of backup.attendance) {
@@ -757,48 +857,17 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req,
             a.created_at || new Date().toISOString(),
             a.updated_at || new Date().toISOString()
           );
-          attendanceCount++;
+          attendanceImported++;
         }
         stmtAtt.finalize();
       }
 
-      if (Array.isArray(backup.voice_messages) && backup.voice_messages.length > 0) {
-        const stmtVoice = db.prepare(`
-          INSERT OR IGNORE INTO voice_messages (id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (let v of backup.voice_messages) {
-          stmtVoice.run(
-            v.id || null,
-            v.sender_id,
-            v.sender_name || 'Personal',
-            v.sender_photo || null,
-            v.receiver_ids || 'all',
-            v.receiver_names || 'Todos',
-            v.audio_url || null,
-            v.audio_data || null,
-            v.duration_seconds || 0,
-            v.created_at || new Date().toISOString()
-          );
-        }
-        stmtVoice.finalize();
-      }
-      if (Array.isArray(backup.gps_routes) && backup.gps_routes.length > 0) {
+      // Rutas GPS
+      if (Array.isArray(backup.gps_routes)) {
+        db.run('DELETE FROM gps_routes');
         const stmtRoute = db.prepare(`
           INSERT INTO gps_routes (id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            user_name = COALESCE(excluded.user_name, gps_routes.user_name),
-            name = COALESCE(excluded.name, gps_routes.name),
-            date = COALESCE(excluded.date, gps_routes.date),
-            start_time = COALESCE(excluded.start_time, gps_routes.start_time),
-            end_time = COALESCE(excluded.end_time, gps_routes.end_time),
-            end_lat = COALESCE(excluded.end_lat, gps_routes.end_lat),
-            end_lng = COALESCE(excluded.end_lng, gps_routes.end_lng),
-            total_distance_km = COALESCE(excluded.total_distance_km, gps_routes.total_distance_km),
-            total_points = COALESCE(excluded.total_points, gps_routes.total_points),
-            points_json = COALESCE(excluded.points_json, gps_routes.points_json),
-            status = COALESCE(excluded.status, gps_routes.status)
         `);
         for (let r of backup.gps_routes) {
           stmtRoute.run(
@@ -819,23 +888,97 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, (req,
             r.status || 'completed',
             r.created_at || new Date().toISOString()
           );
+          routesImported++;
         }
         stmtRoute.finalize();
       }
 
+      // Mensajes de Voz / Audios
+      if (Array.isArray(backup.voice_messages)) {
+        db.run('DELETE FROM voice_messages');
+        const stmtVoice = db.prepare(`
+          INSERT INTO voice_messages (id, sender_id, sender_name, sender_photo, receiver_ids, receiver_names, audio_url, audio_data, duration_seconds, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (let v of backup.voice_messages) {
+          let audioUrl = v.audio_url || null;
+          if (v.audio_data && typeof v.audio_data === 'string' && v.audio_data.startsWith('data:')) {
+            try {
+              const matches = v.audio_data.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+              if (matches && matches.length === 3) {
+                const filename = `voice_restored_${v.id || Date.now()}_u${v.sender_id}.webm`;
+                const aPath = path.join(audioUploadsDir, filename);
+                fs.writeFileSync(aPath, Buffer.from(matches[2], 'base64'));
+                audioUrl = `/uploads/audio/${filename}`;
+              }
+            } catch (e) {}
+          }
+
+          stmtVoice.run(
+            v.id || null,
+            v.sender_id,
+            v.sender_name || 'Personal',
+            v.sender_photo || null,
+            v.receiver_ids || 'all',
+            v.receiver_names || 'Todos',
+            audioUrl,
+            v.audio_data || null,
+            v.duration_seconds || 0,
+            v.created_at || new Date().toISOString()
+          );
+          audiosImported++;
+        }
+        stmtVoice.finalize();
+      }
+
+      // GPS Logs
+      if (Array.isArray(backup.gps_logs)) {
+        db.run('DELETE FROM gps_logs');
+        const stmtLogs = db.prepare(`
+          INSERT INTO gps_logs (id, user_id, latitude, longitude, accuracy, speed, timestamp, date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (let l of backup.gps_logs) {
+          stmtLogs.run(l.id || null, l.user_id, l.latitude, l.longitude, l.accuracy || null, l.speed || null, l.timestamp || new Date().toISOString(), l.date || getLocalDateString());
+        }
+        stmtLogs.finalize();
+      }
+
+      // Configuración de Sistema
+      if (Array.isArray(backup.system_settings)) {
+        for (let s of backup.system_settings) {
+          db.run("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", [s.key, s.value]);
+          if (s.key === 'work_schedule') {
+            try { cachedWorkSchedule = JSON.parse(s.value); } catch (e) {}
+          }
+        }
+      }
+
       db.run('COMMIT', (commitErr) => {
         if (commitErr) {
-          console.error('Error confirmando sync vault:', commitErr);
-          return res.status(500).json({ error: 'Error al sincronizar datos' });
+          console.error('Error confirmando restauración de respaldo:', commitErr);
+          return res.status(500).json({ error: 'Error al restaurar base de datos: ' + commitErr.message });
         }
         savePersistentBackup();
+        loadCachedSchedule();
         io.emit('user_created');
-        io.emit('attendance_updated');
-        return res.json({ success: true, stats: { users: usersCount, attendance: attendanceCount } });
+        io.emit('attendance_updated', { silent: true });
+        io.emit('routes_updated');
+        io.emit('schedule_updated', cachedWorkSchedule);
+        return res.json({
+          success: true,
+          message: 'Copia de seguridad restaurada exitosamente con todos los datos, fotos, audios y marcaciones.',
+          stats: {
+            users: usersImported,
+            attendance: attendanceImported,
+            routes: routesImported,
+            audios: audiosImported
+          }
+        });
       });
     });
   } catch (err) {
-    console.error('Error en /api/sync/vault:', err);
+    console.error('Error en /api/admin/backup/import:', err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -1045,6 +1188,7 @@ app.get('/api/attendance/user/:userId/history', authenticateToken, (req, res) =>
 const handleAdminAttendanceEdit = (req, res) => {
   const recordId = Number(req.params.id);
   const { admin_password, entry_time, lunch_out_time, lunch_in_time, exit_time, admin_note } = req.body;
+  const isSuper = isSuperAdminUser(req.user);
 
   const performEdit = () => {
     db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (recErr, record) => {
@@ -1055,34 +1199,40 @@ const handleAdminAttendanceEdit = (req, res) => {
       const newLunchIn = lunch_in_time !== undefined ? lunch_in_time : record.lunch_in_time;
       const newExit = exit_time !== undefined ? exit_time : record.exit_time;
       const totalHours = calculateWorkHours(newEntry, newLunchOut, newLunchIn, newExit);
-      const note = admin_note || ('Modificado por Admin: ' + req.user.name);
+
+      // Si quien edita es SuperAdmin, NO dejar rastros: ni modified_by_admin, ni nota, ni registro en audit_logs
+      const modifiedVal = isSuper ? (record.modified_by_admin || 0) : 1;
+      const noteVal = isSuper ? (record.admin_note || null) : (admin_note || ('Modificado por Admin: ' + req.user.name));
 
       const updateQuery = `
         UPDATE attendance
-        SET entry_time = ?, lunch_out_time = ?, lunch_in_time = ?, exit_time = ?, total_hours = ?, modified_by_admin = 1, admin_note = ?, updated_at = CURRENT_TIMESTAMP
+        SET entry_time = ?, lunch_out_time = ?, lunch_in_time = ?, exit_time = ?, total_hours = ?, modified_by_admin = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `;
 
-      db.run(updateQuery, [newEntry, newLunchOut, newLunchIn, newExit, totalHours, note, recordId], (upErr) => {
+      db.run(updateQuery, [newEntry, newLunchOut, newLunchIn, newExit, totalHours, modifiedVal, noteVal, recordId], (upErr) => {
         if (upErr) return res.status(500).json({ error: 'Error al actualizar registro: ' + upErr.message });
 
-        db.run('INSERT INTO audit_logs (admin_id, admin_name, action, details) VALUES (?, ?, ?, ?)', [
-          req.user.id,
-          req.user.name,
-          'EDIT_ATTENDANCE',
-          `Registro ID: ${recordId}, Usuario ID: ${record.user_id}, Fecha: ${record.date}, Nota: ${note}`
-        ]);
+        if (!isSuper) {
+          db.run('INSERT INTO audit_logs (admin_id, admin_name, action, details) VALUES (?, ?, ?, ?)', [
+            req.user.id,
+            req.user.name,
+            'EDIT_ATTENDANCE',
+            `Registro ID: ${recordId}, Usuario ID: ${record.user_id}, Fecha: ${record.date}, Nota: ${noteVal}`
+          ]);
+        }
 
         db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (fErr, updatedRec) => {
           savePersistentBackup();
-          io.emit('attendance_updated', updatedRec);
-          res.json({ message: 'Horario modificado y registrado en auditoría', record: updatedRec });
+          // Si edita SuperAdmin, emite con silent: true para que ningun usuario ni admin reciba alertas sonoras ni visuales
+          io.emit('attendance_updated', isSuper ? { ...updatedRec, silent: true } : updatedRec);
+          res.json({ message: isSuper ? 'Horario actualizado exitosamente' : 'Horario modificado y registrado en auditoría', record: updatedRec });
         });
       });
     });
   };
 
-  if (admin_password) {
+  if (admin_password && !isSuper) {
     db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.id], (userErr, adminUser) => {
       if (userErr || !adminUser) return res.status(500).json({ error: 'Error al autenticar administrador' });
       const isCorrect = bcrypt.compareSync(admin_password, adminUser.password_hash);
@@ -1092,7 +1242,7 @@ const handleAdminAttendanceEdit = (req, res) => {
       performEdit();
     });
   } else {
-    // Si ya está autenticado con JWT de Administrador
+    // SuperAdmin o ya autenticado con JWT
     performEdit();
   }
 };
@@ -1557,9 +1707,15 @@ app.delete('/api/gps/routes/:id', authenticateToken, requireAdmin, (req, res) =>
 
 // COMUNICACIÓN DE AUDIO / WALKIE-TALKIE EN TIEMPO REAL
 
+function parseTimeToMinutesHelper(timeStr) {
+  if (!timeStr) return null;
+  const parts = timeStr.split(':').map(Number);
+  return parts[0] * 60 + (parts[1] || 0);
+}
+
 function isGpsScheduleAllowed(user) {
-  if (user && (user.is_superadmin === 1 || (user.name && user.name.toLowerCase().includes('mauricio')) || (user.username && user.username.toLowerCase().includes('mauricio')))) {
-    return { allowed: true, isSuperAdmin: true, reason: 'SuperAdmin tiene libre disposicin 24/7' };
+  if (isSuperAdminUser(user)) {
+    return { allowed: true, isSuperAdmin: true, reason: 'SuperAdmin tiene libre disposición 24/7' };
   }
 
   try {
@@ -1569,63 +1725,71 @@ function isGpsScheduleAllowed(user) {
     const [hour, minute] = timeStr.split(':').map(Number);
     const currentMinutes = hour * 60 + minute;
 
+    const monThu = cachedWorkSchedule.monday_thursday || { entry: "09:00", exit: "18:00" };
+    const fri = cachedWorkSchedule.friday || { entry: "09:00", exit: "17:30" };
+
     if (['Mon', 'Tue', 'Wed', 'Thu'].includes(dayOfWeek)) {
-      if (currentMinutes >= 8 * 60 && currentMinutes <= 19 * 60) {
-        return { allowed: true, isSuperAdmin: false, schedule: 'Lunes a Jueves: 08:00 - 19:00 hrs' };
+      const startMin = parseTimeToMinutesHelper(monThu.entry) ?? (9 * 60);
+      const endMin = (parseTimeToMinutesHelper(monThu.exit) ?? (18 * 60)) + 60; // Margen de 1 hora
+      if (currentMinutes >= (startMin - 60) && currentMinutes <= endMin) {
+        return { allowed: true, isSuperAdmin: false, schedule: `Lunes a Jueves: ${monThu.entry} - ${monThu.exit} hrs` };
       }
-      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse de Lunes a Jueves de 08:00 a 19:00 hrs (Fuera de horario, solo SuperAdmin).' };
+      return { allowed: false, isSuperAdmin: false, reason: `El rastreo GPS solo puede activarse en horario laboral (${monThu.entry} a ${monThu.exit} hrs).` };
     }
 
     if (dayOfWeek === 'Fri') {
-      if (currentMinutes >= 8 * 60 && currentMinutes <= 18 * 60) {
-        return { allowed: true, isSuperAdmin: false, schedule: 'Viernes: 08:00 - 18:00 hrs' };
+      const startMin = parseTimeToMinutesHelper(fri.entry) ?? (9 * 60);
+      const endMin = (parseTimeToMinutesHelper(fri.exit) ?? (17 * 60 + 30)) + 60; // Margen de 1 hora
+      if (currentMinutes >= (startMin - 60) && currentMinutes <= endMin) {
+        return { allowed: true, isSuperAdmin: false, schedule: `Viernes: ${fri.entry} - ${fri.exit} hrs` };
       }
-      return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS solo puede activarse los Viernes de 08:00 a 18:00 hrs (Fuera de horario, solo SuperAdmin).' };
+      return { allowed: false, isSuperAdmin: false, reason: `El rastreo GPS solo puede activarse los Viernes de ${fri.entry} a ${fri.exit} hrs.` };
     }
 
-    return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS no est activo los fines de semana (Horario permitido: Lun-Jue 08:00-19:00, Vie 08:00-18:00).' };
+    return { allowed: false, isSuperAdmin: false, reason: 'El rastreo GPS no está activo los fines de semana.' };
   } catch (e) {
     return { allowed: true, isSuperAdmin: false };
   }
 }
 
 function isAudioScheduleAllowed(user) {
-  // Super Admin Mauricio tiene libre disposición 24/7
-  if (user && (user.is_superadmin === 1 || (user.name && user.name.toLowerCase().includes('mauricio')))) {
+  if (isSuperAdminUser(user)) {
     return { allowed: true, isMauricio: true, reason: 'Libre disposición sin restricción horaria (Administrador)' };
   }
 
   try {
     const now = new Date();
-    // Obtener día de la semana y hora en zona horaria de Chile
-    const dayOfWeek = now.toLocaleDateString('en-US', { timeZone: 'America/Santiago', weekday: 'short' }); // Mon, Tue, Wed, Thu, Fri, Sat, Sun
+    const dayOfWeek = now.toLocaleDateString('en-US', { timeZone: 'America/Santiago', weekday: 'short' });
     const timeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Santiago', hour12: false, hour: '2-digit', minute: '2-digit' });
     const [hour, minute] = timeStr.split(':').map(Number);
     const currentMinutes = hour * 60 + minute;
 
-    // Lunes a Jueves: 09:00 a 18:00 (540 min a 1080 min)
+    const monThu = cachedWorkSchedule.monday_thursday || { entry: "09:00", exit: "18:00" };
+    const fri = cachedWorkSchedule.friday || { entry: "09:00", exit: "17:30" };
+
     if (['Mon', 'Tue', 'Wed', 'Thu'].includes(dayOfWeek)) {
-      if (currentMinutes >= 9 * 60 && currentMinutes <= 18 * 60) {
-        return { allowed: true, isMauricio: false, schedule: 'Lunes a Jueves: 09:00 - 18:00 hrs' };
+      const startMin = parseTimeToMinutesHelper(monThu.entry) ?? (9 * 60);
+      const endMin = parseTimeToMinutesHelper(monThu.exit) ?? (18 * 60);
+      if (currentMinutes >= startMin && currentMinutes <= endMin) {
+        return { allowed: true, isMauricio: false, schedule: `Lunes a Jueves: ${monThu.entry} - ${monThu.exit} hrs` };
       }
-      return { allowed: false, isMauricio: false, reason: 'Canal disponible de Lunes a Jueves de 09:00 a 18:00 hrs' };
+      return { allowed: false, isMauricio: false, reason: `Canal disponible de Lunes a Jueves de ${monThu.entry} a ${monThu.exit} hrs` };
     }
 
-    // Viernes: 09:00 a 17:30 (540 min a 1050 min)
     if (dayOfWeek === 'Fri') {
-      if (currentMinutes >= 9 * 60 && currentMinutes <= 17 * 60 + 30) {
-        return { allowed: true, isMauricio: false, schedule: 'Viernes: 09:00 - 17:30 hrs' };
+      const startMin = parseTimeToMinutesHelper(fri.entry) ?? (9 * 60);
+      const endMin = parseTimeToMinutesHelper(fri.exit) ?? (17 * 60 + 30);
+      if (currentMinutes >= startMin && currentMinutes <= endMin) {
+        return { allowed: true, isMauricio: false, schedule: `Viernes: ${fri.entry} - ${fri.exit} hrs` };
       }
-      return { allowed: false, isMauricio: false, reason: 'Canal disponible los Viernes de 09:00 a 17:30 hrs' };
+      return { allowed: false, isMauricio: false, reason: `Canal disponible los Viernes de ${fri.entry} a ${fri.exit} hrs` };
     }
 
-    return { allowed: false, isMauricio: false, reason: 'Canal cerrado los fines de semana (Disponible Lun-Jue 09:00-18:00, Vie 09:00-17:30)' };
+    return { allowed: false, isMauricio: false, reason: `Canal cerrado los fines de semana (Lun-Jue ${monThu.entry}-${monThu.exit}, Vie ${fri.entry}-${fri.exit})` };
   } catch (e) {
-    // Si falla el cálculo de zona horaria, permitir por defecto
     return { allowed: true, isMauricio: false };
   }
 }
-
 
 app.get('/api/gps/schedule-status', authenticateToken, (req, res) => {
   res.json(isGpsScheduleAllowed(req.user));

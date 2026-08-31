@@ -361,6 +361,12 @@ export const apiImportBackup = (backupJson) => apiRequest('/api/admin/backup/imp
   body: JSON.stringify(backupJson)
 });
 
+export const apiGetWorkSchedule = () => apiRequest('/api/settings/work-schedule');
+export const apiUpdateWorkSchedule = (schedule) => apiRequest('/api/settings/work-schedule', {
+  method: 'PUT',
+  body: JSON.stringify(schedule)
+});
+
 export const apiSyncVault = (vaultData) => apiRequest('/api/sync/vault', {
   method: 'POST',
   body: JSON.stringify(vaultData)

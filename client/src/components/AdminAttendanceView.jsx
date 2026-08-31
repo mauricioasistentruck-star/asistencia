@@ -8,7 +8,9 @@ import {
   getExportExcelUrl, 
   getSocket, 
   getChileTodayString,
-  mergeAttendanceToVault 
+  mergeAttendanceToVault,
+  apiGetWorkSchedule,
+  apiUpdateWorkSchedule
 } from '../api';
 
 export default function AdminAttendanceView({ user, theme }) {
@@ -34,6 +36,17 @@ export default function AdminAttendanceView({ user, theme }) {
   const [editSuccess, setEditSuccess] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [lastLiveAlert, setLastLiveAlert] = useState(null);
+
+  // Horario Laboral Oficial
+  const [workSchedule, setWorkSchedule] = useState({
+    monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
+    friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+  });
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState(null);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
 
   const isDark = theme === 'dark';
   const isSuperAdmin = user && (
@@ -76,9 +89,22 @@ export default function AdminAttendanceView({ user, theme }) {
     return 0;
   };
 
-  const calculateDelayMinutes = (entryTime, standardEntry = '08:30') => {
+  const calculateDelayMinutes = (entryTime, recordDate) => {
+    if (!entryTime) return 0;
+    let stdEntry = '09:00';
+    if (recordDate) {
+      try {
+        const [y, m, d] = recordDate.split('-').map(Number);
+        const dayOfWeek = new Date(y, m - 1, d).getDay();
+        if (dayOfWeek === 5) {
+          stdEntry = workSchedule?.friday?.entry || '09:00';
+        } else {
+          stdEntry = workSchedule?.monday_thursday?.entry || '09:00';
+        }
+      } catch (e) {}
+    }
     const entryMin = parseTimeToMinutes(entryTime);
-    const stdMin = parseTimeToMinutes(standardEntry);
+    const stdMin = parseTimeToMinutes(stdEntry);
     if (entryMin === null || stdMin === null) return 0;
     if (entryMin > stdMin) {
       return Math.round(entryMin - stdMin);
@@ -86,8 +112,19 @@ export default function AdminAttendanceView({ user, theme }) {
     return 0;
   };
 
-  const calculateOvertimeMinutes = (workedMinutes, standardDailyMinutes = 480) => {
-    if (!workedMinutes || workedMinutes <= standardDailyMinutes) return 0;
+  const calculateOvertimeMinutes = (workedMinutes, recordDate) => {
+    if (!workedMinutes) return 0;
+    let standardDailyMinutes = 480; // Lun-Jue: 8 hrs netas
+    if (recordDate) {
+      try {
+        const [y, m, d] = recordDate.split('-').map(Number);
+        const dayOfWeek = new Date(y, m - 1, d).getDay();
+        if (dayOfWeek === 5) {
+          standardDailyMinutes = 450; // Viernes: 7.5 hrs netas (09:00 a 17:30 menos 1h colacion)
+        }
+      } catch (e) {}
+    }
+    if (workedMinutes <= standardDailyMinutes) return 0;
     return Math.round(workedMinutes - standardDailyMinutes);
   };
 
@@ -178,7 +215,15 @@ export default function AdminAttendanceView({ user, theme }) {
     fetchUsers();
     fetchRecords();
 
+    apiGetWorkSchedule().then(sched => {
+      if (sched) setWorkSchedule(sched);
+    }).catch(() => {});
+
     const socket = getSocket();
+    const handleScheduleUpdate = (updatedSched) => {
+      if (updatedSched) setWorkSchedule(updatedSched);
+    };
+    socket.on('schedule_updated', handleScheduleUpdate);
     const handleAttendanceLive = (data) => {
       if (!data?.silent) setLastLiveAlert(data);
       fetchRecords(true);
@@ -200,6 +245,7 @@ export default function AdminAttendanceView({ user, theme }) {
       socket.off('attendance_marked', handleAttendanceLive);
       socket.off('attendance_updated', handleAttendanceLive);
       socket.off('scan_registered', handleAttendanceLive);
+      socket.off('schedule_updated', handleScheduleUpdate);
     };
   }, [dateFrom, dateTo]);
 
@@ -219,12 +265,12 @@ export default function AdminAttendanceView({ user, theme }) {
     userRecords.forEach(r => {
       const recordMins = calculateRecordMinutes(r);
       totalMins += recordMins;
-      const delay = calculateDelayMinutes(r.entry_time);
+      const delay = calculateDelayMinutes(r.entry_time, r.date);
       if (delay > 0) {
         delayMins += delay;
         delayCount++;
       }
-      overtimeMins += calculateOvertimeMinutes(recordMins);
+      overtimeMins += calculateOvertimeMinutes(recordMins, r.date);
     });
 
     const daysWorked = attendedDates.size;
@@ -417,6 +463,24 @@ export default function AdminAttendanceView({ user, theme }) {
             <Download className="w-4 h-4" />
             <span>Descargar Excel</span>
           </button>
+
+          {/* Botón Configurar Horario (Solo SuperAdmin) */}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setScheduleForm(JSON.parse(JSON.stringify(workSchedule)));
+                setScheduleError('');
+                setScheduleSuccess('');
+                setShowScheduleModal(true);
+              }}
+              title="Configurar Horario Laboral Oficial (SuperAdmin)"
+              className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Clock className="w-4 h-4" />
+              <span>Horario Oficial</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -689,7 +753,7 @@ export default function AdminAttendanceView({ user, theme }) {
                   </tr>
                 ) : (
                   displayedDetailsRecords.map((r) => {
-                    const delay = calculateDelayMinutes(r.entry_time);
+                    const delay = calculateDelayMinutes(r.entry_time, r.date);
                     const recordMins = calculateRecordMinutes(r);
 
                     return (
@@ -840,29 +904,33 @@ export default function AdminAttendanceView({ user, theme }) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Motivo / Nota de Auditoría:</label>
-                <input
-                  type="text"
-                  value={editForm.admin_note}
-                  onChange={(e) => setEditForm({ ...editForm, admin_note: e.target.value })}
-                  placeholder="Ej: Corrección autorizada por jefatura"
-                  className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  required
-                />
-              </div>
+              {!isSuperAdmin && (
+                <>
+                  <div>
+                    <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Motivo / Nota de Auditoría:</label>
+                    <input
+                      type="text"
+                      value={editForm.admin_note}
+                      onChange={(e) => setEditForm({ ...editForm, admin_note: e.target.value })}
+                      placeholder="Ej: Corrección autorizada por jefatura"
+                      className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                      required
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Contraseña de Administrador:</label>
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Ingrese su clave de acceso para autorizar"
-                  className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-                  required
-                />
-              </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Contraseña de Administrador:</label>
+                    <input
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="Ingrese su clave de acceso para autorizar"
+                      className={'w-full rounded-xl px-3.5 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                      required
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end gap-2 pt-3">
                 <button
@@ -879,6 +947,136 @@ export default function AdminAttendanceView({ user, theme }) {
                 >
                   <Save className="w-4 h-4" />
                   <span>{editLoading ? 'Guardando...' : 'Autorizar y Guardar Permanentemente'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+          {/* MODAL CONFIGURACIÓN HORARIO LABORAL OFICIAL (SUPERADMIN) */}
+      {showScheduleModal && scheduleForm && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4">
+          <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+            <div className="flex items-center justify-between pb-3 border-b border-orange-500/20">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500" />
+                <div>
+                  <h3 className="text-base font-black">Horario Laboral Oficial</h3>
+                  <p className="text-[11px] text-zinc-400">Configuración exclusiva SuperAdmin</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setShowScheduleModal(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {scheduleError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{scheduleError}</span>
+              </div>
+            )}
+
+            {scheduleSuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{scheduleSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSchedule} className="space-y-4">
+              {/* Lunes a Jueves */}
+              <div className={'p-3.5 rounded-2xl border space-y-2 ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
+                <div className="text-xs font-black text-orange-500 uppercase flex items-center justify-between">
+                  <span>Lunes a Jueves</span>
+                  <span className="text-[10px] text-zinc-400 font-normal">8 hrs laborales</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 mb-1">Hora Entrada:</label>
+                    <input
+                      type="time"
+                      value={scheduleForm.monday_thursday?.entry || '09:00'}
+                      onChange={(e) => setScheduleForm({
+                        ...scheduleForm,
+                        monday_thursday: { ...scheduleForm.monday_thursday, entry: e.target.value }
+                      })}
+                      className={'w-full rounded-xl px-3 py-2 text-xs border font-mono font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-white border-zinc-300 text-black')}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 mb-1">Hora Salida:</label>
+                    <input
+                      type="time"
+                      value={scheduleForm.monday_thursday?.exit || '18:00'}
+                      onChange={(e) => setScheduleForm({
+                        ...scheduleForm,
+                        monday_thursday: { ...scheduleForm.monday_thursday, exit: e.target.value }
+                      })}
+                      className={'w-full rounded-xl px-3 py-2 text-xs border font-mono font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-white border-zinc-300 text-black')}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Viernes */}
+              <div className={'p-3.5 rounded-2xl border space-y-2 ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-orange-50/50 border-orange-100')}>
+                <div className="text-xs font-black text-orange-500 uppercase flex items-center justify-between">
+                  <span>Viernes</span>
+                  <span className="text-[10px] text-zinc-400 font-normal">7.5 hrs laborales</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 mb-1">Hora Entrada:</label>
+                    <input
+                      type="time"
+                      value={scheduleForm.friday?.entry || '09:00'}
+                      onChange={(e) => setScheduleForm({
+                        ...scheduleForm,
+                        friday: { ...scheduleForm.friday, entry: e.target.value }
+                      })}
+                      className={'w-full rounded-xl px-3 py-2 text-xs border font-mono font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-white border-zinc-300 text-black')}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 mb-1">Hora Salida:</label>
+                    <input
+                      type="time"
+                      value={scheduleForm.friday?.exit || '17:30'}
+                      onChange={(e) => setScheduleForm({
+                        ...scheduleForm,
+                        friday: { ...scheduleForm.friday, exit: e.target.value }
+                      })}
+                      className={'w-full rounded-xl px-3 py-2 text-xs border font-mono font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-white border-zinc-300 text-black')}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={scheduleLoading}
+                  className="px-5 py-2 text-xs font-black rounded-xl bg-orange-500 hover:bg-orange-600 text-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{scheduleLoading ? 'Guardando...' : 'Guardar Horario Oficial'}</span>
                 </button>
               </div>
             </form>

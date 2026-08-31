@@ -496,8 +496,8 @@ export default function AdminUsersView({ currentUser, theme }) {
                     <span>Ver Credencial QR</span>
                   </button>
                 ) : (
-                  <div className="w-full py-1.5 text-center text-[10px] font-bold text-zinc-500 bg-zinc-900/40 rounded-xl border border-zinc-800">
-                    Admin sin credencial QR (Acceso a Reportes)
+                  <div className="w-full py-1.5 text-center text-[10px] font-bold text-cyan-400 bg-cyan-950/20 rounded-xl border border-cyan-500/30">
+                    {isKioskRole ? 'Puesto Kiosco QR (Escáner Tablet)' : 'Admin sin credencial QR (Acceso a Reportes)'}
                   </div>
                 )}
               </div>

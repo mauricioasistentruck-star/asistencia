@@ -684,6 +684,26 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 </div>
               )}
 
+              {/* Opción SuperAdmin: Copia de Seguridad Maestra */}
+              {isSuperAdminUser && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWorkerMenu(false);
+                    setShowBackupModal(true);
+                  }}
+                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer mb-1 ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-orange-500/30' : 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-zinc-900')}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-500 flex-shrink-0">
+                    <Database className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Copia de Seguridad Maestra</div>
+                    <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-700 font-bold')}>Exportar e Importar todo (.json)</div>
+                  </div>
+                </button>
+              )}
+
               {/* Opción 1: Revisar Marcaciones */}
               <button
                 onClick={() => {

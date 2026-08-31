@@ -59,7 +59,7 @@ export default function BackupModal({ isOpen, onClose, theme }) {
       const backupJson = JSON.parse(text);
       const res = await apiImportBackup(backupJson);
       const stats = res.stats || {};
-      setSuccessMsg(`¡Restauración exitosa! (${stats.users || 0} trabajadores, ${stats.attendance || 0} marcaciones, ${stats.routes || 0} rutas GPS sincronizadas).`);
+      setSuccessMsg(`¡Restauración exitosa! (${stats.users || 0} trabajadores, ${stats.attendance || 0} marcaciones, ${stats.routes || 0} rutas GPS, ${stats.audios || 0} audios restaurados).`);
       setTimeout(() => {
         autoRestoreAndSyncWithServer();
       }, 500);
@@ -120,7 +120,7 @@ export default function BackupModal({ isOpen, onClose, theme }) {
             <span>Protección de Datos Totales</span>
           </div>
           <p className="text-[11px] text-zinc-400 leading-relaxed">
-            La exportación genera un archivo <strong>.json</strong> completo e independiente que incluye: <strong>todos los trabajadores, contraseñas, fotografías en alta fidelidad, historial histórico de entradas/salidas y rutas satelitales GPS</strong>.
+            La exportación genera un archivo <strong>.json</strong> autónomo e indestructible que incluye: <strong>todos los trabajadores, contraseñas, fotografías de perfil (Base64), historial completo de marcaciones, rutas GPS, audios de voz y horario oficial</strong>.
           </p>
         </div>
 

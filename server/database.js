@@ -272,6 +272,20 @@ function initDatabase() {
       )
     `);
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, () => {
+      const defaultSchedule = JSON.stringify({
+        monday_thursday: { entry: "09:00", exit: "18:00", lunch_minutes: 60 },
+        friday: { entry: "09:00", exit: "17:30", lunch_minutes: 60 }
+      });
+      db.run("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('work_schedule', ?)", [defaultSchedule]);
+    });
+
     // SÓLO sembrar datos iniciales si la tabla de usuarios está completamente vacía
     db.get("SELECT COUNT(*) as count FROM users", (cntErr, row) => {
       const userCount = row ? (row.count !== undefined ? row.count : row['COUNT(*)']) : 0;
