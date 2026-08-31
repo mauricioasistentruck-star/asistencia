@@ -28,6 +28,15 @@ function playIncomingBeep() {
   } catch (e) {}
 }
 
+function isKioskUser(u) {
+  if (!u) return false;
+  return Boolean(
+    u.role === 'kiosk' || 
+    u.role === 'kiosco' || 
+    (u.username && String(u.username).trim().toLowerCase() === 'kiosco')
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('credential');
@@ -541,9 +550,10 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   const handleLoginSuccess = (userData) => {
     setUser(userData);
     if (isKioskUser(userData)) {
-      setKioskMode(true);
+      setKioskMode(false);
       return;
     }
+    setKioskMode(false);
     const userHasCred = userData?.has_credential !== 0 && userData?.has_credential !== false && userData?.has_credential !== '0';
     if (userData?.role === 'admin' && !userHasCred) {
       setActiveTab('admin_attendance');
@@ -578,8 +588,14 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} />;
   }
 
-  if (isKioskUser(user) || kioskMode) {
-    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={isKioskUser(user)} />;
+  // Modo Kiosco activado EXCLUSIVAMENTE si el usuario que inicio sesion es el usuario de Kiosco
+  if (isKioskUser(user)) {
+    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} />;
+  }
+
+  // Si un administrador activo manualmente el modo kiosco temporal
+  if (kioskMode) {
+    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
   }
 
 
