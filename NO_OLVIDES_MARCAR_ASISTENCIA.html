@@ -3,38 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recordatorio: No Olvides Marcar tu Asistencia - Tamaño Carta</title>
+  <title>Recordatorio: No Olvides Marcar tu Asistencia</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap');
 
     @page {
       size: letter portrait;
-      margin: 0;
+      margin: 0; /* Elimina la URL y fecha automática del navegador */
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Montserrat', sans-serif;
+      background-color: #e2e8f0;
+      color: #0f172a;
     }
 
     body {
-      font-family: 'Montserrat', sans-serif;
-      background-color: #f1f5f9;
-      color: #0f172a;
       display: flex;
       flex-direction: column;
       align-items: center;
       padding: 20px 0;
     }
 
+    /* BARRA DE BOTÓN NO IMPRIMIBLE */
     .no-print-bar {
       width: 215.9mm;
       background: #0f172a;
       color: white;
-      padding: 12px 24px;
+      padding: 14px 24px;
       border-radius: 12px;
       margin-bottom: 20px;
       display: flex;
@@ -47,329 +55,347 @@
       background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
       color: white;
       border: none;
-      padding: 10px 22px;
+      padding: 12px 26px;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 800;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       transition: all 0.2s ease;
-      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.4);
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.5);
     }
 
     .print-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(234, 88, 12, 0.6);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(234, 88, 12, 0.7);
     }
 
-    /* HOJA TAMAÑO CARTA EXACTA: 215.9mm x 279.4mm (8.5 x 11 pulgadas) */
+    /* HOJA TAMAÑO CARTA EXACTA (215.9mm x 279.4mm = 8.5" x 11") */
     .sheet {
       width: 215.9mm;
       height: 279.4mm;
       max-height: 279.4mm;
       background: white;
-      padding: 10mm 12mm 8mm 12mm;
+      padding: 12mm 14mm 10mm 14mm;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
       position: relative;
       overflow: hidden;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #cbd5e1;
     }
 
-    /* Marco decorativo de alta gama */
+    /* MARCO DOBLE CORPORATIVO QUE ABARCA EL 100% DE LA HOJA */
     .sheet::before {
       content: '';
       position: absolute;
-      top: 5mm;
-      left: 5mm;
-      right: 5mm;
-      bottom: 5mm;
-      border: 2px solid #ea580c;
-      border-radius: 12px;
+      top: 6mm;
+      left: 6mm;
+      right: 6mm;
+      bottom: 6mm;
+      border: 3px solid #ea580c;
+      border-radius: 16px;
       pointer-events: none;
     }
 
     .sheet::after {
       content: '';
       position: absolute;
-      top: 6.5mm;
-      left: 6.5mm;
-      right: 6.5mm;
-      bottom: 6.5mm;
+      top: 8mm;
+      left: 8mm;
+      right: 8mm;
+      bottom: 8mm;
       border: 1px solid #fed7aa;
-      border-radius: 10px;
+      border-radius: 13px;
       pointer-events: none;
     }
 
-    /* HEADER */
+    /* 1. HEADER SUPERIOR */
     .header {
       text-align: center;
       position: relative;
       z-index: 1;
-      padding-bottom: 6px;
-      border-bottom: 2px solid #f1f5f9;
+      padding-top: 2mm;
+      padding-bottom: 3mm;
     }
 
-    .company-tag {
+    .company-pill {
       display: inline-block;
       background: #0f172a;
       color: #ea580c;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 2px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 3px;
       text-transform: uppercase;
-      padding: 4px 16px;
+      padding: 5px 22px;
       border-radius: 999px;
       margin-bottom: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
 
     .system-title {
       font-size: 13px;
-      font-weight: 700;
-      color: #64748b;
-      letter-spacing: 1px;
+      font-weight: 800;
+      color: #475569;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
     }
 
-    /* MAIN BANNER */
+    /* 2. GRAN CARTEL PRINCIPAL */
     .main-banner {
       background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
       color: white;
-      border-radius: 14px;
-      padding: 14px 18px;
+      border-radius: 16px;
+      padding: 16px 20px;
       text-align: center;
-      margin: 8px 0;
-      box-shadow: 0 10px 20px -5px rgba(234, 88, 12, 0.35);
+      box-shadow: 0 8px 24px -4px rgba(234, 88, 12, 0.4);
       position: relative;
       z-index: 1;
     }
 
-    .icon-attention {
-      font-size: 26px;
-      margin-bottom: 2px;
-      display: inline-block;
+    .warning-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
     }
 
     .main-title {
-      font-size: 32px;
+      font-size: 35px;
       font-weight: 900;
       line-height: 1.05;
       text-transform: uppercase;
       letter-spacing: -0.5px;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+      text-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
 
     .main-subtitle {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 700;
-      margin-top: 4px;
+      margin-top: 6px;
       color: #ffedd5;
       letter-spacing: 0.5px;
     }
 
-    /* MARCAS GRID */
-    .section-label {
-      font-size: 11px;
-      font-weight: 800;
-      color: #ea580c;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      text-align: center;
-      margin-bottom: 6px;
+    /* 3. SECCIÓN 4 MARCAS OBLIGATORIAS */
+    .section-container {
       position: relative;
       z-index: 1;
+    }
+
+    .section-tag {
+      text-align: center;
+      font-size: 11.5px;
+      font-weight: 900;
+      color: #ea580c;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
     }
 
     .marks-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      position: relative;
-      z-index: 1;
-      margin-bottom: 8px;
+      gap: 12px;
     }
 
     .mark-card {
-      border: 1.5px solid #e2e8f0;
+      border: 2px solid #e2e8f0;
       background: #fafaf9;
-      border-radius: 12px;
-      padding: 10px 12px;
+      border-radius: 14px;
+      padding: 12px 14px;
       display: flex;
-      align-items: flex-start;
-      gap: 10px;
+      align-items: center;
+      gap: 14px;
     }
 
-    .mark-card.primary {
-      border-color: #fb923c;
+    .mark-card.highlight-card {
+      border-color: #ea580c;
       background: #fff7ed;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.1);
     }
 
-    .mark-badge {
-      width: 28px;
-      height: 28px;
-      min-width: 28px;
+    .mark-num {
+      width: 38px;
+      height: 38px;
+      min-width: 38px;
       background: #ea580c;
       color: white;
-      border-radius: 8px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 20px;
       font-weight: 900;
-      box-shadow: 0 4px 8px rgba(234, 88, 12, 0.3);
+      box-shadow: 0 4px 8px rgba(234, 88, 12, 0.35);
     }
 
-    .mark-badge.secondary {
+    .mark-num.dark {
       background: #0f172a;
+      box-shadow: 0 4px 8px rgba(15, 23, 42, 0.3);
     }
 
-    .mark-info h4 {
-      font-size: 12px;
-      font-weight: 800;
+    .mark-content h4 {
+      font-size: 13px;
+      font-weight: 900;
       color: #0f172a;
       text-transform: uppercase;
       margin-bottom: 2px;
     }
 
-    .mark-info p {
-      font-size: 10.5px;
+    .mark-content p {
+      font-size: 11px;
       font-weight: 600;
       color: #64748b;
       font-family: 'Inter', sans-serif;
+      line-height: 1.25;
     }
 
-    .mark-info .highlight {
+    .mark-content .accent {
       color: #ea580c;
       font-weight: 800;
     }
 
-    /* QR INSTRUCTIONS BOX */
-    .qr-guide {
+    /* 4. GUÍA DE ESCANEO TABLET */
+    .guide-box {
       background: #0f172a;
       color: white;
       border-radius: 14px;
-      padding: 12px 16px;
+      padding: 14px 18px;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 18px;
       position: relative;
       z-index: 1;
-      margin-bottom: 8px;
       border-left: 6px solid #ea580c;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
     }
 
-    .qr-visual {
-      width: 60px;
-      height: 60px;
-      min-width: 60px;
+    .qr-icon-wrap {
+      width: 64px;
+      height: 64px;
+      min-width: 64px;
       background: white;
-      border-radius: 8px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 4px;
+      padding: 6px;
     }
 
-    .qr-visual svg {
+    .qr-icon-wrap svg {
       width: 100%;
       height: 100%;
       fill: #0f172a;
     }
 
-    .qr-guide-text h3 {
-      font-size: 13px;
-      font-weight: 800;
+    .guide-text h3 {
+      font-size: 14px;
+      font-weight: 900;
       text-transform: uppercase;
-      color: #ea580c;
-      margin-bottom: 3px;
+      color: #f97316;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
     }
 
-    .qr-guide-text ol {
-      padding-left: 16px;
-      font-size: 10.5px;
+    .guide-text ol {
+      padding-left: 18px;
+      font-size: 11px;
       color: #cbd5e1;
       font-family: 'Inter', sans-serif;
-      line-height: 1.35;
+      line-height: 1.4;
     }
 
-    /* SCHEDULE NOTICE */
-    .schedule-bar {
+    .guide-text strong {
+      color: white;
+    }
+
+    /* 5. TABLA HORARIOS */
+    .schedule-box {
       background: #fff;
-      border: 1.5px dashed #ea580c;
-      border-radius: 10px;
-      padding: 8px 12px;
+      border: 2px dashed #ea580c;
+      border-radius: 14px;
+      padding: 12px 18px;
       display: flex;
       align-items: center;
       justify-content: space-around;
-      text-align: center;
       position: relative;
       z-index: 1;
-      margin-bottom: 8px;
     }
 
-    .schedule-item {
-      display: flex;
-      flex-direction: column;
+    .schedule-col {
+      text-align: center;
     }
 
-    .schedule-item .day {
-      font-size: 9.5px;
+    .schedule-col .label {
+      font-size: 10px;
       font-weight: 800;
       color: #64748b;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
     }
 
-    .schedule-item .hours {
-      font-size: 13px;
+    .schedule-col .val {
+      font-size: 15px;
       font-weight: 900;
       color: #ea580c;
+      font-family: 'Montserrat', sans-serif;
     }
 
-    .schedule-divider {
-      width: 1px;
-      height: 24px;
-      background: #cbd5e1;
+    .schedule-sep {
+      width: 1.5px;
+      height: 28px;
+      background: #e2e8f0;
     }
 
-    /* FOOTER / LEGAL */
+    /* 6. PIE LEGAL */
     .footer {
       text-align: center;
       position: relative;
       z-index: 1;
-      padding-top: 6px;
-      border-top: 1px solid #e2e8f0;
+      padding-top: 3mm;
+      padding-bottom: 1mm;
+      border-top: 1.5px solid #f1f5f9;
     }
 
-    .legal-notice {
-      font-size: 8.5px;
+    .legal-text {
+      font-size: 9px;
       color: #64748b;
       font-family: 'Inter', sans-serif;
-      line-height: 1.3;
+      line-height: 1.35;
       margin-bottom: 4px;
     }
 
-    .legal-notice strong {
+    .legal-text strong {
       color: #0f172a;
     }
 
-    .system-brand {
-      font-size: 9px;
-      font-weight: 800;
+    .system-footer-brand {
+      font-size: 10px;
+      font-weight: 900;
       color: #94a3b8;
-      letter-spacing: 1px;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
     }
 
-    /* PRINT RULES */
+    /* REGLAS ESTRICTAS DE IMPRESIÓN PARA TAMAÑO CARTA EXACTO */
     @media print {
       body {
-        background: white;
-        padding: 0;
-        margin: 0;
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
       }
       .no-print, .no-print-bar {
         display: none !important;
@@ -377,133 +403,139 @@
       .sheet {
         box-shadow: none !important;
         border: none !important;
-        width: 100% !important;
-        height: 100% !important;
-        page-break-inside: avoid;
-        page-break-after: avoid;
+        width: 215.9mm !important;
+        height: 279.4mm !important;
+        max-height: 279.4mm !important;
+        padding: 12mm 14mm 10mm 14mm !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+        page-break-before: avoid !important;
       }
     }
   </style>
 </head>
 <body>
 
-  <!-- BARRA DE CONTROL EN PANTALLA -->
+  <!-- BARRA DE ACCIÓN PARA EL USUARIO -->
   <div class="no-print-bar no-print">
     <div>
-      <div style="font-weight: 800; font-size: 15px;">Cartel Oficial Tamaño Carta (8.5" x 11")</div>
-      <div style="font-size: 12px; color: #94a3b8;">Listo para imprimir en alta resolución y colocar junto al puesto de control</div>
+      <div style="font-weight: 800; font-size: 16px;">Hoja Oficial de Recordatorio &bull; Tamaño Carta</div>
+      <div style="font-size: 12px; color: #94a3b8;">Formato calibrado al 100% de la hoja (8.5" x 11") sin márgenes cortados</div>
     </div>
     <button class="print-btn" onclick="window.print()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 6 2 18 2 18 9"></polyline>
         <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
         <rect x="6" y="14" width="12" height="8"></rect>
       </svg>
-      IMPRIMIR EN CARTA / GUARDAR PDF
+      IMPRIMIR / GUARDAR COMO PDF
     </button>
   </div>
 
   <!-- HOJA FÍSICA TAMAÑO CARTA -->
   <div class="sheet">
 
-    <!-- ENCABEZADO EMPRESA -->
+    <!-- 1. ENCABEZADO -->
     <div class="header">
-      <div class="company-tag">Inversiones BOTAM SpA</div>
-      <div class="system-title">Sistema de Gestión de Personal y Control de Asistencia</div>
+      <div class="company-pill">Inversiones BOTAM SpA</div>
+      <div class="system-title">Sistema Integrado de Control de Asistencia</div>
     </div>
 
-    <!-- TÍTULO PRINCIPAL DE MÁXIMO IMPACTO -->
+    <!-- 2. TITULAR DE MÁXIMO IMPACTO -->
     <div class="main-banner">
-      <div class="icon-attention">⚠️</div>
+      <div class="warning-badge">
+        <span>⚠️</span>
+        <span>Aviso Importante a todo el Personal</span>
+      </div>
       <h1 class="main-title">¡No olvides marcar<br>tu Asistencia!</h1>
-      <p class="main-subtitle">Registro obligatorio para todo el personal en cada etapa de la jornada</p>
+      <p class="main-subtitle">El registro diario es personal, obligatorio y garantiza el cómputo exacto de tus horas</p>
     </div>
 
-    <!-- 4 MARCAS OBLIGATORIAS -->
-    <div>
-      <div class="section-label">Debes registrar las 4 marcaciones diarias:</div>
+    <!-- 3. LAS 4 MARCAS DIARIAS -->
+    <div class="section-container">
+      <div class="section-tag">Debes registrar tus 4 marcaciones obligatorias:</div>
       <div class="marks-grid">
         
-        <!-- 1. ENTRADA -->
-        <div class="mark-card primary">
-          <div class="mark-badge">1</div>
-          <div class="mark-info">
+        <!-- MARCA 1 -->
+        <div class="mark-card highlight-card">
+          <div class="mark-num">1</div>
+          <div class="mark-content">
             <h4>Entrada de Jornada</h4>
-            <p>Al iniciar tu día de trabajo.<br><span class="highlight">Hora oficial: 09:00 hrs.</span></p>
+            <p>Al iniciar tu día laboral.<br><span class="accent">Hora oficial: 09:00 hrs.</span></p>
           </div>
         </div>
 
-        <!-- 2. SALIDA COLACION -->
+        <!-- MARCA 2 -->
         <div class="mark-card">
-          <div class="mark-badge secondary">2</div>
-          <div class="mark-info">
+          <div class="mark-num dark">2</div>
+          <div class="mark-content">
             <h4>Salida a Colación</h4>
-            <p>Al retirarte a tu descanso.<br><span class="highlight">Cronómetro corre de inmediato.</span></p>
+            <p>Al retirarte a descansar.<br><span class="accent">El tiempo corre desde el escaneo.</span></p>
           </div>
         </div>
 
-        <!-- 3. ENTRADA COLACION -->
+        <!-- MARCA 3 -->
         <div class="mark-card">
-          <div class="mark-badge secondary">3</div>
-          <div class="mark-info">
+          <div class="mark-num dark">3</div>
+          <div class="mark-content">
             <h4>Regreso Colación</h4>
-            <p>Tiempo máximo permitido:<br><span class="highlight">30 minutos reglamentarios.</span></p>
+            <p>Tiempo máximo reglamentario:<br><span class="accent">30 Minutos exactos.</span></p>
           </div>
         </div>
 
-        <!-- 4. SALIDA JORNADA -->
-        <div class="mark-card primary">
-          <div class="mark-badge">4</div>
-          <div class="mark-info">
+        <!-- MARCA 4 -->
+        <div class="mark-card highlight-card">
+          <div class="mark-num">4</div>
+          <div class="mark-content">
             <h4>Salida de Jornada</h4>
-            <p>Al finalizar tu turno diario.<br><span class="highlight">18:00 (Lun-Jue) | 17:30 (Vie)</span></p>
+            <p>Al terminar tu turno diario.<br><span class="accent">18:00 (Lun-Jue) | 17:30 (Vie)</span></p>
           </div>
         </div>
 
       </div>
     </div>
 
-    <!-- INSTRUCCIONES DE ESCANEO -->
-    <div class="qr-guide">
-      <div class="qr-visual">
+    <!-- 4. GUÍA DE ESCANEO -->
+    <div class="guide-box">
+      <div class="qr-icon-wrap">
         <svg viewBox="0 0 24 24">
           <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 0h2v2h-2v-2zm-2-2h2v2h-2v-2zm-6 2h2v2h-2v-2zm0-4h2v2h-2v-2z"/>
         </svg>
       </div>
-      <div class="qr-guide-text">
-        <h3>¿Cómo registrarte en la tablet?</h3>
+      <div class="guide-text">
+        <h3>¿Cómo marcar en la Tablet del Taller?</h3>
         <ol>
-          <li>Abre tu credencial digital con código QR en tu teléfono.</li>
-          <li>Coloca la pantalla frente a la cámara delantera de la estación.</li>
-          <li>Espera el sonido de confirmación y el mensaje en pantalla con tu nombre.</li>
+          <li>Abre tu <strong>Credencial Digital QR</strong> en tu teléfono móvil.</li>
+          <li>Coloca la pantalla frente a la <strong>cámara delantera</strong> de la tablet.</li>
+          <li>Espera el <strong>sonido de confirmación</strong> y tu nombre en pantalla.</li>
         </ol>
       </div>
     </div>
 
-    <!-- HORARIOS DE JORNADA OFICIAL -->
-    <div class="schedule-bar">
-      <div class="schedule-item">
-        <span class="day">Lunes a Jueves</span>
-        <span class="hours">09:00 a 18:00 hrs</span>
+    <!-- 5. HORARIOS OFICIALES -->
+    <div class="schedule-box">
+      <div class="schedule-col">
+        <div class="label">Lunes a Jueves</div>
+        <div class="val">09:00 a 18:00 hrs</div>
       </div>
-      <div class="schedule-divider"></div>
-      <div class="schedule-item">
-        <span class="day">Viernes</span>
-        <span class="hours">09:00 a 17:30 hrs</span>
+      <div class="schedule-sep"></div>
+      <div class="schedule-col">
+        <div class="label">Viernes</div>
+        <div class="val">09:00 a 17:30 hrs</div>
       </div>
-      <div class="schedule-divider"></div>
-      <div class="schedule-item">
-        <span class="day">Colación Diaria</span>
-        <span class="hours">30 Minutos</span>
+      <div class="schedule-sep"></div>
+      <div class="schedule-col">
+        <div class="label">Colación Reglamentaria</div>
+        <div class="val">30 Minutos</div>
       </div>
     </div>
 
-    <!-- PIE LEGAL -->
+    <!-- 6. PIE LEGAL Y MARCA -->
     <div class="footer">
-      <p class="legal-notice">
-        <strong>Aviso de Cumplimiento Laboral:</strong> Conforme al Artículo 33 del Código del Trabajo, es deber inexcusable de todo trabajador registrar fidedignamente sus ingresos, salidas y descansos. Los atrasos reiterados y las omisiones de marcación afectan el cómputo de horas trabajadas.
+      <p class="legal-text">
+        <strong>Aviso Legal y Laboral:</strong> Conforme al Artículo 33 del Código del Trabajo, todo trabajador debe consignar fielmente el inicio y término de su jornada y colación. Los excesos sobre 30 minutos en colación y las entradas tardías se computan como atrasos.
       </p>
-      <div class="system-brand">ASISTENTRUCK &bull; CONTROL INTELIGENTE DE ASISTENCIA &bull; INVERSIONES BOTAM SPA</div>
+      <div class="system-footer-brand">ASISTENTRUCK &bull; CONTROL INTELIGENTE DE ASISTENCIA &bull; INVERSIONES BOTAM SPA</div>
     </div>
 
   </div>
