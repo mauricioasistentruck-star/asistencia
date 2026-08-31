@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recordatorio: No Olvides Marcar tu Asistencia - Tamaño Carta</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+
+    @page {
+      size: letter portrait;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+    }
+
+    .no-print-bar {
+      width: 215.9mm;
+      background: #0f172a;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+    }
+
+    .print-btn {
+      background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+      color: white;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.4);
+    }
+
+    .print-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(234, 88, 12, 0.6);
+    }
+
+    /* HOJA TAMAÑO CARTA EXACTA: 215.9mm x 279.4mm (8.5 x 11 pulgadas) */
+    .sheet {
+      width: 215.9mm;
+      height: 279.4mm;
+      max-height: 279.4mm;
+      background: white;
+      padding: 10mm 12mm 8mm 12mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Marco decorativo de alta gama */
+    .sheet::before {
+      content: '';
+      position: absolute;
+      top: 5mm;
+      left: 5mm;
+      right: 5mm;
+      bottom: 5mm;
+      border: 2px solid #ea580c;
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .sheet::after {
+      content: '';
+      position: absolute;
+      top: 6.5mm;
+      left: 6.5mm;
+      right: 6.5mm;
+      bottom: 6.5mm;
+      border: 1px solid #fed7aa;
+      border-radius: 10px;
+      pointer-events: none;
+    }
+
+    /* HEADER */
+    .header {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+
+    .company-tag {
+      display: inline-block;
+      background: #0f172a;
+      color: #ea580c;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 4px 16px;
+      border-radius: 999px;
+      margin-bottom: 6px;
+    }
+
+    .system-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #64748b;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* MAIN BANNER */
+    .main-banner {
+      background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+      color: white;
+      border-radius: 14px;
+      padding: 14px 18px;
+      text-align: center;
+      margin: 8px 0;
+      box-shadow: 0 10px 20px -5px rgba(234, 88, 12, 0.35);
+      position: relative;
+      z-index: 1;
+    }
+
+    .icon-attention {
+      font-size: 26px;
+      margin-bottom: 2px;
+      display: inline-block;
+    }
+
+    .main-title {
+      font-size: 32px;
+      font-weight: 900;
+      line-height: 1.05;
+      text-transform: uppercase;
+      letter-spacing: -0.5px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+    }
+
+    .main-subtitle {
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 4px;
+      color: #ffedd5;
+      letter-spacing: 0.5px;
+    }
+
+    /* MARCAS GRID */
+    .section-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: #ea580c;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      text-align: center;
+      margin-bottom: 6px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .marks-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+    }
+
+    .mark-card {
+      border: 1.5px solid #e2e8f0;
+      background: #fafaf9;
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .mark-card.primary {
+      border-color: #fb923c;
+      background: #fff7ed;
+    }
+
+    .mark-badge {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      background: #ea580c;
+      color: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 900;
+      box-shadow: 0 4px 8px rgba(234, 88, 12, 0.3);
+    }
+
+    .mark-badge.secondary {
+      background: #0f172a;
+    }
+
+    .mark-info h4 {
+      font-size: 12px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .mark-info p {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #64748b;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .mark-info .highlight {
+      color: #ea580c;
+      font-weight: 800;
+    }
+
+    /* QR INSTRUCTIONS BOX */
+    .qr-guide {
+      background: #0f172a;
+      color: white;
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+      border-left: 6px solid #ea580c;
+    }
+
+    .qr-visual {
+      width: 60px;
+      height: 60px;
+      min-width: 60px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+    }
+
+    .qr-visual svg {
+      width: 100%;
+      height: 100%;
+      fill: #0f172a;
+    }
+
+    .qr-guide-text h3 {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #ea580c;
+      margin-bottom: 3px;
+    }
+
+    .qr-guide-text ol {
+      padding-left: 16px;
+      font-size: 10.5px;
+      color: #cbd5e1;
+      font-family: 'Inter', sans-serif;
+      line-height: 1.35;
+    }
+
+    /* SCHEDULE NOTICE */
+    .schedule-bar {
+      background: #fff;
+      border: 1.5px dashed #ea580c;
+      border-radius: 10px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+    }
+
+    .schedule-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .schedule-item .day {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .schedule-item .hours {
+      font-size: 13px;
+      font-weight: 900;
+      color: #ea580c;
+    }
+
+    .schedule-divider {
+      width: 1px;
+      height: 24px;
+      background: #cbd5e1;
+    }
+
+    /* FOOTER / LEGAL */
+    .footer {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      padding-top: 6px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .legal-notice {
+      font-size: 8.5px;
+      color: #64748b;
+      font-family: 'Inter', sans-serif;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+
+    .legal-notice strong {
+      color: #0f172a;
+    }
+
+    .system-brand {
+      font-size: 9px;
+      font-weight: 800;
+      color: #94a3b8;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* PRINT RULES */
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+        margin: 0;
+      }
+      .no-print, .no-print-bar {
+        display: none !important;
+      }
+      .sheet {
+        box-shadow: none !important;
+        border: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        page-break-inside: avoid;
+        page-break-after: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA DE CONTROL EN PANTALLA -->
+  <div class="no-print-bar no-print">
+    <div>
+      <div style="font-weight: 800; font-size: 15px;">Cartel Oficial Tamaño Carta (8.5" x 11")</div>
+      <div style="font-size: 12px; color: #94a3b8;">Listo para imprimir en alta resolución y colocar junto al puesto de control</div>
+    </div>
+    <button class="print-btn" onclick="window.print()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 6 2 18 2 18 9"></polyline>
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+        <rect x="6" y="14" width="12" height="8"></rect>
+      </svg>
+      IMPRIMIR EN CARTA / GUARDAR PDF
+    </button>
+  </div>
+
+  <!-- HOJA FÍSICA TAMAÑO CARTA -->
+  <div class="sheet">
+
+    <!-- ENCABEZADO EMPRESA -->
+    <div class="header">
+      <div class="company-tag">Inversiones BOTAM SpA</div>
+      <div class="system-title">Sistema de Gestión de Personal y Control de Asistencia</div>
+    </div>
+
+    <!-- TÍTULO PRINCIPAL DE MÁXIMO IMPACTO -->
+    <div class="main-banner">
+      <div class="icon-attention">⚠️</div>
+      <h1 class="main-title">¡No olvides marcar<br>tu Asistencia!</h1>
+      <p class="main-subtitle">Registro obligatorio para todo el personal en cada etapa de la jornada</p>
+    </div>
+
+    <!-- 4 MARCAS OBLIGATORIAS -->
+    <div>
+      <div class="section-label">Debes registrar las 4 marcaciones diarias:</div>
+      <div class="marks-grid">
+        
+        <!-- 1. ENTRADA -->
+        <div class="mark-card primary">
+          <div class="mark-badge">1</div>
+          <div class="mark-info">
+            <h4>Entrada de Jornada</h4>
+            <p>Al iniciar tu día de trabajo.<br><span class="highlight">Hora oficial: 09:00 hrs.</span></p>
+          </div>
+        </div>
+
+        <!-- 2. SALIDA COLACION -->
+        <div class="mark-card">
+          <div class="mark-badge secondary">2</div>
+          <div class="mark-info">
+            <h4>Salida a Colación</h4>
+            <p>Al retirarte a tu descanso.<br><span class="highlight">Cronómetro corre de inmediato.</span></p>
+          </div>
+        </div>
+
+        <!-- 3. ENTRADA COLACION -->
+        <div class="mark-card">
+          <div class="mark-badge secondary">3</div>
+          <div class="mark-info">
+            <h4>Regreso Colación</h4>
+            <p>Tiempo máximo permitido:<br><span class="highlight">30 minutos reglamentarios.</span></p>
+          </div>
+        </div>
+
+        <!-- 4. SALIDA JORNADA -->
+        <div class="mark-card primary">
+          <div class="mark-badge">4</div>
+          <div class="mark-info">
+            <h4>Salida de Jornada</h4>
+            <p>Al finalizar tu turno diario.<br><span class="highlight">18:00 (Lun-Jue) | 17:30 (Vie)</span></p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- INSTRUCCIONES DE ESCANEO -->
+    <div class="qr-guide">
+      <div class="qr-visual">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 0h2v2h-2v-2zm-2-2h2v2h-2v-2zm-6 2h2v2h-2v-2zm0-4h2v2h-2v-2z"/>
+        </svg>
+      </div>
+      <div class="qr-guide-text">
+        <h3>¿Cómo registrarte en la tablet?</h3>
+        <ol>
+          <li>Abre tu credencial digital con código QR en tu teléfono.</li>
+          <li>Coloca la pantalla frente a la cámara delantera de la estación.</li>
+          <li>Espera el sonido de confirmación y el mensaje en pantalla con tu nombre.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- HORARIOS DE JORNADA OFICIAL -->
+    <div class="schedule-bar">
+      <div class="schedule-item">
+        <span class="day">Lunes a Jueves</span>
+        <span class="hours">09:00 a 18:00 hrs</span>
+      </div>
+      <div class="schedule-divider"></div>
+      <div class="schedule-item">
+        <span class="day">Viernes</span>
+        <span class="hours">09:00 a 17:30 hrs</span>
+      </div>
+      <div class="schedule-divider"></div>
+      <div class="schedule-item">
+        <span class="day">Colación Diaria</span>
+        <span class="hours">30 Minutos</span>
+      </div>
+    </div>
+
+    <!-- PIE LEGAL -->
+    <div class="footer">
+      <p class="legal-notice">
+        <strong>Aviso de Cumplimiento Laboral:</strong> Conforme al Artículo 33 del Código del Trabajo, es deber inexcusable de todo trabajador registrar fidedignamente sus ingresos, salidas y descansos. Los atrasos reiterados y las omisiones de marcación afectan el cómputo de horas trabajadas.
+      </p>
+      <div class="system-brand">ASISTENTRUCK &bull; CONTROL INTELIGENTE DE ASISTENCIA &bull; INVERSIONES BOTAM SPA</div>
+    </div>
+
+  </div>
+
+</body>
+</html>
