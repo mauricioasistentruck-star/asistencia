@@ -250,7 +250,33 @@ export default function AdminAttendanceView({ user, theme }) {
     return 0;
   };
 
-    const fetchUsers = async () => {
+  const getWorkingDaysInRange = (fromStr, toStr) => {
+    if (!fromStr || !toStr) return [];
+    try {
+      const dates = [];
+      const [y1, m1, d1] = fromStr.split('-').map(Number);
+      const [y2, m2, d2] = toStr.split('-').map(Number);
+      const start = new Date(y1, m1 - 1, d1);
+      const end = new Date(y2, m2 - 1, d2);
+
+      const curr = new Date(start);
+      while (curr <= end) {
+        const dayOfWeek = curr.getDay(); // 0 = Domingo, 6 = Sábado
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Lunes a Viernes
+          const yyyy = curr.getFullYear();
+          const mm = String(curr.getMonth() + 1).padStart(2, '0');
+          const dd = String(curr.getDate()).padStart(2, '0');
+          dates.push(`${yyyy}-${mm}-${dd}`);
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+      return dates;
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const fetchUsers = async () => {
     try {
       const data = await apiGetUsers();
       if (Array.isArray(data) && data.length > 0) {
