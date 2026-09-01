@@ -250,7 +250,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 const nLng = newPos.coords.longitude;
                 const nSpeed = newPos.coords.speed || 0;
                 const nAcc = Math.round(newPos.coords.accuracy || 10);
-                if (nAcc > 45) return; // Filtrar ruido
+                if (nAcc > 25) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
 
                 const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
 
@@ -258,21 +258,32 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   const lastPt = prev[prev.length - 1];
                   if (lastPt) {
                     const dist = calculateDistance(lastPt.latitude, lastPt.longitude, nLat, nLng);
-                    if (dist >= 0.006) {
-                      const updatedDist = Number((routeDistance + dist).toFixed(2));
-                      setRouteDistance(updatedDist);
-                      const updatedPts = [...prev, pt];
-                      localStorage.setItem('asistencia_active_route', JSON.stringify({
-                        id: res.routeId,
-                        name: res.routeName || routeName,
-                        start_lat: lat,
-                        start_lng: lng,
-                        distance: updatedDist,
-                        points: updatedPts
-                      }));
-                      apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
-                      return updatedPts;
+                    const speedKmH = nSpeed * 3.6;
+                    // Si está casi quieto (< 2 km/h), requerir al menos 15m para evitar cuadrados y temblor en esquinas
+                    const threshold = speedKmH < 2.0 ? 0.015 : 0.010;
+                    if (dist < threshold) return prev;
+
+                    // Descartar picos de velocidad imposible (> 130 km/h)
+                    const t1 = new Date(lastPt.timestamp || 0).getTime();
+                    const t2 = new Date().getTime();
+                    if (t1 > 0 && t2 > t1) {
+                      const hours = (t2 - t1) / (1000 * 3600);
+                      if (dist / hours > 130) return prev;
                     }
+
+                    const updatedDist = Number((routeDistance + dist).toFixed(2));
+                    setRouteDistance(updatedDist);
+                    const updatedPts = [...prev, pt];
+                    localStorage.setItem('asistencia_active_route', JSON.stringify({
+                      id: res.routeId,
+                      name: res.routeName || routeName,
+                      start_lat: lat,
+                      start_lng: lng,
+                      distance: updatedDist,
+                      points: updatedPts
+                    }));
+                    apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
+                    return updatedPts;
                   }
                   return prev;
                 });
@@ -287,28 +298,40 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 const nLng = newPos.coords.longitude;
                 const nSpeed = newPos.coords.speed || 0;
                 const nAcc = Math.round(newPos.coords.accuracy || 10);
-                if (nAcc > 45) return;
+                if (nAcc > 25) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
+
                 const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
 
                 setRoutePoints(prev => {
                   const lastPt = prev[prev.length - 1];
                   if (lastPt) {
                     const dist = calculateDistance(lastPt.latitude, lastPt.longitude, nLat, nLng);
-                    if (dist >= 0.006) {
-                      const updatedDist = Number((routeDistance + dist).toFixed(2));
-                      setRouteDistance(updatedDist);
-                      const updatedPts = [...prev, pt];
-                      localStorage.setItem('asistencia_active_route', JSON.stringify({
-                        id: res.routeId,
-                        name: res.routeName || routeName,
-                        start_lat: lat,
-                        start_lng: lng,
-                        distance: updatedDist,
-                        points: updatedPts
-                      }));
-                      apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
-                      return updatedPts;
+                    const speedKmH = nSpeed * 3.6;
+                    // Si está casi quieto (< 2 km/h), requerir al menos 15m para evitar cuadrados y temblor en esquinas
+                    const threshold = speedKmH < 2.0 ? 0.015 : 0.010;
+                    if (dist < threshold) return prev;
+
+                    // Descartar picos de velocidad imposible (> 130 km/h)
+                    const t1 = new Date(lastPt.timestamp || 0).getTime();
+                    const t2 = new Date().getTime();
+                    if (t1 > 0 && t2 > t1) {
+                      const hours = (t2 - t1) / (1000 * 3600);
+                      if (dist / hours > 130) return prev;
                     }
+
+                    const updatedDist = Number((routeDistance + dist).toFixed(2));
+                    setRouteDistance(updatedDist);
+                    const updatedPts = [...prev, pt];
+                    localStorage.setItem('asistencia_active_route', JSON.stringify({
+                      id: res.routeId,
+                      name: res.routeName || routeName,
+                      start_lat: lat,
+                      start_lng: lng,
+                      distance: updatedDist,
+                      points: updatedPts
+                    }));
+                    apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
+                    return updatedPts;
                   }
                   return prev;
                 });

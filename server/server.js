@@ -1539,8 +1539,8 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
     }
 
     // Filtrar únicamente puntos con imprecisión extrema (> 120 metros)
-    if (accuracy && accuracy > 120) {
-      return res.json({ success: true, message: 'Punto descartado por precisión GPS insuficiente' });
+    if (accuracy && accuracy > 30) {
+      return res.json({ success: true, message: 'Punto descartado por precisión GPS insuficiente (> 30m)' });
     }
 
     const today = getLocalDateString();
@@ -1571,23 +1571,24 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
           if (lastPoint) {
             addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
             
-            // 1. Si se movió menos de 5 metros estando quieto, no añadir punto para evitar temblor
-            if (addedDist < 0.005 && (!speed || speed < 0.5)) {
+            // 1. Si está detenido o muy lento (< 2 km/h) y se movió menos de 15m, no añadir punto para evitar temblor y cuadrados
+            const speedKmH = (speed || 0) * 3.6;
+            const minMoveKm = speedKmH < 2.0 ? 0.015 : 0.008;
+            if (addedDist < minMoveKm) {
               shouldAddPoint = false;
             }
 
-            // 2. Si el salto representa una velocidad imposible (> 140 km/h), descartar salto
+            // 2. Si el salto representa una velocidad imposible (> 125 km/h), descartar salto
             const t1 = new Date(lastPoint.timestamp || 0).getTime();
             const t2 = new Date().getTime();
             if (t1 > 0 && t2 > t1) {
               const hours = (t2 - t1) / (1000 * 3600);
-              const speedKmH = addedDist / hours;
-              if (speedKmH > 140) {
+              const calcSpeedKmH = addedDist / hours;
+              if (calcSpeedKmH > 125) {
                 shouldAddPoint = false;
               }
             }
           }
-
           if (shouldAddPoint) {
             points.push(newPoint);
           }
