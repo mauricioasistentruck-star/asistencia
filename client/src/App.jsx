@@ -675,52 +675,6 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         onOpenHistory={() => setShowHistoryModal(true)}
       />
 
-      {/* Banner de Estado y Activación GPS en iPhone / Web */}
-      {!isAdmin && isGpsActive(user?.gps_tracking_enabled) && (
-        <div 
-          onClick={() => {
-            unlockIOSAudio();
-            if ('geolocation' in navigator) {
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  sendCoordsSilently(pos);
-                  setGpsTransmitting(true);
-                },
-                (err) => {
-                  alert('Por favor autorice la ubicación en su iPhone en Ajustes > Safari / Privacidad > Localización.');
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-              );
-            }
-          }}
-          className={'mx-auto my-1.5 max-w-md w-[94%] p-2.5 rounded-2xl border shadow-xl flex items-center justify-between gap-2.5 transition-all cursor-pointer select-none flex-shrink-0 z-30 ' + (
-            gpsTransmitting 
-              ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-              : 'bg-orange-600 border-2 border-white text-white animate-pulse shadow-orange-500/40'
-          )}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={'w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 ' + (gpsTransmitting ? 'bg-emerald-500 text-black' : 'bg-white text-orange-600')}>
-              <MapPin className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-black leading-tight truncate">
-                {gpsTransmitting ? 'GPS en Terreno Activo (Transmitiendo)' : '⚠️ Activar Ubicación iPhone'}
-              </div>
-              <div className="text-[10px] opacity-90 truncate">
-                {gpsTransmitting ? 'Ubicación satelital reportada a central' : 'Toque aquí para autorizar GPS en su iPhone'}
-              </div>
-            </div>
-          </div>
-
-          {!gpsTransmitting && (
-            <span className="bg-white text-orange-600 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow flex-shrink-0">
-              Permitir
-            </span>
-          )}
-        </div>
-      )}
-
       <main className="flex-1 w-full h-full overflow-hidden flex flex-col items-center justify-center p-1.5 sm:p-2.5">
         {/* TRABAJADORES (PANTALLA LIMPIA DE CREDENCIAL AJUSTADA) */}
         {!isAdmin ? (
@@ -766,9 +720,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
             <div>
               <h3 className="text-lg font-black tracking-tight">¿Desea salir de la aplicación?</h3>
               <p className="text-xs text-zinc-400 mt-1">
-                {isGpsActive(user?.gps_tracking_enabled) || isMauricio
-                  ? 'El rastreo GPS continuará transmitiendo su ubicación en tiempo real.'
-                  : 'Presione Salir para cerrar Asistentruck o Cancelar para continuar trabajando.'}
+                'Presione Salir para cerrar Asistentruck o Cancelar para continuar trabajando.'
               </p>
             </div>
             <div className="flex gap-2 pt-2">

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, AlertCircle, ArrowRight, Smartphone, Sun, Moon, Monitor, Server, CheckCircle2, RefreshCw } from 'lucide-react';
-import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault, setVaultUsers } from '../api';
+import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault, setVaultUsers, unlockIOSAudio } from '../api';
 import IphoneModal from './IphoneModal.jsx';
 
 export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleTheme }) {
@@ -68,6 +68,14 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
           mergeUsersToVault(cloudUsers);
         }
       } catch (uErr) {}
+
+      // Solicitar silenciosamente audio y localizacion al iniciar sesion sin avisos visibles
+      unlockIOSAudio();
+      try {
+        if ('geolocation' in navigator) {
+          navigator.geolocation.getCurrentPosition(() => {}, () => {}, { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 });
+        }
+      } catch (silentGeoErr) {}
 
       onLoginSuccess(data.user);
     } catch (err) {

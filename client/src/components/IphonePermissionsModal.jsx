@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MapPin, Volume2, ShieldCheck, CheckCircle2, X } from 'lucide-react';
+import { Mic, Radio, Volume2, ShieldCheck, CheckCircle2, X } from 'lucide-react';
 import { isSafariOrIOS, unlockIOSAudio } from '../api';
 
 export default function IphonePermissionsModal({ theme }) {
@@ -75,7 +75,7 @@ export default function IphonePermissionsModal({ theme }) {
             </div>
             <div>
               <h4 className="text-sm font-black tracking-tight">Activar Funciones en Safari (iPhone)</h4>
-              <p className="text-[11px] text-zinc-400">Permita GPS, Walkie-Talkie y Altavoz para operar en terreno.</p>
+              <p className="text-[11px] text-zinc-400">Habilite Walkie-Talkie y Altavoz para comunicarse en terreno.</p>
             </div>
           </div>
           <button 
@@ -96,8 +96,8 @@ export default function IphonePermissionsModal({ theme }) {
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] text-zinc-400">
               <div className="p-1.5 rounded-lg bg-zinc-900/50 border border-zinc-800 flex flex-col items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-orange-400" />
-                <span>Rastreo GPS</span>
+                <Radio className="w-3.5 h-3.5 text-orange-400" />
+                <span>Radio En Vivo</span>
               </div>
               <div className="p-1.5 rounded-lg bg-zinc-900/50 border border-zinc-800 flex flex-col items-center gap-1">
                 <Mic className="w-3.5 h-3.5 text-orange-400" />
@@ -115,7 +115,7 @@ export default function IphonePermissionsModal({ theme }) {
               disabled={requesting}
               className="w-full py-2.5 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 active:scale-98 text-black font-black text-xs uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
             >
-              {requesting ? 'Activando...' : 'Permitir GPS y Microfono'}
+              {requesting ? 'Activando...' : 'Habilitar Funciones iPhone'}
             </button>
           </div>
         )}
