@@ -66,18 +66,21 @@ const createPointIcon = (color = '#22c55e', text = 'P') => {
   });
 };
 
-function MapController({ center, zoom, bounds }) {
+function MapController({ targetCenter, targetZoom, targetBounds, moveTrigger }) {
   const map = useMap();
   useEffect(() => {
-    if (bounds && bounds.length > 1) {
-      const b = L.latLngBounds(bounds);
-      map.fitBounds(b, { padding: [60, 60], maxZoom: 16 });
-    } else if (bounds && bounds.length === 1) {
-      map.flyTo(bounds[0], 15, { animate: true, duration: 1.2 });
-    } else if (center) {
-      map.flyTo(center, zoom || 14, { animate: true, duration: 1.2 });
+    if (!moveTrigger) return;
+    if (targetBounds && targetBounds.length > 1) {
+      try {
+        const b = L.latLngBounds(targetBounds);
+        map.fitBounds(b, { padding: [60, 60], maxZoom: 16 });
+      } catch (e) {}
+    } else if (targetBounds && targetBounds.length === 1) {
+      map.flyTo(targetBounds[0], 15, { animate: true, duration: 1.0 });
+    } else if (targetCenter) {
+      map.flyTo(targetCenter, targetZoom || 14, { animate: true, duration: 1.0 });
     }
-  }, [center, zoom, bounds, map]);
+  }, [moveTrigger]);
   return null;
 }
 
@@ -165,10 +168,10 @@ export default function AdminGpsView({ theme }) {
       if (lat !== undefined && lng !== undefined) {
         setMyLocation([lat, lng]);
         setMyLocationAccuracy(acc);
-        if (!selectedUser && liveGpsList.length === 0) {
-          setMapCenter([lat, lng]);
-          setMapZoom(16);
-        }
+        setTargetCenter([lat, lng]);
+        setTargetZoom(16);
+        setTargetBounds(null);
+        setMoveTrigger(t => t + 1);
         setGeoError('');
       }
     } catch (err) {
@@ -203,6 +206,31 @@ export default function AdminGpsView({ theme }) {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+    const handleSelectUser = (u) => {
+    if (!u) {
+      setSelectedUser(null);
+      setSelectedSavedRoute(null);
+      setRoutePoints([]);
+      setSnappedCoordinates([]);
+      const activeCoords = liveGpsList.filter(g => g.latitude && g.longitude).map(g => [g.latitude, g.longitude]);
+      if (activeCoords.length > 0) {
+        setTargetBounds(activeCoords);
+        setMoveTrigger(t => t + 1);
+      }
+      return;
+    }
+    setSelectedUser(u);
+    setSelectedSavedRoute(null);
+    fetchRoute(u.id);
+    const live = liveGpsList.find(g => g.user_id === u.id);
+    if (live && live.latitude && live.longitude) {
+      setTargetCenter([live.latitude, live.longitude]);
+      setTargetZoom(16);
+      setTargetBounds([[live.latitude, live.longitude]]);
+      setMoveTrigger(t => t + 1);
     }
   };
 
@@ -244,8 +272,11 @@ export default function AdminGpsView({ theme }) {
       const res = await apiGetGpsRoute(selectedUser.id, selectedDate);
       setRoutePoints(res.points || []);
       if (res.points && res.points.length > 0) {
-        setMapCenter([res.points[res.points.length - 1].latitude, res.points[res.points.length - 1].longitude]);
-        setMapZoom(15);
+        const last = res.points[res.points.length - 1];
+        setTargetCenter([last.latitude, last.longitude]);
+        setTargetZoom(15);
+        setTargetBounds(res.points.map(p => [p.latitude, p.longitude]));
+        setMoveTrigger(t => t + 1);
       }
     } catch (err) {
       console.error(err);
@@ -271,8 +302,9 @@ export default function AdminGpsView({ theme }) {
       setRoutePoints(fullRoute.points || []);
       setViewMode('live'); // Cambiar a visualización de mapa
       if (fullRoute.points && fullRoute.points.length > 0) {
-        setMapCenter([fullRoute.points[0].latitude, fullRoute.points[0].longitude]);
-        setMapZoom(15);
+        setTargetCenter([fullRoute.points[0].latitude, fullRoute.points[0].longitude]);
+        setTargetBounds(fullRoute.points.map(p => [p.latitude, p.longitude]));
+        setMoveTrigger(t => t + 1);
       }
     } catch (err) {
       alert('Error al cargar los puntos de la ruta: ' + err.message);
@@ -330,7 +362,7 @@ export default function AdminGpsView({ theme }) {
           timestamp: data.timestamp,
           time: data.time
         }]);
-        setMapCenter([data.latitude, data.longitude]);
+        // Camara estable
       }
     };
 
@@ -372,9 +404,11 @@ export default function AdminGpsView({ theme }) {
     fetchSavedRoutes();
   }, [selectedUser, selectedDate, selectedSavedRoute]);
 
-  const displayCoordinates = (snappedCoordinates && snappedCoordinates.length > 0)
-    ? snappedCoordinates
-    : cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]);
+  const displayCoordinates = (selectedUser || selectedSavedRoute)
+    ? ((snappedCoordinates && snappedCoordinates.length > 0)
+        ? snappedCoordinates
+        : cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]))
+    : [];
   const polylineCoordinates = displayCoordinates;
   
   const activeTrackedUsers = trackedUsers.filter(u => isGpsActive(u.gps_tracking_enabled));
@@ -471,7 +505,134 @@ export default function AdminGpsView({ theme }) {
       {/* VISTA 1: REGISTRO DE RUTAS GUARDADAS EN TERRENO */}
       {/* ========================================================================= */}
       {viewMode === 'saved_routes' && (
-        <div className={'border rounded-3xl p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
+        <div className="space-y-6">
+          {/* PANEL EXCLUSIVO: PRENDER Y APAGAR RASTREO GPS DE PERSONAL */}
+          <div className={'border rounded-3xl p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-orange-500/20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
+                  <Radio className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
+                    Prender y Apagar Rastreo GPS de Trabajadores
+                  </h3>
+                  <p className="text-xs text-orange-500 font-semibold">
+                    Control centralizado de rastreo. Al prender el GPS de un trabajador, se inicia y registra su ruta en terreno automáticamente.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { setViewMode('live'); }}
+                className="bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 font-black text-xs px-3.5 py-2 rounded-xl border border-orange-500/30 flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Ver Mapa En Vivo</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+              {allUsers.length === 0 ? (
+                <div className="col-span-full py-8 text-center text-zinc-500 font-bold text-xs">
+                  Cargando lista de personal...
+                </div>
+              ) : (
+                allUsers.map((u, idx) => {
+                  const isGpsOn = isGpsActive(u.gps_tracking_enabled);
+                  const livePos = liveGpsList.find(g => g.user_id === u.id);
+                  const uColor = getWorkerColor(u.id, idx);
+                  const speedKmh = livePos?.speed ? Math.round(livePos.speed * 3.6) : 0;
+
+                  return (
+                    <div
+                      key={u.id}
+                      className={'border rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-all ' + (
+                        isGpsOn 
+                          ? (isDark ? 'bg-zinc-900/90 border-emerald-500/50 shadow-lg shadow-emerald-950/30' : 'bg-emerald-50/50 border-emerald-400')
+                          : (isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-zinc-50 border-zinc-200')
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: isGpsOn ? '#22c55e' : '#71717a' }}>
+                            {u.photo_url ? (
+                              <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-sm font-black" style={{ color: uColor }}>{u.name.charAt(0)}</span>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black tracking-tight">{u.name}</h4>
+                            <span className="text-[10px] text-zinc-400 block font-mono">@{u.username} • {u.role}</span>
+                          </div>
+                        </div>
+
+                        <span className={'text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ' + (
+                          isGpsOn ? 'bg-emerald-500 text-black shadow-sm' : 'bg-zinc-800 text-zinc-400'
+                        )}>
+                          {isGpsOn ? 'ACTIVO' : 'APAGADO'}
+                        </span>
+                      </div>
+
+                      {/* Estado en Vivo si el GPS está prendido */}
+                      {isGpsOn && (
+                        <div className="bg-black/30 rounded-xl p-2 text-[10px] space-y-1 border border-emerald-500/20">
+                          <div className="flex items-center justify-between text-zinc-300">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                              <strong className="text-emerald-400 font-bold">Grabando Ruta en Terreno</strong>
+                            </span>
+                            {livePos?.latitude && (
+                              <span className="font-mono text-white font-bold">{speedKmh} km/h</span>
+                            )}
+                          </div>
+                          <div className="text-[9px] text-zinc-400 truncate">
+                            {livePos?.latitude ? ('Última señal: ' + formatChileTime(livePos.timestamp)) : 'Esperando primer punto satelital del teléfono...'}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => handleToggleUserGps(u)}
+                          disabled={togglingGps}
+                          className={'flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ' + (
+                            isGpsOn
+                              ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/30'
+                              : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/25'
+                          )}
+                        >
+                          {isGpsOn ? (
+                            <>
+                              <Square className="w-3.5 h-3.5 fill-white" />
+                              <span>{togglingGps ? 'Actualizando...' : 'Apagar GPS & Guardar Ruta'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3.5 h-3.5 fill-black" />
+                              <span>{togglingGps ? 'Iniciando...' : 'Prender GPS & Iniciar Ruta'}</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => { handleSelectUser(u); setViewMode('live'); }}
+                          className="px-3 py-2 rounded-xl text-xs font-bold border border-zinc-700 hover:border-orange-500 text-zinc-300 hover:text-white flex items-center gap-1"
+                          title="Ver en Mapa En Vivo"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-orange-400" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* HISTORIAL DE RUTAS GUARDADAS */}
+          <div className={'border rounded-3xl p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-orange-500/20">
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black">
@@ -559,6 +720,7 @@ export default function AdminGpsView({ theme }) {
               ))}
             </div>
           )}
+        </div>
         </div>
       )}
 
@@ -767,25 +929,11 @@ export default function AdminGpsView({ theme }) {
 
                   {!selectedSavedRoute && selectedUser && (
                     <button
-                      onClick={() => handleToggleUserGps(selectedUser)}
-                      disabled={togglingGps}
-                      className={'py-1.5 px-3 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer flex-shrink-0 ' + (
-                        isGpsActive(selectedUser.gps_tracking_enabled)
-                          ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/30'
-                          : 'bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-black shadow-emerald-500/30 animate-pulse'
-                      )}
+                      onClick={() => setViewMode('saved_routes')}
+                      className="bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-orange-500/30 transition-all cursor-pointer flex items-center gap-1 flex-shrink-0"
                     >
-                      {isGpsActive(selectedUser.gps_tracking_enabled) ? (
-                        <>
-                          <Square className="w-3.5 h-3.5 fill-white" />
-                          <span>{togglingGps ? 'Guardando...' : 'Desactivar GPS y Guardar Ruta'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-3.5 h-3.5 fill-black" />
-                          <span>{togglingGps ? 'Iniciando...' : 'Activar GPS & Grabar Ruta'}</span>
-                        </>
-                      )}
+                      <Route className="w-3 h-3" />
+                      <span>Prender/Apagar GPS en Rutas →</span>
                     </button>
                   )}
 
@@ -808,16 +956,11 @@ export default function AdminGpsView({ theme }) {
                 style={{ height: '100%', width: '100%' }}
               >
                 <MapController
-                  center={mapCenter}
-                  zoom={mapZoom}
-                  bounds={
-                    displayCoordinates.length > 1 
-                      ? displayCoordinates 
-                      : (liveGpsList.filter(g => g.latitude && g.longitude).length > 1 
-                          ? liveGpsList.filter(g => g.latitude && g.longitude).map(g => [g.latitude, g.longitude]) 
-                          : null)
-                  }
-                />
+                    targetCenter={targetCenter}
+                    targetZoom={targetZoom}
+                    targetBounds={targetBounds}
+                    moveTrigger={moveTrigger}
+                  />
 
                 {mapLayer === 'satellite' ? (
                   <TileLayer
@@ -880,7 +1023,7 @@ export default function AdminGpsView({ theme }) {
                 ))}
 
                 {/* Trazado Real de la Línea de Ruta Recorrida por Calles y Carreteras */}
-                {displayCoordinates.length > 1 && (
+                {(selectedUser || selectedSavedRoute) && displayCoordinates.length > 1 && (
                   <>
                     <Polyline
                       positions={displayCoordinates}
@@ -898,7 +1041,7 @@ export default function AdminGpsView({ theme }) {
                 )}
 
                 {/* Marcador de Punto Inicial (Verde A) y Final (Rojo B) */}
-                {routePoints.length > 0 && (
+                {(selectedUser || selectedSavedRoute) && routePoints.length > 0 && (
                   <>
                     <Marker
                       position={[routePoints[0].latitude, routePoints[0].longitude]}

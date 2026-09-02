@@ -469,22 +469,8 @@ export default function AdminUsersView({ currentUser, theme }) {
                 </div>
               )}
 
-              {/* Acciones Rápidas: QR y GPS */}
+              {/* Acciones Rápidas: QR */}
               <div className="space-y-2 pt-1 border-t border-zinc-800/60">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-zinc-400 font-bold">Rastreo GPS en vivo:</span>
-                  <button
-                    onClick={() => handleToggleGps(u.id, u.gps_tracking_enabled)}
-                    className={'px-2.5 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ' + (
-                      isGpsActive(u.gps_tracking_enabled)
-                        ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                    )}
-                  >
-                    {isGpsActive(u.gps_tracking_enabled) ? 'ACTIVADO' : 'DESACTIVADO'}
-                  </button>
-                </div>
-
                 {hasCred ? (
                   <button
                     onClick={() => setShowQrModal(u)}

@@ -1643,10 +1643,7 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
           const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.003 ? addedDist : 0)).toFixed(2));
           db.run(
             'UPDATE gps_routes SET start_lat = ?, start_lng = ?, end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
-            [startLat, startLng, currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id],
-            function () {
-              io.emit('routes_updated');
-            }
+            [startLat, startLng, currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id]
           );
         }
       });
@@ -1659,9 +1656,9 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
 app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
   const query = `
     SELECT u.id as user_id, u.name as user_name, u.photo_url, u.gps_tracking_enabled, 
-           g.latitude, g.longitude, g.accuracy, g.speed, g.timestamp, g.time 
+           g.latitude, g.longitude, g.accuracy, g.speed, g.timestamp, g.date 
     FROM users u 
-    INNER JOIN (
+    LEFT JOIN (
       SELECT g1.* FROM gps_logs g1 
       INNER JOIN (
         SELECT user_id, MAX(id) as max_id FROM gps_logs GROUP BY user_id
