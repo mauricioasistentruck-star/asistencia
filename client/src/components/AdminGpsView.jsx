@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, Play, Square } from 'lucide-react';
-import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, apiToggleGps, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime } from '../api';
+import { 
+  Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, 
+  MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, Play, 
+  Square, Save, UserCheck, Activity, ChevronRight, AlertCircle
+} from 'lucide-react';
+import { 
+  apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
+  apiDeleteGpsRoute, apiToggleGps, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
+  getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime 
+} from '../api';
 import { Geolocation } from '@capacitor/geolocation';
 import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
 const WORKER_COLORS = [
-  '#f97316', // Naranja
-  '#3b82f6', // Azul
-  '#10b981', // Verde Esmeralda
-  '#a855f7', // Púrpura
-  '#ec4899', // Rosa
-  '#eab308', // Amarillo
-  '#06b6d4', // Cian
-  '#f43f5e', // Carmesí
-  '#8b5cf6', // Violeta
+  '#f97316', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#eab308', '#06b6d4', '#f43f5e', '#8b5cf6'
 ];
 
 const getWorkerColor = (userId, index = 0) => {
@@ -68,51 +68,61 @@ const createPointIcon = (color = '#22c55e', text = 'P') => {
 
 function MapController({ targetCenter, targetZoom, targetBounds, moveTrigger }) {
   const map = useMap();
+  const lastTriggerRef = useRef(0);
+
   useEffect(() => {
-    if (!moveTrigger) return;
-    if (targetBounds && targetBounds.length > 1) {
-      try {
+    if (!moveTrigger || moveTrigger === lastTriggerRef.current) return;
+    lastTriggerRef.current = moveTrigger;
+
+    try {
+      if (targetBounds && targetBounds.length > 1) {
         const b = L.latLngBounds(targetBounds);
-        map.fitBounds(b, { padding: [60, 60], maxZoom: 16 });
-      } catch (e) {}
-    } else if (targetBounds && targetBounds.length === 1) {
-      map.flyTo(targetBounds[0], 15, { animate: true, duration: 1.0 });
-    } else if (targetCenter) {
-      map.flyTo(targetCenter, targetZoom || 14, { animate: true, duration: 1.0 });
+        map.fitBounds(b, { padding: [50, 50], maxZoom: 16 });
+      } else if (targetBounds && targetBounds.length === 1) {
+        map.flyTo(targetBounds[0], 16, { animate: true, duration: 0.8 });
+      } else if (targetCenter) {
+        map.flyTo(targetCenter, targetZoom || 15, { animate: true, duration: 0.8 });
+      }
+    } catch (e) {
+      console.warn('MapController error:', e);
     }
   }, [moveTrigger]);
+
   return null;
 }
-
 export default function AdminGpsView({ theme }) {
-  const [viewMode, setViewMode] = useState('live'); // 'live' | 'saved_routes'
-  const [trackedUsers, setTrackedUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [togglingGps, setTogglingGps] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null); // null = Todos los trabajadores
+  const [selectedUser, setSelectedUser] = useState(null);
   const [selectedDate, setSelectedDate] = useState(getChileTodayString());
+  
   const [routePoints, setRoutePoints] = useState([]);
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoads, setIsSnappingRoads] = useState(false);
-  const [mapCenter, setMapCenter] = useState([-33.4489, -70.6693]);
-  const [mapZoom, setMapZoom] = useState(13);
+
+  const [targetCenter, setTargetCenter] = useState([-33.4489, -70.6693]);
+  const [targetZoom, setTargetZoom] = useState(13);
+  const [targetBounds, setTargetBounds] = useState(null);
+  const [moveTrigger, setMoveTrigger] = useState(0);
+
   const [liveGpsList, setLiveGpsList] = useState([]);
   const [mapLayer, setMapLayer] = useState('satellite');
   const [myLocation, setMyLocation] = useState(null);
   const [myLocationAccuracy, setMyLocationAccuracy] = useState(null);
   const [geoError, setGeoError] = useState('');
 
-  // Estados del Registro de Rutas Guardadas
+  const [activeRouteInfo, setActiveRouteInfo] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const [savedRoutes, setSavedRoutes] = useState([]);
   const [loadingSavedRoutes, setLoadingSavedRoutes] = useState(false);
   const [selectedSavedRoute, setSelectedSavedRoute] = useState(null);
-  const dateInputRef = useRef(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const isDark = theme === 'dark';
+  const workersList = allUsers.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco');
 
-  // Efecto para ajustar la ruta automáticamente a las calles y carreteras reales (OSRM Map Matching)
   useEffect(() => {
-    if (routePoints.length > 1) {
+    if ((selectedUser || selectedSavedRoute) && routePoints.length > 1) {
       setIsSnappingRoads(true);
       matchPointsToRealRoads(routePoints)
         .then((snapped) => {
@@ -128,14 +138,14 @@ export default function AdminGpsView({ theme }) {
         .finally(() => {
           setIsSnappingRoads(false);
         });
-    } else if (routePoints.length === 1) {
+    } else if ((selectedUser || selectedSavedRoute) && routePoints.length === 1) {
       setSnappedCoordinates([[routePoints[0].latitude, routePoints[0].longitude]]);
       setIsSnappingRoads(false);
     } else {
       setSnappedCoordinates([]);
       setIsSnappingRoads(false);
     }
-  }, [routePoints]);
+  }, [routePoints, selectedUser?.id, selectedSavedRoute?.id]);
 
   const locateMe = async () => {
     try {
@@ -176,7 +186,7 @@ export default function AdminGpsView({ theme }) {
       }
     } catch (err) {
       console.warn('Geolocalización error:', err.message);
-      setGeoError('Active el GPS o permisos de ubicación para auto-centrar');
+      setGeoError('Active el GPS para auto-centrar');
     }
   };
 
@@ -187,7 +197,7 @@ export default function AdminGpsView({ theme }) {
   const fetchLiveGps = async () => {
     try {
       const data = await apiGetLiveGps();
-      setLiveGpsList(data);
+      if (Array.isArray(data)) setLiveGpsList(data);
     } catch (err) {
       console.error(err);
     }
@@ -196,25 +206,55 @@ export default function AdminGpsView({ theme }) {
   const fetchUsers = async () => {
     try {
       const usersData = await apiGetUsers();
-      const nonKiosks = (usersData || []).filter(u => u.role !== 'kiosk' && u.role !== 'kiosco');
-      setAllUsers(nonKiosks);
-      const gpsUsers = nonKiosks.filter(u => isGpsActive(u.gps_tracking_enabled));
-      setTrackedUsers(gpsUsers);
-      if (selectedUser) {
-        const found = nonKiosks.find(u => u.id === selectedUser.id);
-        if (found) setSelectedUser(found);
-      }
+      if (Array.isArray(usersData)) setAllUsers(usersData);
     } catch (err) {
       console.error(err);
     }
   };
 
-    const handleSelectUser = (u) => {
-    if (!u) {
-      setSelectedUser(null);
-      setSelectedSavedRoute(null);
+  const fetchRoute = async (targetUserId) => {
+    if (!targetUserId) {
       setRoutePoints([]);
       setSnappedCoordinates([]);
+      return;
+    }
+    try {
+      const res = await apiGetGpsRoute(targetUserId, selectedDate);
+      setRoutePoints(res.points || []);
+    } catch (err) {
+      console.error('Error al obtener ruta:', err);
+    }
+  };
+
+  const checkActiveRoute = async (userId) => {
+    try {
+      const active = await apiAdminGetActiveRoute(userId);
+      setActiveRouteInfo(active && active.status === 'active' ? active : null);
+    } catch (e) {
+      setActiveRouteInfo(null);
+    }
+  };
+
+  const fetchSavedRoutes = async () => {
+    setLoadingSavedRoutes(true);
+    try {
+      const data = await apiGetGpsRoutes({ date: selectedDate });
+      setSavedRoutes(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingSavedRoutes(false);
+    }
+  };
+
+  const handleSelectWorker = async (worker) => {
+    if (!worker) {
+      setSelectedUser(null);
+      setSelectedSavedRoute(null);
+      setActiveRouteInfo(null);
+      setRoutePoints([]);
+      setSnappedCoordinates([]);
+
       const activeCoords = liveGpsList.filter(g => g.latitude && g.longitude).map(g => [g.latitude, g.longitude]);
       if (activeCoords.length > 0) {
         setTargetBounds(activeCoords);
@@ -222,10 +262,25 @@ export default function AdminGpsView({ theme }) {
       }
       return;
     }
-    setSelectedUser(u);
+
+    setSelectedUser(worker);
     setSelectedSavedRoute(null);
-    fetchRoute(u.id);
-    const live = liveGpsList.find(g => g.user_id === u.id);
+
+    // Si el trabajador tiene el GPS inactivo, activarlo de inmediato para localizarlo
+    if (!isGpsActive(worker.gps_tracking_enabled)) {
+      try {
+        await apiToggleGps(worker.id, true);
+        setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: 1 } : u));
+        setSelectedUser(prev => prev && prev.id === worker.id ? { ...prev, gps_tracking_enabled: 1 } : prev);
+      } catch (err) {
+        console.warn('Error al activar GPS:', err);
+      }
+    }
+
+    checkActiveRoute(worker.id);
+    fetchRoute(worker.id);
+
+    const live = liveGpsList.find(g => g.user_id === worker.id);
     if (live && live.latitude && live.longitude) {
       setTargetCenter([live.latitude, live.longitude]);
       setTargetZoom(16);
@@ -234,64 +289,44 @@ export default function AdminGpsView({ theme }) {
     }
   };
 
-  const handleToggleUserGps = async (userToToggle) => {
-    if (!userToToggle || togglingGps) return;
-    setTogglingGps(true);
-    const currentVal = isGpsActive(userToToggle.gps_tracking_enabled);
-    const newVal = !currentVal;
+  const handleStartRoute = async () => {
+    if (!selectedUser || actionLoading) return;
+    setActionLoading(true);
     try {
-      await apiToggleGps(userToToggle.id, newVal);
-      setAllUsers(prev => prev.map(u => u.id === userToToggle.id ? { ...u, gps_tracking_enabled: newVal ? 1 : 0 } : u));
-      setTrackedUsers(prev => {
-        if (newVal) {
-          const updated = { ...userToToggle, gps_tracking_enabled: 1 };
-          return [...prev.filter(u => u.id !== userToToggle.id), updated];
-        } else {
-          return prev.filter(u => u.id !== userToToggle.id);
-        }
-      });
-      setSelectedUser(prev => prev?.id === userToToggle.id ? { ...prev, gps_tracking_enabled: newVal ? 1 : 0 } : prev);
-      await fetchLiveGps();
-      await fetchSavedRoutes();
-      if (newVal) {
-        await fetchRoute();
-      }
+      const live = liveGpsList.find(g => g.user_id === selectedUser.id);
+      const lat = live?.latitude || -33.4489;
+      const lng = live?.longitude || -70.6693;
+
+      const res = await apiAdminStartRoute(selectedUser.id, lat, lng);
+      setActiveRouteInfo(res);
+      fetchSavedRoutes();
+      fetchRoute(selectedUser.id);
     } catch (err) {
-      alert('Error al modificar estado GPS: ' + (err.message || err));
+      alert('Error al comenzar ruta: ' + (err.message || err));
     } finally {
-      setTogglingGps(false);
+      setActionLoading(false);
     }
   };
 
-  const fetchRoute = async () => {
-    if (!selectedUser || selectedSavedRoute) {
-      setRoutePoints([]);
-      return;
-    }
-    try {
-      const res = await apiGetGpsRoute(selectedUser.id, selectedDate);
-      setRoutePoints(res.points || []);
-      if (res.points && res.points.length > 0) {
-        const last = res.points[res.points.length - 1];
-        setTargetCenter([last.latitude, last.longitude]);
-        setTargetZoom(15);
-        setTargetBounds(res.points.map(p => [p.latitude, p.longitude]));
-        setMoveTrigger(t => t + 1);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const handleFinishRoute = async () => {
+    if (!selectedUser || actionLoading) return;
+    if (!window.confirm(`¿Desea guardar y finalizar la ruta de ${selectedUser.name}? Esto archivará el recorrido y apagará el GPS.`)) return;
 
-  const fetchSavedRoutes = async () => {
-    setLoadingSavedRoutes(true);
+    setActionLoading(true);
     try {
-      const data = await apiGetGpsRoutes({ date: selectedDate });
-      setSavedRoutes(data);
+      await apiAdminFinishRoute(selectedUser.id);
+      setActiveRouteInfo(null);
+
+      setAllUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, gps_tracking_enabled: 0 } : u));
+      setSelectedUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+      setLiveGpsList(prev => prev.filter(g => g.user_id !== selectedUser.id));
+
+      fetchSavedRoutes();
+      alert('¡Ruta guardada y archivada con éxito en el historial!');
     } catch (err) {
-      console.error('Error al cargar rutas guardadas:', err);
+      alert('Error al guardar ruta: ' + (err.message || err));
     } finally {
-      setLoadingSavedRoutes(false);
+      setActionLoading(false);
     }
   };
 
@@ -299,25 +334,31 @@ export default function AdminGpsView({ theme }) {
     try {
       const fullRoute = await apiGetGpsRouteById(r.id);
       setSelectedSavedRoute(fullRoute);
-      setRoutePoints(fullRoute.points || []);
-      setViewMode('live'); // Cambiar a visualización de mapa
-      if (fullRoute.points && fullRoute.points.length > 0) {
-        setTargetCenter([fullRoute.points[0].latitude, fullRoute.points[0].longitude]);
-        setTargetBounds(fullRoute.points.map(p => [p.latitude, p.longitude]));
+      setSelectedUser(null);
+      setActiveRouteInfo(null);
+      setShowHistoryModal(false);
+
+      const pts = fullRoute.points || [];
+      setRoutePoints(pts);
+
+      if (pts.length > 0) {
+        setTargetCenter([pts[0].latitude, pts[0].longitude]);
+        setTargetBounds(pts.map(p => [p.latitude, p.longitude]));
         setMoveTrigger(t => t + 1);
       }
     } catch (err) {
-      alert('Error al cargar los puntos de la ruta: ' + err.message);
+      alert('Error al cargar la ruta: ' + err.message);
     }
   };
 
   const handleDeleteSavedRoute = async (routeId) => {
-    if (!window.confirm('¿Desea eliminar esta ruta guardada del registro?')) return;
+    if (!window.confirm('¿Desea eliminar esta ruta guardada?')) return;
     try {
       await apiDeleteGpsRoute(routeId);
       if (selectedSavedRoute?.id === routeId) {
         setSelectedSavedRoute(null);
         setRoutePoints([]);
+        setSnappedCoordinates([]);
       }
       fetchSavedRoutes();
     } catch (err) {
@@ -331,7 +372,9 @@ export default function AdminGpsView({ theme }) {
     fetchSavedRoutes();
 
     const socket = getSocket();
+
     const handleLiveGpsSocket = (data) => {
+      if (!data || !data.userId) return;
       setLiveGpsList(prev => {
         const index = prev.findIndex(item => item.user_id === data.userId);
         const updatedEntry = {
@@ -342,7 +385,7 @@ export default function AdminGpsView({ theme }) {
           accuracy: data.accuracy,
           speed: data.speed,
           timestamp: data.timestamp,
-          time: data.time
+          date: data.date
         };
         if (index >= 0) {
           const newList = [...prev];
@@ -353,135 +396,110 @@ export default function AdminGpsView({ theme }) {
         }
       });
 
-      if (!selectedSavedRoute && selectedUser && selectedUser.id === data.userId) {
-        setRoutePoints(pts => [...pts, {
+      setRoutePoints(prevPts => {
+        return [...prevPts, {
           latitude: data.latitude,
           longitude: data.longitude,
           accuracy: data.accuracy,
           speed: data.speed,
           timestamp: data.timestamp,
-          time: data.time
-        }]);
-        // Camara estable
+          date: data.date
+        }];
+      });
+    };
+
+    const handleUserGpsToggled = (payload) => {
+      if (!payload || !payload.userId) return;
+      const { userId, gps_tracking_enabled } = payload;
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, gps_tracking_enabled } : u));
+      if (gps_tracking_enabled === 0) {
+        setLiveGpsList(prev => prev.filter(g => g.user_id !== userId));
       }
     };
 
-    const handleUserSync = () => {
-      fetchUsers();
-      fetchLiveGps();
-    };
-
     socket.on('gps_position_updated', handleLiveGpsSocket);
-    socket.on('user_gps_toggled', handleUserSync);
-    socket.on('user_updated', handleUserSync);
-    socket.on('user_created', handleUserSync);
-    socket.on('user_deleted', handleUserSync);
-    socket.on('gps_route_started', () => { fetchSavedRoutes(); fetchLiveGps(); });
-    socket.on('gps_route_finished', () => { fetchSavedRoutes(); fetchLiveGps(); });
-    socket.on('routes_updated', () => { fetchSavedRoutes(); fetchLiveGps(); });
+    socket.on('user_gps_toggled', handleUserGpsToggled);
+    socket.on('routes_updated', fetchSavedRoutes);
 
-    const liveInterval = setInterval(() => {
-      fetchLiveGps();
-    }, 6000);
+    const liveInterval = setInterval(fetchLiveGps, 12000);
 
     return () => {
       clearInterval(liveInterval);
       socket.off('gps_position_updated', handleLiveGpsSocket);
-      socket.off('user_gps_toggled', handleUserSync);
-      socket.off('user_updated', handleUserSync);
-      socket.off('user_created', handleUserSync);
-      socket.off('user_deleted', handleUserSync);
-      socket.off('gps_route_started');
-      socket.off('gps_route_finished');
-      socket.off('routes_updated');
+      socket.off('user_gps_toggled', handleUserGpsToggled);
+      socket.off('routes_updated', fetchSavedRoutes);
     };
-  }, [selectedUser, selectedSavedRoute]);
+  }, []);
 
   useEffect(() => {
-    if (selectedUser && !selectedSavedRoute) {
-      fetchRoute();
-    }
+    if (selectedUser) fetchRoute(selectedUser.id);
     fetchSavedRoutes();
-  }, [selectedUser, selectedDate, selectedSavedRoute]);
+  }, [selectedDate]);
+
+  const activeLiveMarkers = liveGpsList.filter(g => {
+    if (!g.latitude || !g.longitude) return false;
+    const found = allUsers.find(u => u.id === g.user_id);
+    return !found || isGpsActive(found.gps_tracking_enabled);
+  });
 
   const displayCoordinates = (selectedUser || selectedSavedRoute)
     ? ((snappedCoordinates && snappedCoordinates.length > 0)
         ? snappedCoordinates
         : cleanGpsPoints(routePoints).map(p => [p.latitude, p.longitude]))
     : [];
-  const polylineCoordinates = displayCoordinates;
-  
-  const activeTrackedUsers = trackedUsers.filter(u => isGpsActive(u.gps_tracking_enabled));
-  const activeLiveMarkers = liveGpsList.filter(g => {
-    if (!g.latitude || !g.longitude) return false;
-    return activeTrackedUsers.some(u => u.id === g.user_id);
-  });
 
-  const currentLivePos = activeLiveMarkers.find(g => g.user_id === selectedUser?.id);
-  const totalPoints = routePoints.length;
+  const currentLivePos = liveGpsList.find(g => g.user_id === selectedUser?.id);
   const currentSpeed = currentLivePos?.speed ? Math.round(currentLivePos.speed * 3.6) : 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-4">
       
-      {/* Encabezado Principal con Selector de Modos */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Encabezado Principal */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <Navigation className="w-7 h-7 text-orange-500" />
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
+            <Navigation className="w-6 h-6 text-orange-500" />
             Supervisión GPS & Rutas en Terreno
           </h2>
           <p className="text-xs text-orange-500 font-semibold flex items-center gap-1.5 mt-0.5">
             <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            Monitoreo en tiempo real y registro histrico de rutas guardadas
+            Seleccione un trabajador para ubicarlo y controlar su ruta en terreno
           </p>
-          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/30 text-[11px] font-bold text-orange-400">
-            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>Horario GPS: Lun-Jue 08:00 - 19:00 hrs | Vie 08:00 - 18:00 hrs</span>
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          
-          {/* Selector de Modo: En Vivo vs Registro de Rutas */}
-          <div className={'flex p-1 rounded-2xl border ' + (isDark ? 'bg-black border-zinc-800' : 'bg-orange-50 border-orange-200')}>
-            <button
-              onClick={() => { setViewMode('live'); setSelectedSavedRoute(null); }}
-              className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ' + (viewMode === 'live' && !selectedSavedRoute ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/25' : 'text-zinc-400 hover:text-orange-500')}
-            >
-              <Radio className="w-3.5 h-3.5" />
-              <span>Mapa En Vivo</span>
-            </button>
-
-            <button
-              onClick={() => { setViewMode('saved_routes'); fetchSavedRoutes(); }}
-              className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ' + (viewMode === 'saved_routes' ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/25' : 'text-zinc-400 hover:text-orange-500')}
-            >
-              <Route className="w-3.5 h-3.5" />
-              <span>Registro de Rutas ({savedRoutes.length})</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="bg-zinc-900 hover:bg-orange-500 hover:text-black text-orange-400 border border-orange-500/30 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+          >
+            <Route className="w-3.5 h-3.5" />
+            <span>Historial de Rutas ({savedRoutes.length})</span>
+          </button>
 
           <button
+            type="button"
             onClick={locateMe}
-            title="Mi Ubicación Satelital"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-3 py-2 rounded-xl shadow-lg shadow-blue-500/25 flex items-center gap-1.5"
+            title="Mi Ubicación"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-3 py-2 rounded-xl shadow-lg shadow-blue-500/25 flex items-center gap-1.5 cursor-pointer"
           >
             <Crosshair className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Mi Ubicación</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setMapLayer(mapLayer === 'street' ? 'satellite' : 'street')}
-            className={'text-xs font-bold px-3 py-2 rounded-xl border flex items-center gap-1.5 ' + (isDark ? 'bg-zinc-900 border-zinc-700 text-orange-400' : 'bg-white border-orange-200 text-orange-600')}
+            className={'text-xs font-bold px-3 py-2 rounded-xl border flex items-center gap-1.5 cursor-pointer ' + (isDark ? 'bg-zinc-900 border-zinc-700 text-orange-400' : 'bg-white border-orange-200 text-orange-600')}
           >
             <Layers className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{mapLayer === 'street' ? 'Satelital' : 'Calles'}</span>
           </button>
 
           <button
-            onClick={() => { fetchLiveGps(); fetchRoute(); fetchSavedRoutes(); locateMe(); }}
-            className="bg-orange-500 hover:bg-orange-600 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-orange-500/25 flex items-center gap-1.5"
+            type="button"
+            onClick={() => { fetchLiveGps(); fetchUsers(); if (selectedUser) fetchRoute(selectedUser.id); }}
+            className="bg-orange-500 hover:bg-orange-600 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-orange-500/25 flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Actualizar</span>
@@ -501,608 +519,423 @@ export default function AdminGpsView({ theme }) {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* VISTA 1: REGISTRO DE RUTAS GUARDADAS EN TERRENO */}
-      {/* ========================================================================= */}
-      {viewMode === 'saved_routes' && (
-        <div className="space-y-6">
-          {/* PANEL EXCLUSIVO: PRENDER Y APAGAR RASTREO GPS DE PERSONAL */}
-          <div className={'border rounded-3xl p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-orange-500/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
-                  <Radio className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
-                    Prender y Apagar Rastreo GPS de Trabajadores
-                  </h3>
-                  <p className="text-xs text-orange-500 font-semibold">
-                    Control centralizado de rastreo. Al prender el GPS de un trabajador, se inicia y registra su ruta en terreno automáticamente.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => { setViewMode('live'); }}
-                className="bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 font-black text-xs px-3.5 py-2 rounded-xl border border-orange-500/30 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>Ver Mapa En Vivo</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-              {allUsers.length === 0 ? (
-                <div className="col-span-full py-8 text-center text-zinc-500 font-bold text-xs">
-                  Cargando lista de personal...
-                </div>
-              ) : (
-                allUsers.map((u, idx) => {
-                  const isGpsOn = isGpsActive(u.gps_tracking_enabled);
-                  const livePos = liveGpsList.find(g => g.user_id === u.id);
-                  const uColor = getWorkerColor(u.id, idx);
-                  const speedKmh = livePos?.speed ? Math.round(livePos.speed * 3.6) : 0;
-
-                  return (
-                    <div
-                      key={u.id}
-                      className={'border rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-all ' + (
-                        isGpsOn 
-                          ? (isDark ? 'bg-zinc-900/90 border-emerald-500/50 shadow-lg shadow-emerald-950/30' : 'bg-emerald-50/50 border-emerald-400')
-                          : (isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-zinc-50 border-zinc-200')
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-10 h-10 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: isGpsOn ? '#22c55e' : '#71717a' }}>
-                            {u.photo_url ? (
-                              <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-sm font-black" style={{ color: uColor }}>{u.name.charAt(0)}</span>
-                            )}
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-black tracking-tight">{u.name}</h4>
-                            <span className="text-[10px] text-zinc-400 block font-mono">@{u.username} • {u.role}</span>
-                          </div>
-                        </div>
-
-                        <span className={'text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ' + (
-                          isGpsOn ? 'bg-emerald-500 text-black shadow-sm' : 'bg-zinc-800 text-zinc-400'
-                        )}>
-                          {isGpsOn ? 'ACTIVO' : 'APAGADO'}
-                        </span>
-                      </div>
-
-                      {/* Estado en Vivo si el GPS está prendido */}
-                      {isGpsOn && (
-                        <div className="bg-black/30 rounded-xl p-2 text-[10px] space-y-1 border border-emerald-500/20">
-                          <div className="flex items-center justify-between text-zinc-300">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                              <strong className="text-emerald-400 font-bold">Grabando Ruta en Terreno</strong>
-                            </span>
-                            {livePos?.latitude && (
-                              <span className="font-mono text-white font-bold">{speedKmh} km/h</span>
-                            )}
-                          </div>
-                          <div className="text-[9px] text-zinc-400 truncate">
-                            {livePos?.latitude ? ('Última señal: ' + formatChileTime(livePos.timestamp)) : 'Esperando primer punto satelital del teléfono...'}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          onClick={() => handleToggleUserGps(u)}
-                          disabled={togglingGps}
-                          className={'flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md ' + (
-                            isGpsOn
-                              ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/30'
-                              : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/25'
-                          )}
-                        >
-                          {isGpsOn ? (
-                            <>
-                              <Square className="w-3.5 h-3.5 fill-white" />
-                              <span>{togglingGps ? 'Actualizando...' : 'Apagar GPS & Guardar Ruta'}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3.5 h-3.5 fill-black" />
-                              <span>{togglingGps ? 'Iniciando...' : 'Prender GPS & Iniciar Ruta'}</span>
-                            </>
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() => { handleSelectUser(u); setViewMode('live'); }}
-                          className="px-3 py-2 rounded-xl text-xs font-bold border border-zinc-700 hover:border-orange-500 text-zinc-300 hover:text-white flex items-center gap-1"
-                          title="Ver en Mapa En Vivo"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-orange-400" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+      {/* BANNER RUTA ARCHIVADA */}
+      {selectedSavedRoute && (
+        <div className="bg-orange-500 text-black p-3.5 rounded-2xl shadow-xl flex items-center justify-between font-bold text-xs">
+          <div className="flex items-center gap-2">
+            <Route className="w-5 h-5" />
+            <span>
+              Visualizando Ruta Archivada: <strong>{selectedSavedRoute.name}</strong> ({selectedSavedRoute.total_distance_km} km • {selectedSavedRoute.start_time} a {selectedSavedRoute.end_time})
+            </span>
           </div>
-
-          {/* HISTORIAL DE RUTAS GUARDADAS */}
-          <div className={'border rounded-3xl p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-orange-500/20">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black">
-                <Route className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight">Registro de Rutas Guardadas</h3>
-                <p className="text-xs text-orange-500 font-semibold">Historial de recorridos completados en terreno</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-zinc-400">Filtrar por Fecha:</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className={'rounded-xl px-3 py-1.5 text-xs font-bold border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
-              />
-            </div>
-          </div>
-
-          {loadingSavedRoutes ? (
-            <div className="py-12 text-center text-zinc-500 font-bold text-xs">
-              Cargando historial de rutas guardadas...
-            </div>
-          ) : savedRoutes.length === 0 ? (
-            <div className="py-12 text-center space-y-2">
-              <Route className="w-10 h-10 text-zinc-600 mx-auto" />
-              <p className="text-sm font-bold text-zinc-400">No hay rutas registradas en esta fecha ({selectedDate}).</p>
-              <p className="text-xs text-zinc-500">
-                Cuando el usuario Mauricio (u otro personal) active "Iniciar Ruta en Terreno" y luego la finalice, quedará guardada automáticamente aquí.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {savedRoutes.map((r) => (
-                <div
-                  key={r.id}
-                  className={'border rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-3 transition-all hover:border-orange-500/50 ' + (isDark ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-orange-50/50 border-orange-200 text-zinc-900')}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider bg-orange-500 text-black px-2.5 py-0.5 rounded-full">
-                        {r.user_name}
-                      </span>
-                      <span className="text-[11px] font-mono text-zinc-400">{r.date}</span>
-                    </div>
-
-                    <h4 className="text-sm font-black tracking-tight leading-snug">{r.name || 'Ruta en Terreno'}</h4>
-
-                    <div className="grid grid-cols-3 gap-2 text-center text-xs my-3 bg-black/40 p-2.5 rounded-2xl border border-zinc-800">
-                      <div>
-                        <span className="text-[9px] text-zinc-400 block uppercase">Inicio</span>
-                        <strong className="font-mono text-white text-[11px]">{formatChileTime(r.start_time)}</strong>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-zinc-400 block uppercase">Fin</span>
-                        <strong className="font-mono text-white text-[11px]">{formatChileTime(r.end_time)}</strong>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-orange-400 block uppercase font-bold">Distancia</span>
-                        <strong className="font-mono text-orange-400 text-[11px]">{r.total_distance_km || 0} km</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-2 border-t border-zinc-800">
-                    <button
-                      onClick={() => handleSelectSavedRoute(r)}
-                      className="flex-1 py-2.5 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-black font-black text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 active:scale-95"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Ver Ruta en Mapa</span>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteSavedRoute(r.id)}
-                      className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"
-                      title="Eliminar Ruta"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          <button
+            onClick={() => { setSelectedSavedRoute(null); setRoutePoints([]); setSnappedCoordinates([]); }}
+            className="bg-black text-white text-xs px-3 py-1.5 rounded-xl hover:bg-zinc-800 transition-colors cursor-pointer font-black"
+          >
+            Volver a Modo En Vivo
+          </button>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* VISTA 2: MAPA EN VIVO / TRAZADO DE RUTA */}
+      {/* 1. LISTA DE TRABAJADORES (SIN BOTONES, AL PRESIONAR ACTIVA GPS Y LOCALIZA) */}
       {/* ========================================================================= */}
-      {viewMode === 'live' && (
-        <div className="space-y-4">
-          {/* Banner de Ruta Guardada Visualizada */}
-          {selectedSavedRoute && (
-            <div className="bg-orange-500 text-black p-3.5 rounded-2xl shadow-xl flex items-center justify-between font-bold text-xs">
-              <div className="flex items-center gap-2">
-                <Route className="w-5 h-5" />
-                <span>
-                  Visualizando Registro Guardado: <strong>{selectedSavedRoute.name}</strong> ({selectedSavedRoute.total_distance_km} km • {selectedSavedRoute.start_time} a {selectedSavedRoute.end_time})
-                </span>
-              </div>
-              <button
-                onClick={() => { setSelectedSavedRoute(null); fetchRoute(); }}
-                className="bg-black text-white text-xs px-3 py-1.5 rounded-xl hover:bg-zinc-800 transition-colors"
-              >
-                Volver a Modo En Vivo
-              </button>
-            </div>
-          )}
-        <div className={'rounded-3xl border p-4 space-y-4 shadow-xl ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
-          
-          {/* Barra de Filtro de Personal y Fecha */}
-          <div className="flex flex-col gap-3 pb-2 border-b border-zinc-800">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-              
-              {/* Carrusel Horizontal de Trabajadores */}
-              <div className="md:col-span-8 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                <button
-                  onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); }}
-                  className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ' + (!selectedUser && !selectedSavedRoute ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
-                >
-                  <Users className="w-4 h-4" />
-                  <div className="text-left">
-                    <div className="text-xs font-bold">Todos en Vivo</div>
-                    <div className={'text-[9px] ' + (!selectedUser ? 'text-black/80' : 'text-zinc-400')}>
-                      {liveGpsList.filter(g => g.latitude).length} Conectados
-                    </div>
-                  </div>
-                </button>
-
-                <div className="h-7 w-[1px] bg-zinc-700/50 flex-shrink-0 mx-1"></div>
-
-                {allUsers.length === 0 ? (
-                  <span className="text-xs text-zinc-500">Cargando trabajadores...</span>
-                ) : (
-                  allUsers.map((u, idx) => {
-                    const isSelected = selectedUser?.id === u.id;
-                    const livePos = liveGpsList.find(g => g.user_id === u.id);
-                    const uColor = getWorkerColor(u.id, idx);
-                    const isGpsOn = isGpsActive(u.gps_tracking_enabled);
-                    return (
-                      <button
-                        key={u.id}
-                        onClick={() => { setSelectedUser(u); setSelectedSavedRoute(null); }}
-                        className={'flex-shrink-0 px-3 py-1.5 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ' + (isSelected ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
-                      >
-                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: isGpsOn ? '#22c55e' : (isDark ? '#3f3f46' : '#cbd5e1') }}>
-                          {u.photo_url ? (
-                            <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-xs font-bold" style={{ color: uColor }}>{u.name.charAt(0)}</span>
-                          )}
-                        </div>
-                        <div className="text-left">
-                          <div className="text-xs font-bold truncate max-w-[110px]">{u.name}</div>
-                          <div className={'text-[9px] flex items-center gap-1 ' + (isSelected ? 'text-black/80' : 'text-zinc-400')}>
-                            {livePos?.latitude ? (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                                <span className="text-emerald-400 font-bold">En Vivo</span>
-                              </>
-                            ) : isGpsOn ? (
-                              <span className="text-emerald-400 font-bold">Ruta Activa</span>
-                            ) : (
-                              <span className="text-zinc-500">GPS Apagado</span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="md:col-span-4 flex flex-wrap items-center gap-2 justify-end">
-                {(() => {
-                  const todayDateStr = new Date().toISOString().split('T')[0];
-                  const yesterdayObj = new Date();
-                  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-                  const yesterdayDateStr = yesterdayObj.toISOString().split('T')[0];
-
-                  return (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDate(todayDateStr)}
-                        className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === todayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
-                      >
-                        Hoy
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDate(yesterdayDateStr)}
-                        className={'px-2.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ' + (selectedDate === yesterdayDateStr ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20' : (isDark ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white' : 'bg-orange-50 text-zinc-700 border border-orange-200 hover:text-black'))}
-                      >
-                        Ayer
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                <div 
-                  onClick={() => {
-                    try {
-                      dateInputRef.current?.showPicker?.();
-                    } catch (e) {
-                      dateInputRef.current?.focus?.();
-                    }
-                  }}
-                  className={'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border cursor-pointer transition-all active:scale-98 ' + (isDark ? 'bg-black border-orange-500/50 hover:border-orange-500 text-white' : 'bg-white border-orange-300 hover:border-orange-500 text-zinc-900 shadow-sm')}
-                  title="Haga clic para abrir el calendario"
-                >
-                  <Calendar className="w-4 h-4 text-orange-500 flex-shrink-0 animate-pulse" />
-                  <span className="text-[10px] font-black text-orange-500 uppercase flex-shrink-0">
-                    Día de Ruta:
-                  </span>
-                  <input
-                    ref={dateInputRef}
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      try { e.currentTarget.showPicker?.(); } catch (err) {}
-                    }}
-                    className="bg-transparent border-none text-xs font-bold font-mono focus:outline-none cursor-pointer p-0 m-0"
-                  />
-                </div>
-              </div>
-            </div>
+      <div className={'rounded-3xl border p-4 shadow-xl space-y-2 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}>
+        <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-orange-500" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400">
+              Personal en Terreno ({workersList.length}) • Toque para localizar
+            </h3>
           </div>
 
-          {/* Panel Informativo Superior del Mapa */}
-          <div className="relative">
-            <div className="absolute top-4 left-4 z-[400] flex flex-wrap gap-2 pointer-events-none">
-              {!selectedUser && !selectedSavedRoute ? (
-                <div className="bg-black/85 backdrop-blur-md border border-zinc-800 text-white px-3.5 py-2 rounded-2xl shadow-2xl flex items-center gap-3 pointer-events-auto">
-                  <div className="flex -space-x-2 overflow-hidden">
-                    {trackedUsers.slice(0, 4).map((u, i) => (
-                      <div key={u.id} className="w-6 h-6 rounded-full border-2 border-black overflow-hidden bg-zinc-800">
-                        {u.photo_url ? (
-                          <img src={getFullPhotoUrl(u.photo_url)} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-[10px] font-bold text-orange-400 flex items-center justify-center h-full">{u.name.charAt(0)}</span>
-                        )}
-                      </div>
-                    ))}
+          <button
+            type="button"
+            onClick={() => handleSelectWorker(null)}
+            className={'text-xs font-black px-3 py-1 rounded-xl border transition-all cursor-pointer ' + (!selectedUser && !selectedSavedRoute ? 'bg-orange-500 text-black border-orange-500 shadow-md' : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white')}
+          >
+            Ver Todos en Vivo ({activeLiveMarkers.length})
+          </button>
+        </div>
+
+        {/* Carrusel de Tarjetas Limpias */}
+        <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
+          {workersList.length === 0 ? (
+            <span className="text-xs text-zinc-500 py-3">No hay trabajadores registrados.</span>
+          ) : (
+            workersList.map((u, idx) => {
+              const isSelected = selectedUser?.id === u.id;
+              const livePos = liveGpsList.find(g => g.user_id === u.id);
+              const isGpsOn = isGpsActive(u.gps_tracking_enabled);
+              const uColor = getWorkerColor(u.id, idx);
+              const speed = livePos?.speed ? Math.round(livePos.speed * 3.6) : 0;
+
+              return (
+                <div
+                  key={u.id}
+                  onClick={() => handleSelectWorker(u)}
+                  className={'flex-shrink-0 p-3 rounded-2xl border transition-all cursor-pointer select-none min-w-[170px] max-w-[200px] flex items-center gap-3 ' + (
+                    isSelected
+                      ? 'bg-orange-500 text-black border-black shadow-lg shadow-orange-500/30 scale-[1.02]'
+                      : isGpsOn
+                        ? (isDark ? 'bg-zinc-900/90 border-emerald-500/50 hover:border-orange-500 text-white' : 'bg-emerald-50 border-emerald-400 text-zinc-900')
+                        : (isDark ? 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-800')
+                  )}
+                >
+                  <div 
+                    className="w-10 h-10 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0"
+                    style={{ borderColor: isGpsOn ? '#22c55e' : '#71717a' }}
+                  >
+                    {u.photo_url ? (
+                      <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-black" style={{ color: uColor }}>{u.name.charAt(0)}</span>
+                    )}
                   </div>
-                  <div>
-                    <div className="text-xs font-black text-orange-400">Flota en Terreno</div>
-                    <div className="text-[10px] text-zinc-400">
-                      {liveGpsList.filter(g => g.latitude).length} de {trackedUsers.length} transmitiendo en vivo
+
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-black truncate leading-tight">{u.name}</h4>
+                    <span className={'text-[10px] block truncate ' + (isSelected ? 'text-black/80 font-bold' : 'text-zinc-400')}>
+                      {u.role || 'Operador'}
+                    </span>
+                    
+                    <div className="mt-1 flex items-center gap-1 text-[9px] font-bold">
+                      {isGpsOn ? (
+                        livePos?.latitude ? (
+                          <span className="text-emerald-400 font-extrabold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            {speed > 0 ? `${speed} km/h` : 'En Vivo'}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 font-extrabold">GPS Activo</span>
+                        )
+                      ) : (
+                        <span className="text-zinc-500">GPS Inactivo</span>
+                      )}
                     </div>
                   </div>
                 </div>
-              ) : (
-                <div className="bg-black/95 backdrop-blur-md border border-orange-500 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex flex-wrap items-center gap-3 pointer-events-auto max-w-2xl">
-                  <div className="w-9 h-9 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 2. EL MAPA DE ABAJO: CON OPCIÓN DE COMENZAR Y GUARDAR RUTA */}
+      {/* ========================================================================= */}
+      <div className={'rounded-3xl border p-3.5 sm:p-4 shadow-2xl relative space-y-3 ' + (isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-orange-200')}>
+        <div className="w-full h-[580px] rounded-2xl overflow-hidden relative shadow-inner bg-black">
+          
+          {/* PANEL DE CONTROL DE RUTA EN EL MAPA (COMENZAR Y GUARDAR) */}
+          <div className="absolute top-3 left-3 right-3 sm:right-auto z-[400] pointer-events-none">
+            {selectedUser ? (
+              <div className="bg-black/95 backdrop-blur-md border-2 border-orange-500 text-white p-3 sm:p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row sm:items-center gap-3 pointer-events-auto max-w-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black text-xl flex-shrink-0">
                     🚚
                   </div>
-                  <div className="flex-1 min-w-[160px]">
-                    <div className="text-xs font-black text-orange-400 flex items-center gap-1.5">
-                      <span>{selectedSavedRoute ? selectedSavedRoute.user_name : selectedUser?.name}</span>
-                      {snappedCoordinates.length > 1 && (
-                        <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5" />
-                          <span>Trazado Vial Real</span>
+                  <div>
+                    <div className="text-sm font-black text-white flex items-center gap-2">
+                      <span>{selectedUser.name}</span>
+                      {activeRouteInfo ? (
+                        <span className="bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Activity className="w-3 h-3 animate-pulse" />
+                          <span>GRABANDO RUTA</span>
+                        </span>
+                      ) : (
+                        <span className="bg-orange-500/20 border border-orange-500/40 text-orange-400 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          EN SEGUIMIENTO
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-zinc-300 flex items-center gap-2 mt-0.5">
-                      {!selectedSavedRoute && (
-                        <span className="flex items-center gap-1 font-mono text-white">
-                          <Gauge className="w-3 h-3 text-orange-400" />
-                          {currentSpeed} km/h
-                        </span>
-                      )}
+                    <div className="text-[11px] text-zinc-400 flex items-center gap-2 mt-0.5 font-mono">
+                      <span>Vel: <strong className="text-white">{currentSpeed} km/h</strong></span>
                       <span>•</span>
-                      <span className="font-mono text-orange-300">{totalPoints} Puntos GPS</span>
-                      {!selectedSavedRoute && selectedUser && (
+                      <span>{routePoints.length} Puntos</span>
+                      {activeRouteInfo?.start_time && (
                         <>
                           <span>•</span>
-                          <span className={isGpsActive(selectedUser.gps_tracking_enabled) ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
-                            {isGpsActive(selectedUser.gps_tracking_enabled) ? '🟢 Grabando Ruta en Terreno' : '⚪ GPS Inactivo'}
-                          </span>
+                          <span>Inicio: {formatChileTime(activeRouteInfo.start_time)}</span>
                         </>
                       )}
                     </div>
                   </div>
+                </div>
 
-                  {!selectedSavedRoute && selectedUser && (
+                {/* BOTONES DIRECTOS: COMENZAR Y GUARDAR RUTA */}
+                <div className="flex items-center gap-2 pt-2 sm:pt-0 sm:ml-auto border-t sm:border-t-0 border-zinc-800">
+                  {!activeRouteInfo ? (
                     <button
-                      onClick={() => setViewMode('saved_routes')}
-                      className="bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-orange-500/30 transition-all cursor-pointer flex items-center gap-1 flex-shrink-0"
+                      type="button"
+                      onClick={handleStartRoute}
+                      disabled={actionLoading}
+                      className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 transition-all active:scale-95 cursor-pointer"
                     >
-                      <Route className="w-3 h-3" />
-                      <span>Prender/Apagar GPS en Rutas →</span>
+                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <span>{actionLoading ? 'Iniciando...' : 'Comenzar Ruta'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleFinishRoute}
+                      disabled={actionLoading}
+                      className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{actionLoading ? 'Guardando...' : 'Guardar Ruta'}</span>
                     </button>
                   )}
 
                   <button
-                    onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); setRoutePoints([]); setSnappedCoordinates([]); }}
-                    className="bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-orange-500/30 transition-all cursor-pointer flex-shrink-0"
+                    type="button"
+                    onClick={() => handleSelectWorker(null)}
+                    className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition-all cursor-pointer"
                   >
-                    ← Ver Todos
+                    Ver Todos
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* MAPA LEAFLET */}
-            <div className="w-full h-[620px] rounded-2xl overflow-hidden relative shadow-inner">
-              <MapContainer
-                center={mapCenter}
-                zoom={mapZoom}
-                scrollWheelZoom={true}
-                style={{ height: '100%', width: '100%' }}
-              >
-                <MapController
-                    targetCenter={targetCenter}
-                    targetZoom={targetZoom}
-                    targetBounds={targetBounds}
-                    moveTrigger={moveTrigger}
-                  />
-
-                {mapLayer === 'satellite' ? (
-                  <TileLayer
-                    attribution='Tiles &copy; Esri World Imagery'
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    maxZoom={19}
-                  />
-                ) : (
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    maxZoom={19}
-                  />
-                )}
-
-                {myLocation && (
-                  <Marker position={myLocation} icon={createMyLocationIcon()}>
-                    <Popup>
-                      <div className="text-xs text-zinc-900 font-sans p-1">
-                        <strong className="text-sm font-black text-blue-600 block">📍 Mi Ubicación Satelital Exacta</strong>
-                        <div className="text-[11px] text-zinc-700 mt-1">Dispositivo conectado</div>
-                        <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Precisión: ±{myLocationAccuracy} metros</div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                )}
-
-                {/* Marcadores de Trabajadores con GPS Activo en Vivo */}
-                {!selectedSavedRoute && activeLiveMarkers.map((g, idx) => (
-                  g.latitude && g.longitude && (
-                    <Marker
-                      key={g.user_id}
-                      position={[g.latitude, g.longitude]}
-                      icon={createTruckIcon(getWorkerColor(g.user_id, idx), g.user_name)}
-                    >
-                      <Popup>
-                        <div className="text-xs text-zinc-900 font-sans p-1 min-w-[150px]">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getWorkerColor(g.user_id, idx) }}></span>
-                            <strong className="text-sm font-black text-zinc-900">{g.user_name}</strong>
-                          </div>
-                          <div className="text-[11px] text-zinc-700">🚚 Posición Satelital en Vivo</div>
-                          <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                            Velocidad: <strong>{g.speed ? Math.round(g.speed * 3.6) : 0} km/h</strong>
-                          </div>
-                          <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Hora: {formatChileTime(g.timestamp || g.time)}</div>
-                          <button
-                            onClick={() => {
-                              const u = trackedUsers.find(x => x.id === g.user_id);
-                              if (u) setSelectedUser(u);
-                            }}
-                            className="mt-2 w-full bg-orange-500 hover:bg-orange-600 text-black font-black text-[10px] py-1 px-2 rounded-lg cursor-pointer transition-all"
-                          >
-                            📍 Ver Ruta Detallada
-                          </button>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  )
-                ))}
-
-                {/* Trazado Real de la Línea de Ruta Recorrida por Calles y Carreteras */}
-                {(selectedUser || selectedSavedRoute) && displayCoordinates.length > 1 && (
-                  <>
-                    <Polyline
-                      positions={displayCoordinates}
-                      color="#000000"
-                      weight={8}
-                      opacity={0.7}
-                    />
-                    <Polyline
-                      positions={displayCoordinates}
-                      color="#f97316"
-                      weight={5}
-                      opacity={1.0}
-                    />
-                  </>
-                )}
-
-                {/* Marcador de Punto Inicial (Verde A) y Final (Rojo B) */}
-                {(selectedUser || selectedSavedRoute) && routePoints.length > 0 && (
-                  <>
-                    <Marker
-                      position={[routePoints[0].latitude, routePoints[0].longitude]}
-                      icon={createPointIcon('#22c55e', 'A')}
-                    >
-                      <Popup>
-                        <div className="text-xs font-bold text-zinc-900">
-                          🟢 Punto de Inicio / Partida
-                          <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                            Hora: {formatChileTime(routePoints[0].timestamp || routePoints[0].time)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-
-                    <Marker
-                      position={[routePoints[routePoints.length - 1].latitude, routePoints[routePoints.length - 1].longitude]}
-                      icon={createPointIcon('#ef4444', 'B')}
-                    >
-                      <Popup>
-                        <div className="text-xs font-bold text-zinc-900">
-                          🔴 Punto Final / Destino
-                          <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                            Hora: {formatChileTime(routePoints[routePoints.length - 1].timestamp || routePoints[routePoints.length - 1].time)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  </>
-                )}
-
-              </MapContainer>
-            </div>
-
-            {/* Barra inferior informativa */}
-            <div className="mt-3 px-2 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-400 gap-2">
-              <div className="flex items-center gap-4 text-[11px]">
-                <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                  Punto A: Inicio de Ruta
-                </span>
-                <span className="flex items-center gap-1 text-red-400 font-bold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                  Punto B: Fin de Ruta
-                </span>
-                <span className="flex items-center gap-1 text-orange-400 font-bold">
-                  <span className="w-4 h-1 bg-orange-500 rounded"></span>
-                  Trayectoria Recorrida
-                </span>
               </div>
-
-              <span className="text-[10px] text-orange-500 font-extrabold uppercase">
-                Auto-centrado Satelital Activo
-              </span>
-            </div>
-
+            ) : (
+              <div className="bg-black/85 backdrop-blur-md border border-zinc-800 text-white px-3.5 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 pointer-events-auto">
+                <Users className="w-4 h-4 text-orange-400" />
+                <div className="text-xs">
+                  <span className="font-bold text-orange-400">Flota en Terreno:</span>
+                  <span className="text-zinc-300 ml-1.5">{activeLiveMarkers.length} transmitiendo en vivo</span>
+                </div>
+              </div>
+            )}
           </div>
+
+          <MapContainer
+            center={targetCenter}
+            zoom={targetZoom}
+            scrollWheelZoom={true}
+            style={{ height: '100%', width: '100%' }}
+          >
+            <MapController
+              targetCenter={targetCenter}
+              targetZoom={targetZoom}
+              targetBounds={targetBounds}
+              moveTrigger={moveTrigger}
+            />
+
+            {mapLayer === 'satellite' ? (
+              <TileLayer
+                attribution='Tiles &copy; Esri World Imagery'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={19}
+              />
+            ) : (
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                maxZoom={19}
+              />
+            )}
+
+            {myLocation && (
+              <Marker position={myLocation} icon={createMyLocationIcon()}>
+                <Popup>
+                  <div className="text-xs text-zinc-900 font-sans p-1">
+                    <strong className="text-sm font-black text-blue-600 block">📍 Mi Ubicación Satelital</strong>
+                    <div className="text-[10px] text-zinc-600 font-mono mt-0.5">Precisión: ±{myLocationAccuracy} metros</div>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
+
+            {!selectedSavedRoute && activeLiveMarkers.map((g, idx) => (
+              g.latitude && g.longitude && (
+                <Marker
+                  key={g.user_id}
+                  position={[g.latitude, g.longitude]}
+                  icon={createTruckIcon(getWorkerColor(g.user_id, idx), g.user_name, g.photo_url)}
+                >
+                  <Popup>
+                    <div className="text-xs text-zinc-900 font-sans p-1 min-w-[150px]">
+                      <strong className="text-sm font-black text-zinc-900 block">{g.user_name}</strong>
+                      <div className="text-[11px] text-zinc-700">🚚 En Terreno</div>
+                      <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
+                        Velocidad: <strong>{g.speed ? Math.round(g.speed * 3.6) : 0} km/h</strong>
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Hora: {formatChileTime(g.timestamp || g.time)}</div>
+                      <button
+                        onClick={() => {
+                          const u = allUsers.find(x => x.id === g.user_id);
+                          if (u) handleSelectWorker(u);
+                        }}
+                        className="mt-2 w-full bg-orange-500 hover:bg-orange-600 text-black font-black text-[10px] py-1 px-2 rounded-lg cursor-pointer"
+                      >
+                        📍 Localizar Trabajador
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              )
+            ))}
+
+            {(selectedUser || selectedSavedRoute) && displayCoordinates.length > 1 && (
+              <>
+                <Polyline
+                  positions={displayCoordinates}
+                  color="#000000"
+                  weight={8}
+                  opacity={0.7}
+                />
+                <Polyline
+                  positions={displayCoordinates}
+                  color="#f97316"
+                  weight={5}
+                  opacity={1.0}
+                />
+              </>
+            )}
+
+            {(selectedUser || selectedSavedRoute) && routePoints.length > 0 && (
+              <>
+                <Marker
+                  position={[routePoints[0].latitude, routePoints[0].longitude]}
+                  icon={createPointIcon('#22c55e', 'A')}
+                >
+                  <Popup>
+                    <div className="text-xs font-bold text-zinc-900">
+                      🟢 Punto de Partida
+                      <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
+                        Hora: {formatChileTime(routePoints[0].timestamp || routePoints[0].time)}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+
+                <Marker
+                  position={[routePoints[routePoints.length - 1].latitude, routePoints[routePoints.length - 1].longitude]}
+                  icon={createPointIcon('#ef4444', 'B')}
+                >
+                  <Popup>
+                    <div className="text-xs font-bold text-zinc-900">
+                      🔴 Punto Actual
+                      <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
+                        Hora: {formatChileTime(routePoints[routePoints.length - 1].timestamp || routePoints[routePoints.length - 1].time)}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              </>
+            )}
+          </MapContainer>
         </div>
       </div>
-      )}
 
+      {/* ========================================================================= */}
+      {/* 3. MODAL DE HISTORIAL DE RUTAS GUARDADAS */}
+      {/* ========================================================================= */}
+      {showHistoryModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowHistoryModal(false)}
+        >
+          <div 
+            className={'max-w-3xl w-full max-h-[85vh] overflow-y-auto rounded-3xl border p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-orange-200 text-zinc-900')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-black flex items-center justify-center font-black">
+                  <Route className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">Historial de Rutas Guardadas</h3>
+                  <p className="text-xs text-orange-500 font-semibold">Recorridos archivados en terreno</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className={'rounded-xl px-3 py-1.5 text-xs font-bold border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-orange-200 text-zinc-900')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-1.5 text-zinc-400 hover:text-white rounded-xl bg-zinc-900 border border-zinc-800 cursor-pointer font-bold text-xs px-2.5"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            {loadingSavedRoutes ? (
+              <div className="py-12 text-center text-zinc-500 font-bold text-xs">
+                Cargando historial de rutas...
+              </div>
+            ) : savedRoutes.length === 0 ? (
+              <div className="py-12 text-center space-y-2">
+                <Route className="w-10 h-10 text-zinc-600 mx-auto" />
+                <p className="text-sm font-bold text-zinc-400">No hay rutas archivadas en esta fecha ({selectedDate}).</p>
+                <p className="text-xs text-zinc-500">
+                  Al presionar "Guardar Ruta" en el mapa para un trabajador activo, su recorrido quedará guardado automáticamente aquí.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {savedRoutes.map((r) => (
+                  <div
+                    key={r.id}
+                    className={'border rounded-2xl p-4 shadow-lg flex flex-col justify-between space-y-3 ' + (isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-orange-50/50 border-orange-200')}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-orange-500 text-black px-2 py-0.5 rounded-full">
+                          {r.user_name}
+                        </span>
+                        <span className="text-[11px] font-mono text-zinc-400">{r.date}</span>
+                      </div>
+                      <h4 className="text-xs font-black tracking-tight">{r.name || 'Ruta en Terreno'}</h4>
+
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs my-2.5 bg-black/40 p-2 rounded-xl border border-zinc-800">
+                        <div>
+                          <span className="text-[9px] text-zinc-400 block uppercase">Inicio</span>
+                          <strong className="font-mono text-white text-[11px]">{formatChileTime(r.start_time)}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-400 block uppercase">Fin</span>
+                          <strong className="font-mono text-white text-[11px]">{formatChileTime(r.end_time)}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-orange-400 block uppercase font-bold">Distancia</span>
+                          <strong className="font-mono text-orange-400 text-[11px]">{r.total_distance_km || 0} km</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1 border-t border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSavedRoute(r)}
+                        className="flex-1 py-2 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-black font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver en Mapa</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSavedRoute(r.id)}
+                        className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer"
+                        title="Eliminar Ruta"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

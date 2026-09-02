@@ -1693,6 +1693,72 @@ app.get('/api/gps/route/:userId', authenticateToken, requireAdmin, (req, res) =>
 });
 
 // REGISTRO Y GUARDADO DE RUTAS EN TERRENO
+// Iniciar ruta de un trabajador por parte del Admin
+app.post('/api/gps/admin-start-route', authenticateToken, requireAdmin, (req, res) => {
+  const { userId, latitude, longitude, name } = req.body;
+  if (!userId) return res.status(400).json({ error: 'userId requerido' });
+
+  db.get('SELECT id, name FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // Activar GPS del usuario
+    db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [userId]);
+
+    const today = getLocalDateString();
+    const startTime = getLocalTimeString();
+    const routeName = name || ('Ruta ' + user.name + ' - ' + today + ' ' + startTime);
+    const startLat = Number(latitude) || 0;
+    const startLng = Number(longitude) || 0;
+
+    const query = `
+      INSERT INTO gps_routes (user_id, user_name, name, date, start_time, start_lat, start_lng, total_distance_km, total_points, points_json, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 'active')
+    `;
+    const initialPoints = JSON.stringify(startLat ? [{ latitude: startLat, longitude: startLng, timestamp: new Date().toISOString(), time: startTime }] : []);
+
+    db.run(query, [userId, user.name, routeName, today, startTime, startLat, startLng, initialPoints], function (insErr) {
+      if (insErr) return res.status(500).json({ error: 'Error al iniciar ruta: ' + insErr.message });
+      const routeId = this.lastID;
+      io.emit('gps_route_started', { routeId, userId, userName: user.name, startTime, routeName });
+      io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 1 });
+      io.emit('routes_updated');
+      res.json({ success: true, routeId, message: 'Ruta iniciada correctamente', routeName, status: 'active', start_time: startTime });
+    });
+  });
+});
+
+// Guardar y finalizar ruta de un trabajador por parte del Admin
+app.post('/api/gps/admin-finish-route', authenticateToken, requireAdmin, (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: 'userId requerido' });
+
+  const endTime = getLocalTimeString();
+
+  // Desactivar GPS del usuario
+  db.run('UPDATE users SET gps_tracking_enabled = 0 WHERE id = ?', [userId], () => {
+    db.run(
+      'UPDATE gps_routes SET status = "completed", end_time = ? WHERE user_id = ? AND status = "active"',
+      [endTime, userId],
+      function (updErr) {
+        if (updErr) return res.status(500).json({ error: 'Error al finalizar ruta: ' + updErr.message });
+        io.emit('gps_route_finished', { userId, endTime });
+        io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 0 });
+        io.emit('routes_updated');
+        res.json({ success: true, message: 'Ruta guardada y finalizada correctamente' });
+      }
+    );
+  });
+});
+
+// Consultar ruta activa de un usuario
+app.get('/api/gps/admin-active-route/:userId', authenticateToken, requireAdmin, (req, res) => {
+  const userId = req.params.userId;
+  db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'Error al consultar ruta activa' });
+    res.json(row || null);
+  });
+});
+
 app.post('/api/gps/routes/start', authenticateToken, (req, res) => {
   const userId = req.user.id;
   const { latitude, longitude, name } = req.body;
