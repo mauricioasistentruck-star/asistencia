@@ -721,7 +721,7 @@ app.get('/api/settings/work-schedule', (req, res) => {
   });
 });
 
-app.put('/api/settings/work-schedule', authenticateToken, requireSuperAdmin, (req, res) => {
+app.put('/api/settings/work-schedule', authenticateToken, requireAdmin, (req, res) => {
   const { monday_thursday, friday } = req.body || {};
   if (!monday_thursday || !friday) {
     return res.status(400).json({ error: 'Datos de horario incompletos.' });

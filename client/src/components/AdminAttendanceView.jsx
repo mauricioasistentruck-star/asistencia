@@ -338,6 +338,29 @@ export default function AdminAttendanceView({ user, theme }) {
     }
   };
 
+  const handleSaveSchedule = async (e) => {
+    e.preventDefault();
+    if (!scheduleForm) return;
+    setScheduleLoading(true);
+    setScheduleError('');
+    setScheduleSuccess('');
+
+    try {
+      await apiUpdateWorkSchedule(scheduleForm);
+      setWorkSchedule(scheduleForm);
+      setScheduleSuccess('¡Horario oficial guardado correctamente!');
+      setTimeout(() => {
+        setShowScheduleModal(false);
+        setScheduleSuccess('');
+      }, 1200);
+      fetchRecords(true);
+    } catch (err) {
+      setScheduleError(err.message || 'Error al guardar el horario oficial');
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchRecords();
