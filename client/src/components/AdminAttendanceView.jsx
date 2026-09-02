@@ -338,6 +338,42 @@ export default function AdminAttendanceView({ user, theme }) {
     }
   };
 
+  // Control de Accesos Rápidos de Fechas
+  const handleDatePreset = (preset) => {
+    const todayStr = getChileTodayString();
+    const parts = todayStr.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const now = new Date(year, month, day);
+
+    let from = todayStr;
+    let to = todayStr;
+
+    if (preset === 'today') {
+      from = todayStr;
+      to = todayStr;
+    } else if (preset === 'yesterday') {
+      const yDate = new Date(now);
+      yDate.setDate(yDate.getDate() - 1);
+      const yStr = `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, '0')}-${String(yDate.getDate()).padStart(2, '0')}`;
+      from = yStr;
+      to = yStr;
+    } else if (preset === 'week') {
+      const wDate = new Date(now);
+      wDate.setDate(wDate.getDate() - 6);
+      from = `${wDate.getFullYear()}-${String(wDate.getMonth() + 1).padStart(2, '0')}-${String(wDate.getDate()).padStart(2, '0')}`;
+      to = todayStr;
+    } else if (preset === 'month') {
+      from = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      to = todayStr;
+    }
+
+    setDateFrom(from);
+    setDateTo(to);
+  };
+  const setDatePreset = handleDatePreset;
+
   const handleSaveSchedule = async (e) => {
     e.preventDefault();
     if (!scheduleForm) return;
@@ -656,35 +692,39 @@ export default function AdminAttendanceView({ user, theme }) {
       {/* Barra de Filtros y Fechas Rápidas */}
       <div className={'p-4 rounded-3xl border shadow-md space-y-3 print:hidden ' + (isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-white border-orange-200')}>
         <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-zinc-800/60">
-          <span className="text-xs font-bold text-zinc-400 flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-orange-500" />
+          <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-orange-500" />
             <span>Accesos rápidos:</span>
           </span>
           <button
             type="button"
-            onClick={() => setDatePreset('today')}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-colors cursor-pointer"
+            onClick={() => handleDatePreset('today')}
+            className={'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ' + (
+              dateFrom === getChileTodayString() && dateTo === getChileTodayString()
+                ? 'bg-orange-500 text-black border-orange-500 shadow-md font-black scale-105'
+                : 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800'
+            )}
           >
             Hoy
           </button>
           <button
             type="button"
-            onClick={() => setDatePreset('yesterday')}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-colors cursor-pointer"
+            onClick={() => handleDatePreset('yesterday')}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
           >
             Ayer
           </button>
           <button
             type="button"
-            onClick={() => setDatePreset('week')}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-colors cursor-pointer"
+            onClick={() => handleDatePreset('week')}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
           >
             Últimos 7 Días
           </button>
           <button
             type="button"
-            onClick={() => setDatePreset('month')}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-colors cursor-pointer"
+            onClick={() => handleDatePreset('month')}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
           >
             Este Mes
           </button>
