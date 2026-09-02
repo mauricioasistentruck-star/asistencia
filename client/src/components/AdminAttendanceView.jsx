@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save } from 'lucide-react';
 import { 
   apiGetAttendanceRecords, 
@@ -460,10 +460,8 @@ export default function AdminAttendanceView({ user, theme }) {
     });
 
     const daysWorked = attendedDates.size;
-    // Si no hay marcaciones en el sistema para este período, no calcular faltas (tabla limpia lista para inicio)
-    const missingDays = (records.length === 0 || userRecords.length === 0) 
-      ? 0 
-      : workingDaysInRange.filter(d => !attendedDates.has(d)).length;
+    // Días laborables en el rango donde el trabajador no registró asistencia
+    const missingDays = workingDaysInRange.filter(d => !attendedDates.has(d)).length;
 
     return {
       worker,
@@ -570,12 +568,50 @@ export default function AdminAttendanceView({ user, theme }) {
     setEditSuccess('');
   };
 
-  const displayedDetailsRecords = (records || [])
-    .filter(r => !isExcludedFromAttendance(r))
-    .filter(r => {
-      if (!selectedUserId) return true;
-      return String(r.user_id) === String(selectedUserId);
+  const displayedDetailsRecords = useMemo(() => {
+    const realRecords = (records || [])
+      .filter(r => !isExcludedFromAttendance(r))
+      .filter(r => {
+        if (!selectedUserId) return true;
+        return String(r.user_id) === String(selectedUserId);
+      });
+
+    const activeWorkers = usersList.filter(u => !isExcludedFromAttendance(u) && u.role !== 'kiosk' && u.role !== 'kiosco');
+    const targetWorkers = selectedUserId
+      ? activeWorkers.filter(u => String(u.id) === String(selectedUserId))
+      : activeWorkers;
+
+    const missingRecords = [];
+    targetWorkers.forEach(worker => {
+      workingDaysInRange.forEach(dateStr => {
+        const hasRecord = (records || []).some(
+          r => String(r.user_id) === String(worker.id) && r.date === dateStr
+        );
+        if (!hasRecord) {
+          missingRecords.push({
+            id: `missing_${worker.id}_${dateStr}`,
+            user_id: worker.id,
+            user_name: worker.name,
+            user_rut: worker.rut,
+            date: dateStr,
+            entry_time: null,
+            lunch_out_time: null,
+            lunch_in_time: null,
+            exit_time: null,
+            is_missing: true,
+            total_hours: 0
+          });
+        }
+      });
     });
+
+    const combined = [...realRecords, ...missingRecords];
+    combined.sort((a, b) => {
+      if (b.date !== a.date) return b.date.localeCompare(a.date);
+      return (a.user_name || '').localeCompare(b.user_name || '');
+    });
+    return combined;
+  }, [records, usersList, workingDaysInRange, selectedUserId]);
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300 print:p-0 print:m-0">
@@ -946,6 +982,29 @@ export default function AdminAttendanceView({ user, theme }) {
                   </tr>
                 ) : (
                   displayedDetailsRecords.map((r) => {
+                    if (r.is_missing) {
+                      return (
+                        <tr key={r.id} className={isDark ? 'hover:bg-zinc-900/50 bg-red-950/15' : 'hover:bg-orange-50/50 bg-red-50/40'}>
+                          <td className="py-3.5 px-3 font-mono text-[11px] font-bold text-orange-400 whitespace-nowrap">
+                            {r.date}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="font-black text-sm whitespace-nowrap">{r.user_name || 'Personal'}</div>
+                            <div className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">{r.user_rut || ''}</div>
+                          </td>
+                          <td colSpan={7} className="py-3.5 px-3 text-center whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5 bg-red-500/20 text-red-400 font-black px-3.5 py-1.5 rounded-full text-xs border border-red-500/40">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>Día No Marcado (Inasistencia)</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
+                            <span className="text-zinc-600 text-xs font-bold font-mono">--</span>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const delay = calculateDelayMinutes(r);
                     const overtime = calculateOvertimeMinutes(r);
                     const recordMins = calculateRecordMinutes(r);
