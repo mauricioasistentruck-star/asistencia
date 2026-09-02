@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Lock, ShieldAlert, CheckCircle2, QrCode, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield, Camera, FlipHorizontal, RefreshCw } from 'lucide-react';
+import { Lock, ShieldAlert, CheckCircle2, QrCode, Moon, Eye, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield, Camera, FlipHorizontal, RefreshCw } from 'lucide-react';
 import { apiScanQr, apiVerifyAdminPassword, getFullPhotoUrl, mergeAttendanceToVault } from '../api';
 
 export default function KioskView({ onExitKiosk, theme }) {
@@ -14,6 +14,14 @@ export default function KioskView({ onExitKiosk, theme }) {
   
   // POR DEFECTO PARA TABLET KIOSCO: CÁMARA DELANTERA ('user')
   const [cameraFacingMode, setCameraFacingMode] = useState(() => localStorage.getItem('kiosk_camera_facing') || 'user');
+  
+  // MODO DESCANSO / SUSPENSIÓN INTELIGENTE PARA AHORRO DE BATERÍA (5 MINUTOS)
+  const [isSleeping, setIsSleeping] = useState(false);
+  const lastActivityRef = useRef(Date.now());
+  const motionCanvasRef = useRef(null);
+  const prevFrameDataRef = useRef(null);
+  const prevAvgLumRef = useRef(null);
+  const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos de inactividad
   const [availableCameras, setAvailableCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState(() => localStorage.getItem('kiosk_camera_id') || '');
   const [switchingCamera, setSwitchingCamera] = useState(false);
@@ -30,6 +38,130 @@ export default function KioskView({ onExitKiosk, theme }) {
   const containerRef = useRef(null);
 
   const isDark = theme === 'dark';
+
+  // DESPERTAR DEL MODO SUSPENSIÓN
+  const wakeUpFromSleep = (reason = 'touch') => {
+    lastActivityRef.current = Date.now();
+    setIsSleeping((prev) => {
+      if (prev) {
+        try {
+          if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.setSleepMode) {
+            window.AndroidKiosk.setSleepMode(false);
+          }
+        } catch (e) {}
+
+        // Beep sutil de activación al despertar
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(620, audioCtx.currentTime);
+          osc.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.08);
+        } catch (e) {}
+      }
+      return false;
+    });
+  };
+
+  // ENTRAR EN MODO SUSPENSIÓN / DESCANSO
+  const enterSleepMode = () => {
+    setIsSleeping(true);
+    try {
+      if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.setSleepMode) {
+        window.AndroidKiosk.setSleepMode(true);
+      }
+    } catch (e) {}
+  };
+
+    // Monitoreo de interacción del usuario para reiniciar el temporizador de 5 min
+  useEffect(() => {
+    const handleUserActivity = () => {
+      if (isSleeping) {
+        wakeUpFromSleep('touch');
+      } else {
+        lastActivityRef.current = Date.now();
+      }
+    };
+
+    const events = ['touchstart', 'touchend', 'mousedown', 'mousemove', 'keydown', 'click'];
+    events.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    // Verificador periódico de inactividad de 5 minutos
+    const inactivityInterval = setInterval(() => {
+      if (!isSleeping && (Date.now() - lastActivityRef.current >= INACTIVITY_TIMEOUT_MS)) {
+        enterSleepMode();
+      }
+    }, 4000);
+
+    return () => {
+      events.forEach(evt => window.removeEventListener(evt, handleUserActivity));
+      clearInterval(inactivityInterval);
+    };
+  }, [isSleeping]);
+
+  // Detector de Movimiento y Proximidad Óptica en la Cámara Frontal durante la Suspensión
+  useEffect(() => {
+    if (!motionCanvasRef.current) {
+      const c = document.createElement('canvas');
+      c.width = 32;
+      c.height = 32;
+      motionCanvasRef.current = c;
+    }
+
+    const motionInterval = setInterval(() => {
+      if (!isSleeping) {
+        prevFrameDataRef.current = null;
+        prevAvgLumRef.current = null;
+        return;
+      }
+
+      try {
+        const videoEl = document.querySelector('#kiosk-reader-element video') || containerRef.current?.querySelector('video');
+        if (!videoEl || videoEl.readyState < 2) return;
+
+        const canvas = motionCanvasRef.current;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(videoEl, 0, 0, 32, 32);
+        const imgData = ctx.getImageData(0, 0, 32, 32);
+        const data = imgData.data;
+
+        let totalLum = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          totalLum += (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        }
+        const currentAvgLum = totalLum / (32 * 32);
+
+        if (prevFrameDataRef.current && prevAvgLumRef.current !== null) {
+          const prev = prevFrameDataRef.current;
+          let diffCount = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const diff = Math.abs(data[i] - prev[i]) + Math.abs(data[i + 1] - prev[i + 1]) + Math.abs(data[i + 2] - prev[i + 2]);
+            if (diff > 38) {
+              diffCount++;
+            }
+          }
+          const diffRatio = diffCount / (32 * 32);
+          const lumDiff = Math.abs(currentAvgLum - prevAvgLumRef.current);
+
+          // Disparador 1: Movimiento de persona o teléfono pasando frente al lente (>10% del campo)
+          // Disparador 2: Destello o iluminación de pantalla de celular acercándose a la cámara
+          if (diffRatio > 0.10 || lumDiff > 15 || (currentAvgLum > prevAvgLumRef.current * 1.35 && currentAvgLum > 20)) {
+            wakeUpFromSleep('motion');
+            return;
+          }
+        }
+
+        prevFrameDataRef.current = new Uint8ClampedArray(data);
+        prevAvgLumRef.current = currentAvgLum;
+      } catch (e) {
+        // Ignorar fallos transitorios de lectura de canvas
+      }
+    }, 280); // Muestreo ligero: ~3.5 fps (ultra-bajo consumo de batería)
+
+    return () => clearInterval(motionInterval);
+  }, [isSleeping]);
 
   // Reloj en tiempo real
   useEffect(() => {
@@ -282,6 +414,7 @@ export default function KioskView({ onExitKiosk, theme }) {
   };
 
   const handleQrDetected = async (token) => {
+    wakeUpFromSleep('qr');
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     setErrorMsg('');
@@ -360,8 +493,59 @@ export default function KioskView({ onExitKiosk, theme }) {
       }}
     >
       
+      
+      {/* PANTALLA EN SUSPENSIÓN INTELIGENTE (Ahorro Máximo de Batería con Sensor Activo) */}
+      {isSleeping && (
+        <div 
+          onClick={() => wakeUpFromSleep('touch')}
+          className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-between p-6 sm:p-10 select-none cursor-pointer animate-in fade-in duration-300"
+          style={{ backgroundColor: '#000000' }}
+        >
+          {/* Barra superior de estado tenue */}
+          <div className="w-full flex items-center justify-between opacity-30 hover:opacity-90 transition-opacity">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>Sensor Frontal Activo</span>
+            </div>
+            <div className="text-zinc-500 text-xs font-mono">
+              {currentTime}
+            </div>
+          </div>
+
+          {/* Centro: Ícono suave indicando proximidad */}
+          <div className="text-center space-y-3 opacity-25 hover:opacity-90 transition-opacity">
+            <div className="w-16 h-16 rounded-full border border-orange-500/30 flex items-center justify-center mx-auto text-orange-400 animate-pulse">
+              <QrCode className="w-8 h-8" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-zinc-300">Modo Descanso • Ahorro de Batería</p>
+              <p className="text-xs text-orange-400 mt-1 font-bold">Pase su teléfono frente a la cámara para marcar</p>
+            </div>
+          </div>
+
+          {/* Pie tenue */}
+          <div className="text-center opacity-20 hover:opacity-75 transition-opacity text-[10px] text-zinc-500 font-mono">
+            Toque cualquier parte de la pantalla o acerque su credencial para despertar
+          </div>
+        </div>
+      )}
+
+
       {/* Botón protegido para salir del modo Kiosco */}
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-2">
+        {/* Indicador de ahorro de batería y prueba de descanso */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            enterSleepMode();
+          }}
+          title="Suspender pantalla ahora para ahorrar batería"
+          className="hidden xs:flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-zinc-900/90 border border-zinc-700 text-zinc-400 hover:text-orange-400 hover:border-orange-500/50 text-[10px] font-bold transition-all cursor-pointer shadow-lg"
+        >
+          <Moon className="w-3.5 h-3.5 text-orange-400" />
+          <span>Ahorro Batería (5m)</span>
+        </button>
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/15 border border-orange-500/40 text-[10px] font-black text-orange-400">
           <Shield className="w-3.5 h-3.5 animate-pulse" />
           <span>MODO KIOSCO PROTEGIDO</span>
