@@ -506,9 +506,42 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
   const gpsVal = (enabled === true || enabled === 1 || enabled === '1' || enabled === 'true') ? 1 : 0;
   db.run('UPDATE users SET gps_tracking_enabled = ? WHERE id = ?', [gpsVal, userId], (err) => {
     if (err) return res.status(500).json({ error: 'Error al actualizar estado GPS' });
-    io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
-    savePersistentBackup();
-    res.json({ message: 'GPS ' + (gpsVal === 1 ? 'activado' : 'desactivado'), enabled: gpsVal });
+
+    db.get('SELECT id, name FROM users WHERE id = ?', [userId], (uErr, targetUser) => {
+      const uName = targetUser?.name || 'Personal';
+      const today = getLocalDateString();
+      const currentTime = getLocalTimeString();
+
+      if (gpsVal === 1) {
+        // Al activar GPS, verificar o iniciar registro de ruta activa en terreno
+        db.get('SELECT id FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (rErr, activeR) => {
+          if (!activeR) {
+            const routeName = 'Ruta ' + uName + ' - ' + today + ' ' + currentTime;
+            db.run(
+              'INSERT INTO gps_routes (user_id, user_name, name, date, start_time, start_lat, start_lng, total_distance_km, total_points, points_json, status) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, "[]", "active")',
+              [userId, uName, routeName, today, currentTime],
+              function() {
+                io.emit('routes_updated');
+              }
+            );
+          }
+        });
+      } else {
+        // Al desactivar GPS, cerrar y completar ruta activa
+        db.run(
+          'UPDATE gps_routes SET status = "completed", end_time = ? WHERE user_id = ? AND status = "active"',
+          [currentTime, userId],
+          function() {
+            io.emit('routes_updated');
+          }
+        );
+      }
+
+      io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
+      io.emit('user_updated', { id: userId, gps_tracking_enabled: gpsVal });
+      savePersistentBackup();
+      res.json({ message: 'GPS ' + (gpsVal === 1 ? 'activado' : 'desactivado'), enabled: gpsVal });
+    });
   });
 });
 
@@ -1539,8 +1572,9 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
     }
 
     // Filtrar únicamente puntos con imprecisión extrema (> 120 metros)
-    if (accuracy && accuracy > 30) {
-      return res.json({ success: true, message: 'Punto descartado por precisión GPS insuficiente (> 30m)' });
+        // Filtrar unicamente puntos con error grosero (> 80 metros)
+    if (accuracy && accuracy > 80) {
+      return res.json({ success: true, message: 'Punto descartado por precision GPS insuficiente (> 80m)' });
     }
 
     const today = getLocalDateString();
@@ -1555,15 +1589,28 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, time: currentTime, timestamp: utcIso, date: today };
       io.emit('gps_position_updated', gpsData);
 
-      // Si el usuario tiene una ruta en terreno iniciada explícitamente, actualizarla
+            // Registrar y actualizar ruta activa en terreno
       db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (routeErr, activeRoute) => {
-        if (activeRoute) {
+        if (!activeRoute) {
+          // Si el usuario no tiene una ruta activa iniciada, crearla automaticamente para registrar su recorrido
+          const routeName = 'Ruta ' + user.name + ' - ' + today + ' ' + currentTime;
+          const initialPoints = [newPoint];
+          db.run(
+            'INSERT INTO gps_routes (user_id, user_name, name, date, start_time, start_lat, start_lng, total_distance_km, total_points, points_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, "active")',
+            [userId, user.name, routeName, today, currentTime, latitude, longitude, JSON.stringify(initialPoints)],
+            function () {
+              io.emit('routes_updated');
+            }
+          );
+        } else {
           let points = [];
           try {
             points = JSON.parse(activeRoute.points_json || '[]');
           } catch (e) {
             points = [];
           }
+          const startLat = (activeRoute.start_lat && activeRoute.start_lat !== 0) ? activeRoute.start_lat : latitude;
+          const startLng = (activeRoute.start_lng && activeRoute.start_lng !== 0) ? activeRoute.start_lng : longitude;
           const lastPoint = points[points.length - 1];
           let addedDist = 0;
           let shouldAddPoint = true;
@@ -1571,20 +1618,20 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
           if (lastPoint) {
             addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
             
-            // 1. Si está detenido o muy lento (< 2 km/h) y se movió menos de 15m, no añadir punto para evitar temblor y cuadrados
+            // 1. Si esta detenido o muy lento (< 2 km/h) y se movio menos de 10m, no anadir punto duplicado
             const speedKmH = (speed || 0) * 3.6;
-            const minMoveKm = speedKmH < 2.0 ? 0.015 : 0.008;
+            const minMoveKm = speedKmH < 2.0 ? 0.010 : 0.005;
             if (addedDist < minMoveKm) {
               shouldAddPoint = false;
             }
 
-            // 2. Si el salto representa una velocidad imposible (> 125 km/h), descartar salto
+            // 2. Si el salto representa una velocidad imposible (> 130 km/h), descartar salto espurio
             const t1 = new Date(lastPoint.timestamp || 0).getTime();
             const t2 = new Date().getTime();
             if (t1 > 0 && t2 > t1) {
               const hours = (t2 - t1) / (1000 * 3600);
               const calcSpeedKmH = addedDist / hours;
-              if (calcSpeedKmH > 125) {
+              if (calcSpeedKmH > 130) {
                 shouldAddPoint = false;
               }
             }
@@ -1593,10 +1640,13 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
             points.push(newPoint);
           }
 
-          const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.005 ? addedDist : 0)).toFixed(2));
+          const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.003 ? addedDist : 0)).toFixed(2));
           db.run(
-            'UPDATE gps_routes SET end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
-            [currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id]
+            'UPDATE gps_routes SET start_lat = ?, start_lng = ?, end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
+            [startLat, startLng, currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id],
+            function () {
+              io.emit('routes_updated');
+            }
           );
         }
       });
@@ -1631,7 +1681,17 @@ app.get('/api/gps/route/:userId', authenticateToken, requireAdmin, (req, res) =>
   const query = 'SELECT id, latitude, longitude, accuracy, speed, timestamp FROM gps_logs WHERE user_id = ? AND date = ? ORDER BY id ASC';
   db.all(query, [userId, date], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar ruta' });
-    res.json({ userId: Number(userId), date, points: rows });
+    if (rows && rows.length > 0) {
+      return res.json({ userId: Number(userId), date, points: rows });
+    }
+    // Si no hay filas en gps_logs, consultar el registro en gps_routes de hoy
+    db.get('SELECT points_json FROM gps_routes WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1', [userId, date], (rErr, rRow) => {
+      let rPoints = [];
+      if (rRow && rRow.points_json) {
+        try { rPoints = JSON.parse(rRow.points_json); } catch(e) {}
+      }
+      res.json({ userId: Number(userId), date, points: rPoints });
+    });
   });
 });
 

@@ -101,6 +101,21 @@ export default function App() {
     };
     socket.on('user_updated', handleLiveUserUpdate);
 
+    const handleGpsToggled = (payload) => {
+      if (payload && payload.userId) {
+        setUser(prev => {
+          if (!prev) return prev;
+          if (prev.id === payload.userId || String(prev.id) === String(payload.userId)) {
+            const merged = { ...prev, gps_tracking_enabled: payload.gps_tracking_enabled };
+            localStorage.setItem('asistencia_user', JSON.stringify(merged));
+            return merged;
+          }
+          return prev;
+        });
+      }
+    };
+    socket.on('user_gps_toggled', handleGpsToggled);
+
     const token = localStorage.getItem('asistencia_token');
     if (token) {
       apiGetMe()
@@ -119,6 +134,7 @@ export default function App() {
     return () => {
       window.removeEventListener('auth_expired', handleAuthExpired);
       socket.off('user_updated', handleLiveUserUpdate);
+      socket.off('user_gps_toggled', handleGpsToggled);
     };
   }, []);
 
@@ -435,27 +451,34 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     }
 
     let lastSentCoords = null;
+    let lastSentTimestamp = 0;
     const sendCoordsSilently = (pos) => {
       if (pos && pos.coords) {
         const accuracy = pos.coords.accuracy || 10;
-        // Filtrar únicamente lecturas con precisión extremadamente degradada (> 120 metros)
-        if (accuracy > 120) return;
+        // Filtrar unicamente lecturas con error grosero (> 80m)
+        if (accuracy > 80) return;
 
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
+        const now = Date.now();
+        const timeSinceLastSent = now - lastSentTimestamp;
+
         if (lastSentCoords) {
           const latDiff = Math.abs(lat - lastSentCoords.lat);
           const lngDiff = Math.abs(lng - lastSentCoords.lng);
-          // Si no ha cambiado casi nada y la velocidad es 0, omitir spam de puntos estáticos
-          if (latDiff < 0.00003 && lngDiff < 0.00003 && (!pos.coords.speed || pos.coords.speed < 0.3)) {
-            return;
+          const speed = pos.coords.speed || 0;
+          // Si esta detenido o sin movimiento, enviar heartbeat cada 20 segundos
+          if (latDiff < 0.00003 && lngDiff < 0.00003 && speed < 0.3) {
+            if (timeSinceLastSent < 20000) {
+              return;
+            }
           }
         }
 
         lastSentCoords = { lat, lng };
-
+        lastSentTimestamp = now;
         apiSendGpsPoint({
           latitude: lat,
           longitude: lng,
@@ -545,7 +568,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         watchIdRef.current = null;
       }
     };
-  }, [user, isMauricio]);
+  }, [user?.id, user?.gps_tracking_enabled]);
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);

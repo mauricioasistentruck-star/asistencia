@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
-import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime } from '../api';
+import { Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, Play, Square } from 'lucide-react';
+import { apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, apiDeleteGpsRoute, apiToggleGps, getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
 import { matchPointsToRealRoads, cleanGpsPoints } from '../utils/roadMatcher';
 
@@ -84,6 +84,8 @@ function MapController({ center, zoom, bounds }) {
 export default function AdminGpsView({ theme }) {
   const [viewMode, setViewMode] = useState('live'); // 'live' | 'saved_routes'
   const [trackedUsers, setTrackedUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [togglingGps, setTogglingGps] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null); // null = Todos los trabajadores
   const [selectedDate, setSelectedDate] = useState(getChileTodayString());
   const [routePoints, setRoutePoints] = useState([]);
@@ -190,11 +192,46 @@ export default function AdminGpsView({ theme }) {
 
   const fetchUsers = async () => {
     try {
-      const allUsers = await apiGetUsers();
-      const gpsUsers = (allUsers || []).filter(u => isGpsActive(u.gps_tracking_enabled));
+      const usersData = await apiGetUsers();
+      const nonKiosks = (usersData || []).filter(u => u.role !== 'kiosk' && u.role !== 'kiosco');
+      setAllUsers(nonKiosks);
+      const gpsUsers = nonKiosks.filter(u => isGpsActive(u.gps_tracking_enabled));
       setTrackedUsers(gpsUsers);
+      if (selectedUser) {
+        const found = nonKiosks.find(u => u.id === selectedUser.id);
+        if (found) setSelectedUser(found);
+      }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleToggleUserGps = async (userToToggle) => {
+    if (!userToToggle || togglingGps) return;
+    setTogglingGps(true);
+    const currentVal = isGpsActive(userToToggle.gps_tracking_enabled);
+    const newVal = !currentVal;
+    try {
+      await apiToggleGps(userToToggle.id, newVal);
+      setAllUsers(prev => prev.map(u => u.id === userToToggle.id ? { ...u, gps_tracking_enabled: newVal ? 1 : 0 } : u));
+      setTrackedUsers(prev => {
+        if (newVal) {
+          const updated = { ...userToToggle, gps_tracking_enabled: 1 };
+          return [...prev.filter(u => u.id !== userToToggle.id), updated];
+        } else {
+          return prev.filter(u => u.id !== userToToggle.id);
+        }
+      });
+      setSelectedUser(prev => prev?.id === userToToggle.id ? { ...prev, gps_tracking_enabled: newVal ? 1 : 0 } : prev);
+      await fetchLiveGps();
+      await fetchSavedRoutes();
+      if (newVal) {
+        await fetchRoute();
+      }
+    } catch (err) {
+      alert('Error al modificar estado GPS: ' + (err.message || err));
+    } finally {
+      setTogglingGps(false);
     }
   };
 
@@ -570,20 +607,21 @@ export default function AdminGpsView({ theme }) {
 
                 <div className="h-7 w-[1px] bg-zinc-700/50 flex-shrink-0 mx-1"></div>
 
-                {trackedUsers.length === 0 ? (
-                  <span className="text-xs text-zinc-500">No hay trabajadores con GPS activo configurado.</span>
+                {allUsers.length === 0 ? (
+                  <span className="text-xs text-zinc-500">Cargando trabajadores...</span>
                 ) : (
-                  trackedUsers.map((u, idx) => {
+                  allUsers.map((u, idx) => {
                     const isSelected = selectedUser?.id === u.id;
                     const livePos = liveGpsList.find(g => g.user_id === u.id);
                     const uColor = getWorkerColor(u.id, idx);
+                    const isGpsOn = isGpsActive(u.gps_tracking_enabled);
                     return (
                       <button
                         key={u.id}
                         onClick={() => { setSelectedUser(u); setSelectedSavedRoute(null); }}
-                        className={'flex-shrink-0 px-3.5 py-2 rounded-2xl border transition-all flex items-center gap-2.5 cursor-pointer ' + (isSelected ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
+                        className={'flex-shrink-0 px-3 py-1.5 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ' + (isSelected ? 'bg-orange-500 text-black border-black font-black shadow-lg shadow-orange-500/30' : (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800' : 'bg-orange-50/70 border-orange-200 text-zinc-800 hover:bg-orange-100'))}
                       >
-                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: uColor }}>
+                        <div className="w-7 h-7 rounded-full overflow-hidden bg-black flex items-center justify-center border-2 flex-shrink-0" style={{ borderColor: isGpsOn ? '#22c55e' : (isDark ? '#3f3f46' : '#cbd5e1') }}>
                           {u.photo_url ? (
                             <img src={getFullPhotoUrl(u.photo_url)} alt={u.name} className="w-full h-full object-cover" />
                           ) : (
@@ -591,15 +629,17 @@ export default function AdminGpsView({ theme }) {
                           )}
                         </div>
                         <div className="text-left">
-                          <div className="text-xs font-bold truncate max-w-[120px]">{u.name}</div>
+                          <div className="text-xs font-bold truncate max-w-[110px]">{u.name}</div>
                           <div className={'text-[9px] flex items-center gap-1 ' + (isSelected ? 'text-black/80' : 'text-zinc-400')}>
                             {livePos?.latitude ? (
                               <>
-                                <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: uColor }}></span>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                                 <span className="text-emerald-400 font-bold">En Vivo</span>
                               </>
+                            ) : isGpsOn ? (
+                              <span className="text-emerald-400 font-bold">Ruta Activa</span>
                             ) : (
-                              <span>En Terreno</span>
+                              <span className="text-zinc-500">GPS Apagado</span>
                             )}
                           </div>
                         </div>
@@ -691,11 +731,11 @@ export default function AdminGpsView({ theme }) {
                   </div>
                 </div>
               ) : (
-                <div className="bg-black/90 backdrop-blur-md border border-orange-500 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 pointer-events-auto">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black">
+                <div className="bg-black/95 backdrop-blur-md border border-orange-500 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex flex-wrap items-center gap-3 pointer-events-auto max-w-2xl">
+                  <div className="w-9 h-9 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black flex-shrink-0">
                     🚚
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-[160px]">
                     <div className="text-xs font-black text-orange-400 flex items-center gap-1.5">
                       <span>{selectedSavedRoute ? selectedSavedRoute.user_name : selectedUser?.name}</span>
                       {snappedCoordinates.length > 1 && (
@@ -705,7 +745,7 @@ export default function AdminGpsView({ theme }) {
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-zinc-400 flex items-center gap-2">
+                    <div className="text-[10px] text-zinc-300 flex items-center gap-2 mt-0.5">
                       {!selectedSavedRoute && (
                         <span className="flex items-center gap-1 font-mono text-white">
                           <Gauge className="w-3 h-3 text-orange-400" />
@@ -714,11 +754,44 @@ export default function AdminGpsView({ theme }) {
                       )}
                       <span>•</span>
                       <span className="font-mono text-orange-300">{totalPoints} Puntos GPS</span>
+                      {!selectedSavedRoute && selectedUser && (
+                        <>
+                          <span>•</span>
+                          <span className={isGpsActive(selectedUser.gps_tracking_enabled) ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
+                            {isGpsActive(selectedUser.gps_tracking_enabled) ? '🟢 Grabando Ruta en Terreno' : '⚪ GPS Inactivo'}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
+
+                  {!selectedSavedRoute && selectedUser && (
+                    <button
+                      onClick={() => handleToggleUserGps(selectedUser)}
+                      disabled={togglingGps}
+                      className={'py-1.5 px-3 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer flex-shrink-0 ' + (
+                        isGpsActive(selectedUser.gps_tracking_enabled)
+                          ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/30'
+                          : 'bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-black shadow-emerald-500/30 animate-pulse'
+                      )}
+                    >
+                      {isGpsActive(selectedUser.gps_tracking_enabled) ? (
+                        <>
+                          <Square className="w-3.5 h-3.5 fill-white" />
+                          <span>{togglingGps ? 'Guardando...' : 'Desactivar GPS y Guardar Ruta'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-black" />
+                          <span>{togglingGps ? 'Iniciando...' : 'Activar GPS & Grabar Ruta'}</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => { setSelectedUser(null); setSelectedSavedRoute(null); setRoutePoints([]); setSnappedCoordinates([]); }}
-                    className="ml-2 bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2 py-1 rounded-lg border border-orange-500/30 transition-all cursor-pointer"
+                    className="bg-orange-500/20 hover:bg-orange-500 hover:text-black text-orange-400 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-orange-500/30 transition-all cursor-pointer flex-shrink-0"
                   >
                     ← Ver Todos
                   </button>

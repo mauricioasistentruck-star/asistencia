@@ -20,7 +20,7 @@ export function getDistanceKm(lat1, lon1, lat2, lon2) {
  * 4. Descarta saltos imposibles por velocidad (> 120 km/h) producto de rebotes de señal.
  * 5. Descarta picos anómalos (Spikes en zigzag donde el GPS salta a una manzana lateral y vuelve de inmediato).
  */
-export function cleanGpsPoints(rawPoints, maxAccuracy = 25, maxSpeedKmH = 120) {
+export function cleanGpsPoints(rawPoints, maxAccuracy = 70, maxSpeedKmH = 120) {
   if (!Array.isArray(rawPoints) || rawPoints.length === 0) return [];
 
   // Paso 1: Filtrado de coordenadas válidas y precisión mínima aceptable
