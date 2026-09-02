@@ -46,7 +46,20 @@ export default function App() {
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('asistencia_theme') || 'dark');
   const [incomingAudio, setIncomingAudio] = useState(null);
+  const [gpsTransmitting, setGpsTransmitting] = useState(false);
   const watchIdRef = useRef(null);
+
+    useEffect(() => {
+    const handleGlobalTouch = () => {
+      unlockIOSAudio();
+    };
+    window.addEventListener('touchstart', handleGlobalTouch, { passive: true });
+    window.addEventListener('click', handleGlobalTouch, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', handleGlobalTouch);
+      window.removeEventListener('click', handleGlobalTouch);
+    };
+  }, []);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -456,7 +469,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       if (pos && pos.coords) {
         const accuracy = pos.coords.accuracy || 10;
         // Filtrar unicamente lecturas con error grosero (> 80m)
-        if (accuracy > 80) return;
+        if (accuracy > 300) return;
 
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
@@ -485,6 +498,8 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
           accuracy: Math.round(accuracy),
           speed: pos.coords.speed || 0,
           heading: pos.coords.heading || null
+        }).then(() => {
+          setGpsTransmitting(true);
         }).catch(() => {});
       }
     };
@@ -659,6 +674,52 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         toggleTheme={toggleTheme}
         onOpenHistory={() => setShowHistoryModal(true)}
       />
+
+      {/* Banner de Estado y Activación GPS en iPhone / Web */}
+      {!isAdmin && isGpsActive(user?.gps_tracking_enabled) && (
+        <div 
+          onClick={() => {
+            unlockIOSAudio();
+            if ('geolocation' in navigator) {
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  sendCoordsSilently(pos);
+                  setGpsTransmitting(true);
+                },
+                (err) => {
+                  alert('Por favor autorice la ubicación en su iPhone en Ajustes > Safari / Privacidad > Localización.');
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+              );
+            }
+          }}
+          className={'mx-auto my-1.5 max-w-md w-[94%] p-2.5 rounded-2xl border shadow-xl flex items-center justify-between gap-2.5 transition-all cursor-pointer select-none flex-shrink-0 z-30 ' + (
+            gpsTransmitting 
+              ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+              : 'bg-orange-600 border-2 border-white text-white animate-pulse shadow-orange-500/40'
+          )}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={'w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 ' + (gpsTransmitting ? 'bg-emerald-500 text-black' : 'bg-white text-orange-600')}>
+              <MapPin className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black leading-tight truncate">
+                {gpsTransmitting ? 'GPS en Terreno Activo (Transmitiendo)' : '⚠️ Activar Ubicación iPhone'}
+              </div>
+              <div className="text-[10px] opacity-90 truncate">
+                {gpsTransmitting ? 'Ubicación satelital reportada a central' : 'Toque aquí para autorizar GPS en su iPhone'}
+              </div>
+            </div>
+          </div>
+
+          {!gpsTransmitting && (
+            <span className="bg-white text-orange-600 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow flex-shrink-0">
+              Permitir
+            </span>
+          )}
+        </div>
+      )}
 
       <main className="flex-1 w-full h-full overflow-hidden flex flex-col items-center justify-center p-1.5 sm:p-2.5">
         {/* TRABAJADORES (PANTALLA LIMPIA DE CREDENCIAL AJUSTADA) */}

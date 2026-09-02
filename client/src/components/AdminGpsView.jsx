@@ -263,11 +263,30 @@ export default function AdminGpsView({ theme }) {
       return;
     }
 
+    const isCurrentlyActive = isGpsActive(worker.gps_tracking_enabled);
+
+    // SI SE PRESIONA DE NUEVO SOBRE EL MISMO TRABAJADOR: DESACTIVAR SU GPS
+    if (selectedUser?.id === worker.id && isCurrentlyActive) {
+      try {
+        await apiToggleGps(worker.id, false);
+        setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: 0 } : u));
+        setSelectedUser(null);
+        setActiveRouteInfo(null);
+        setRoutePoints([]);
+        setSnappedCoordinates([]);
+        setLiveGpsList(prev => prev.filter(g => g.user_id !== worker.id));
+        fetchSavedRoutes();
+        return;
+      } catch (err) {
+        console.warn('Error al desactivar GPS:', err);
+      }
+    }
+
+    // SI ESTABA INACTIVO O SE SELECCIONA POR PRIMERA VEZ: ACTIVAR GPS Y LOCALIZAR
     setSelectedUser(worker);
     setSelectedSavedRoute(null);
 
-    // Si el trabajador tiene el GPS inactivo, activarlo de inmediato para localizarlo
-    if (!isGpsActive(worker.gps_tracking_enabled)) {
+    if (!isCurrentlyActive) {
       try {
         await apiToggleGps(worker.id, true);
         setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: 1 } : u));
