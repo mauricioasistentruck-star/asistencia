@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Lock, User, AlertCircle, ArrowRight, Smartphone, Sun, Moon, Monitor, Server, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiLogin, getApiBaseUrl, setApiBaseUrl, apiGetUsers, mergeUsersToVault, setVaultUsers, unlockIOSAudio } from '../api';
 import IphoneModal from './IphoneModal.jsx';
+import DtAuditPortalModal from './DtAuditPortalModal.jsx';
+import DtLogo from './DtLogo.jsx';
 
-export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleTheme }) {
+export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleTheme, onDtLoginSuccess }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -11,6 +13,7 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
   const [showSecretConfig, setShowSecretConfig] = useState(false);
   const [logoClicks, setLogoClicks] = useState(0);
   const [showIphoneModal, setShowIphoneModal] = useState(false);
+  const [showDtModal, setShowDtModal] = useState(false);
   const [serverUrl, setServerUrl] = useState(getApiBaseUrl());
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -98,6 +101,16 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
 
       {/* Botones de acción superior ajustados para notch */}
       <div className="w-full max-w-md flex items-center justify-end space-x-2 mb-3 px-1 z-20">
+        <button
+          type="button"
+          onClick={() => setShowDtModal(true)}
+          title="Portal Oficial de Fiscalización - Dirección del Trabajo"
+          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg shadow-blue-500/20 active:scale-95 cursor-pointer border border-blue-400/30"
+        >
+          <DtLogo className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Fiscalización DT</span>
+        </button>
+
         <button
           onClick={onEnterKiosk}
           className="px-3 py-1.5 bg-orange-500 text-black hover:bg-orange-600 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/20 active:scale-95"

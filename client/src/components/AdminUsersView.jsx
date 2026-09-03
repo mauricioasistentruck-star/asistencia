@@ -46,7 +46,8 @@ export default function AdminUsersView({ currentUser, theme }) {
     password: '123',
     role: 'worker',
     gps_tracking_enabled: false,
-    has_credential: true
+    has_credential: true,
+    work_days: ['mon', 'tue', 'wed', 'thu', 'fri']
   });
 
   // Formulario Modificar Usuario
@@ -212,7 +213,8 @@ export default function AdminUsersView({ currentUser, theme }) {
         email: editForm.email,
         role: editForm.role,
         gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0,
-        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : (editForm.role === 'kiosk' ? 0 : 1)
+        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : (editForm.role === 'kiosk' ? 0 : 1),
+        work_days: JSON.stringify(editForm.work_days || ['mon','tue','wed','thu','fri'])
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();

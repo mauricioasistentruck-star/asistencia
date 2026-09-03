@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Lock, ShieldAlert, CheckCircle2, QrCode, Moon, Eye, AlertCircle, Sparkles, Clock, X, KeyRound, Maximize, Shield, Camera, FlipHorizontal, RefreshCw } from 'lucide-react';
 import { apiScanQr, apiVerifyAdminPassword, getFullPhotoUrl, mergeAttendanceToVault } from '../api';
+import DtAuditPortalModal from './DtAuditPortalModal.jsx';
+import DtLogo from './DtLogo.jsx';
 
-export default function KioskView({ onExitKiosk, theme }) {
+export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
   const [scanResult, setScanResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [isScanning, setIsScanning] = useState(false);
@@ -25,6 +27,7 @@ export default function KioskView({ onExitKiosk, theme }) {
   const [availableCameras, setAvailableCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState(() => localStorage.getItem('kiosk_camera_id') || '');
   const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [showDtModal, setShowDtModal] = useState(false);
   
   // Modal de desbloqueo admin
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -533,6 +536,19 @@ export default function KioskView({ onExitKiosk, theme }) {
 
       {/* Botón protegido para salir del modo Kiosco */}
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-2">
+        {/* Botón oficial de Fiscalización Dirección del Trabajo (DT) */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDtModal(true);
+          }}
+          title="Portal de Fiscalización Laboral - Dirección del Trabajo (DT)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-blue-900/90 hover:bg-blue-600 border border-blue-400/50 text-white text-[10px] font-black transition-all cursor-pointer shadow-lg active:scale-95"
+        >
+          <DtLogo className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Fiscalización DT</span>
+        </button>
         {/* Indicador de ahorro de batería y prueba de descanso */}
         <button
           type="button"

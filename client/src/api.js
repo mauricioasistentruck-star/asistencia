@@ -685,3 +685,64 @@ export const autoRestoreAndSyncWithServer = async () => {
 };
 
 export const apiLockAsBase = () => apiRequest('/api/admin/backup/lock-as-base', { method: 'POST' });
+
+
+// =========================================================================
+// MÓDULO OFICIAL FISCALIZACIÓN DIRECCIÓN DEL TRABAJO (DT)
+// =========================================================================
+export const apiDtRequestToken = (inspector_name, inspector_email) =>
+  apiRequest('/api/dt/request-token', {
+    method: 'POST',
+    body: JSON.stringify({ inspector_name, inspector_email })
+  });
+
+export const apiDtLogin = (inspector_email, token) =>
+  apiRequest('/api/dt/login', {
+    method: 'POST',
+    body: JSON.stringify({ inspector_email, token })
+  });
+
+export const apiDtGetActiveSession = () =>
+  apiRequest('/api/dt/active-session');
+
+export const apiDtGetReport = (reportType, dateFrom, dateTo, userId) => {
+  let query = `?date_from=${dateFrom || ''}&date_to=${dateTo || ''}`;
+  if (userId) query += `&user_id=${userId}`;
+  return apiRequest(`/api/dt/reports/${reportType}${query}`);
+};
+
+export const apiDtLogDownload = (payload) =>
+  apiRequest('/api/dt/log-download', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const apiDtCloseSession = (session_id) =>
+  apiRequest('/api/dt/close-session', {
+    method: 'POST',
+    body: JSON.stringify({ session_id })
+  });
+
+// =========================================================================
+// LICENCIAS MÉDICAS Y JUSTIFICATIVOS LEGALES (ADMINISTRADOR)
+// =========================================================================
+export const apiGetWorkerLeaves = () =>
+  apiRequest('/api/admin/worker-leaves');
+
+export const apiCreateWorkerLeave = (payload) =>
+  apiRequest('/api/admin/worker-leaves', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const apiDeleteWorkerLeave = (id) =>
+  apiRequest(`/api/admin/worker-leaves/${id}`, {
+    method: 'DELETE'
+  });
+
+export const apiUpdateUserWorkDays = (userId, work_days) =>
+  apiRequest(`/api/admin/users/${userId}/work-days`, {
+    method: 'PATCH',
+    body: JSON.stringify({ work_days })
+  });
+

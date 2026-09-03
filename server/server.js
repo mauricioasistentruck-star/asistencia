@@ -2208,6 +2208,13 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Promesa rechazada no manejada:', reason);
 });
 
+
+// =========================================================================
+// INICIALIZAR MÓDULO OFICIAL FISCALIZACIÓN DT (DIRECCIÓN DEL TRABAJO)
+// =========================================================================
+const { setupDtInspection } = require('./dtInspection');
+setupDtInspection(app, db, io, JWT_SECRET, requireAdmin);
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log('====================================================');
   console.log('  Servidor ASISTENTRUCK ONLINE en puerto ' + PORT);

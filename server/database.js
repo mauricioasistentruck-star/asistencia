@@ -285,6 +285,86 @@ function initDatabase() {
       });
       db.run("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('work_schedule', ?)", [defaultSchedule]);
     });
+    // ==========================================
+    // TABLAS PARA FISCALIZACIÓN DIRECCIÓN DEL TRABAJO (DT)
+    // ==========================================
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dt_access_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inspector_name TEXT NOT NULL,
+        inspector_email TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        expires_at DATETIME NOT NULL,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dt_audit_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_id INTEGER,
+        inspector_name TEXT NOT NULL,
+        inspector_email TEXT NOT NULL,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ended_at DATETIME,
+        ip_address TEXT,
+        status TEXT DEFAULT 'active'
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dt_download_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER,
+        inspector_name TEXT NOT NULL,
+        inspector_email TEXT NOT NULL,
+        report_type TEXT NOT NULL,
+        filters_json TEXT,
+        format TEXT NOT NULL,
+        checksum_hash TEXT NOT NULL,
+        downloaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // ==========================================
+    // TABLA DE LICENCIAS MÉDICAS Y JUSTIFICATIVOS LEGALES
+    // ==========================================
+    db.run(`
+      CREATE TABLE IF NOT EXISTS worker_leaves (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date_from TEXT NOT NULL,
+        date_to TEXT NOT NULL,
+        leave_type TEXT NOT NULL,
+        document_number TEXT,
+        remarks TEXT,
+        created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // ==========================================
+    // TABLA DE INCIDENTES TÉCNICOS DEL SISTEMA (EXIGENCIA DT)
+    // ==========================================
+    db.run(`
+      CREATE TABLE IF NOT EXISTS system_incidents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        start_time TEXT,
+        end_time TEXT,
+        incident_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Migración de columna work_days en users si no existe
+    db.run("ALTER TABLE users ADD COLUMN work_days TEXT DEFAULT '[\"mon\",\"tue\",\"wed\",\"thu\",\"fri\"]'", (err) => {
+      // Ignorar si ya existe
+    });
+
 
     // SÓLO sembrar datos iniciales si la tabla de usuarios está completamente vacía
     db.get("SELECT COUNT(*) as count FROM users", (cntErr, row) => {

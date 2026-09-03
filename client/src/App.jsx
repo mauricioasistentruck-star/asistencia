@@ -6,6 +6,7 @@ import AdminAttendanceView from './components/AdminAttendanceView.jsx';
 import AdminUsersView from './components/AdminUsersView.jsx';
 import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
+import DtReportsView from './components/DtReportsView.jsx';
 import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
 import { unlockIOSAudio } from './api';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive } from './api';
@@ -47,6 +48,13 @@ export default function App() {
   const [theme, setTheme] = useState(localStorage.getItem('asistencia_theme') || 'dark');
   const [incomingAudio, setIncomingAudio] = useState(null);
   const [gpsTransmitting, setGpsTransmitting] = useState(false);
+  const [dtSession, setDtSession] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('dt_session_data') || 'null');
+    } catch(e) {
+      return null;
+    }
+  });
   const watchIdRef = useRef(null);
 
     useEffect(() => {
@@ -622,18 +630,31 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     );
   }
 
+  if (dtSession) {
+    return (
+      <DtReportsView
+        dtSession={dtSession}
+        onExit={() => {
+          setDtSession(null);
+          localStorage.removeItem('dt_session_data');
+          localStorage.removeItem('dt_auth_token');
+        }}
+      />
+    );
+  }
+
   if (!user) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} />;
+    return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />;
   }
 
   // Modo Kiosco activado EXCLUSIVAMENTE si el usuario que inicio sesion es el usuario de Kiosco
   if (isKioskUser(user)) {
-    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} />;
+    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} onDtLoginSuccess={(session) => setDtSession(session)} />;
   }
 
   // Si un administrador activo manualmente el modo kiosco temporal
   if (kioskMode) {
-    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} />;
+    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />;
   }
 
 

@@ -1,3 +1,5 @@
+import WorkerLeavesModal from './WorkerLeavesModal.jsx';
+import { apiDtGetActiveSession } from '../api';
 import React, { useState, useEffect, useMemo } from 'react';
 import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save } from 'lucide-react';
 import { 
@@ -104,6 +106,8 @@ export default function AdminAttendanceView({ user, theme }) {
   const [editSuccess, setEditSuccess] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [lastLiveAlert, setLastLiveAlert] = useState(null);
+  const [showLeavesModal, setShowLeavesModal] = useState(false);
+  const [dtInspectionNotice, setDtInspectionNotice] = useState(null);
 
   // Horario Laboral Oficial
   const [workSchedule, setWorkSchedule] = useState({
@@ -461,7 +465,21 @@ export default function AdminAttendanceView({ user, theme }) {
 
     const daysWorked = attendedDates.size;
     // Días laborables en el rango donde el trabajador no registró asistencia
-    const missingDays = workingDaysInRange.filter(d => !attendedDates.has(d)).length;
+    let userAssignedDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+    try {
+      if (typeof worker.work_days === 'string') {
+        userAssignedDays = JSON.parse(worker.work_days);
+      } else if (Array.isArray(worker.work_days)) {
+        userAssignedDays = worker.work_days;
+      }
+    } catch(e) {}
+
+    const workerDaysInRange = workingDaysInRange.filter(d => {
+      const dayName = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(d + 'T12:00:00Z').getUTCDay()];
+      return userAssignedDays.includes(dayName);
+    });
+
+    const missingDays = workerDaysInRange.filter(d => !attendedDates.has(d)).length;
 
     return {
       worker,
@@ -583,7 +601,21 @@ export default function AdminAttendanceView({ user, theme }) {
 
     const missingRecords = [];
     targetWorkers.forEach(worker => {
-      workingDaysInRange.forEach(dateStr => {
+      let userAssignedDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+      try {
+        if (typeof worker.work_days === 'string') {
+          userAssignedDays = JSON.parse(worker.work_days);
+        } else if (Array.isArray(worker.work_days)) {
+          userAssignedDays = worker.work_days;
+        }
+      } catch(e) {}
+
+      const workerDaysInRange = workingDaysInRange.filter(d => {
+        const dayName = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(d + 'T12:00:00Z').getUTCDay()];
+        return userAssignedDays.includes(dayName);
+      });
+
+      workerDaysInRange.forEach(dateStr => {
         const hasRecord = (records || []).some(
           r => String(r.user_id) === String(worker.id) && r.date === dateStr
         );
@@ -615,6 +647,51 @@ export default function AdminAttendanceView({ user, theme }) {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12 w-full animate-in fade-in duration-300 print:p-0 print:m-0">
+      {/* BANNER OFICIAL DE FISCALIZACIÓN DIRECCIÓN DEL TRABAJO (DT) - EXACTO IMAGEN 3 */}
+      {dtInspectionNotice && (
+        <div className="p-5 rounded-3xl bg-red-950/60 border-2 border-red-500 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 space-y-3 print:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400 flex-shrink-0 animate-pulse">
+                <ShieldAlert className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-red-400 font-mono">
+                    Procedimiento de Fiscalización Laboral Oficial
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white leading-snug">
+                  Se ha iniciado un proceso de revisión de información por parte de un funcionario de la Dirección del Trabajo.
+                </h3>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setDtInspectionNotice(null)}
+              className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+              title="Cerrar aviso temporal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <p className="text-xs text-zinc-200 font-medium leading-relaxed bg-black/50 p-3.5 rounded-2xl border border-red-500/30">
+            Se informa a usted que, de acuerdo con las facultades y obligaciones legales contenidas en el Código del Trabajo y sus leyes complementarias; en el D.F.L. N°2 de 1967, del Ministerio del Trabajo y Previsión Social, y en otras disposiciones reglamentarias, se está iniciando un procedimiento de fiscalización laboral.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-zinc-400 gap-2 pt-1 border-t border-red-500/20">
+            <div>
+              Fiscalizador: <strong className="text-red-300">{dtInspectionNotice.inspector_name || 'Funcionario DT'}</strong> ({dtInspectionNotice.inspector_email || 'dt@dt.gob.cl'})
+            </div>
+            <div>
+              Inicio: <strong>{new Date(dtInspectionNotice.started_at || Date.now()).toLocaleTimeString('es-CL')} hrs</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
       
       {/* Toast Flotante de Escaneo en Vivo */}
       {lastLiveAlert && (
@@ -686,6 +763,17 @@ export default function AdminAttendanceView({ user, theme }) {
           >
             <Download className="w-4 h-4" />
             <span>Descargar Excel</span>
+          </button>
+
+          {/* Botón Licencias Médicas / Justificativos DT */}
+          <button
+            type="button"
+            onClick={() => setShowLeavesModal(true)}
+            className="bg-indigo-600/30 hover:bg-indigo-600 active:scale-95 text-indigo-300 hover:text-white text-xs font-black px-3.5 py-2 rounded-xl border border-indigo-500/50 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Registrar Licencias Médicas y Justificativos Legales"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Licencias / Justificativos DT</span>
           </button>
 
           {/* Botón Configurar Horario (Solo SuperAdmin) */}
@@ -1374,6 +1462,13 @@ export default function AdminAttendanceView({ user, theme }) {
         </div>
       )}
 
+    
+      {/* Modal Administrativo de Licencias y Justificativos */}
+      <WorkerLeavesModal
+        isOpen={showLeavesModal}
+        onClose={() => setShowLeavesModal(false)}
+        workers={usersList}
+      />
     </div>
   );
 }
