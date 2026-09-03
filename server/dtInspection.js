@@ -587,7 +587,8 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
 
       db.run("UPDATE users SET work_days = ? WHERE id = ?", [workDaysJson, req.params.id], function(err) {
         if (err) return res.status(500).json({ error: 'Error al actualizar días laborales' });
-        res.json({ success: true, message: 'Pauta de días de trabajo actualizada correctamente' });
+        io.emit('user_updated', { id: Number(req.params.id), work_days: workDaysJson });
+        res.json({ success: true, message: 'Pauta de días de trabajo actualizada correctamente', work_days: workDaysJson });
       });
     } catch (e) {
       res.status(500).json({ error: 'Error al procesar actualización' });

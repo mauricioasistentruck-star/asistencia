@@ -375,7 +375,7 @@ app.get('/api/users', authenticateToken, (req, res, next) => {
   }
 }, (req, res) => {
   const isSuper = isSuperAdminUser(req.user);
-  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+  db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, work_days, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar usuarios' });
     const sanitizedRows = (rows || []).map(r => {
       if (!isSuper) {
@@ -788,7 +788,7 @@ app.get('/api/admin/backup/export', authenticateToken, requireSuperAdmin, async 
 
     // 1. Obtener Usuarios con fotos en Base64
     const users = await new Promise((resolve) => {
-      db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
+      db.all('SELECT id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, work_days, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
         resolve(rows || []);
       });
     });
@@ -907,8 +907,8 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, async
       if (Array.isArray(backup.users) && backup.users.length > 0) {
         db.run('DELETE FROM users');
         const stmtUser = db.prepare(`
-          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO users (id, username, rut, name, email, password_hash, plain_password, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, work_days, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (let u of backup.users) {

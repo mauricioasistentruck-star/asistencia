@@ -722,90 +722,100 @@ export default function AdminAttendanceView({ user, theme }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Selector de Sub-pestaña */}
-          <div className="flex rounded-xl p-1 bg-zinc-900 border border-zinc-800">
+        {/* Barra de Acciones y Herramientas Elegante y Ordenada */}
+        <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 p-2 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-sm">
+          
+          {/* GRUPO 1: Vistas y Exportación */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Switch de Vista: Resumen / Detalle */}
+            <div className="inline-flex rounded-xl p-0.5 bg-black/70 border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('summary')}
+                className={'px-3 py-1 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
+                  activeSubTab === 'summary' ? 'bg-orange-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                )}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Resumen</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('details')}
+                className={'px-3 py-1 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
+                  activeSubTab === 'details' ? 'bg-orange-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                )}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Detalle</span>
+              </button>
+            </div>
+
+            {/* Descargar Excel */}
             <button
               type="button"
-              onClick={() => setActiveSubTab('summary')}
-              className={'px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
-                activeSubTab === 'summary' ? 'bg-orange-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'
-              )}
+              onClick={handleDownloadExcel}
+              className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer border border-emerald-500/40"
+              title="Descargar planilla Excel completa (asistencias, inasistencias y justificativos)"
             >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Resumen</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Descargar Excel</span>
             </button>
+
+            {/* Imprimir Reporte */}
             <button
               type="button"
-              onClick={() => setActiveSubTab('details')}
-              className={'px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
-                activeSubTab === 'details' ? 'bg-orange-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'
-              )}
+              onClick={handlePrint}
+              className="bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 hover:text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-zinc-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Imprimir reporte en papel o PDF"
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Historial Detallado</span>
+              <Printer className="w-3.5 h-3.5 text-orange-400" />
+              <span>Imprimir</span>
             </button>
           </div>
 
-          {/* Botón Imprimir Reporte */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white text-xs font-bold px-3.5 py-2 rounded-xl border border-zinc-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-          >
-            <Printer className="w-4 h-4 text-orange-400" />
-            <span>Imprimir Reporte</span>
-          </button>
-
-          {/* Botón Descargar Excel */}
-          <button
-            type="button"
-            onClick={handleDownloadExcel}
-            className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-            <span>Descargar Excel</span>
-          </button>
-
-          {/* Botón Pauta Días Laborales por Trabajador */}
-          <button
-            type="button"
-            onClick={() => setShowWorkerDaysModal(true)}
-            className="bg-blue-600/30 hover:bg-blue-600 active:scale-95 text-blue-300 hover:text-white text-xs font-black px-3.5 py-2 rounded-xl border border-blue-500/50 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Configurar días de trabajo por trabajador (medio tiempo, días específicos, turnos rotativos)"
-          >
-            <Calendar className="w-4 h-4 text-blue-400" />
-            <span>Días Laborales por Trabajador</span>
-          </button>
-
-          {/* Botón Licencias Médicas / Justificativos DT */}
-          <button
-            type="button"
-            onClick={() => setShowLeavesModal(true)}
-            className="bg-indigo-600/30 hover:bg-indigo-600 active:scale-95 text-indigo-300 hover:text-white text-xs font-black px-3.5 py-2 rounded-xl border border-indigo-500/50 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Registrar Licencias Médicas y Justificativos Legales"
-          >
-            <FileText className="w-4 h-4" />
-            <span>Licencias / Justificativos DT</span>
-          </button>
-
-          {/* Botón Configurar Horario (Solo SuperAdmin) */}
-          {isSuperAdmin && (
+          {/* GRUPO 2: Gestión de Turnos, Licencias y Horarios */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Pauta Días Laborales */}
             <button
               type="button"
-              onClick={() => {
-                setScheduleForm(JSON.parse(JSON.stringify(workSchedule)));
-                setScheduleError('');
-                setScheduleSuccess('');
-                setShowScheduleModal(true);
-              }}
-              title="Configurar Horario Laboral Oficial (SuperAdmin)"
-              className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setShowWorkerDaysModal(true)}
+              className="bg-blue-600/25 hover:bg-blue-600/40 active:scale-95 text-blue-300 hover:text-white text-xs font-black px-3 py-1.5 rounded-xl border border-blue-500/40 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Configurar días de trabajo específicos por trabajador (medio tiempo o turnos)"
             >
-              <Clock className="w-4 h-4" />
-              <span>Horario Oficial</span>
+              <Calendar className="w-3.5 h-3.5 text-blue-400" />
+              <span>Días Laborales</span>
             </button>
-          )}
+
+            {/* Licencias / Justificativos DT */}
+            <button
+              type="button"
+              onClick={() => setShowLeavesModal(true)}
+              className="bg-indigo-600/25 hover:bg-indigo-600/40 active:scale-95 text-indigo-300 hover:text-white text-xs font-black px-3 py-1.5 rounded-xl border border-indigo-500/40 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Registrar Licencias Médicas y Justificativos Legales"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Licencias DT</span>
+            </button>
+
+            {/* Horario Oficial (SuperAdmin) */}
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setScheduleForm(JSON.parse(JSON.stringify(workSchedule)));
+                  setScheduleError('');
+                  setScheduleSuccess('');
+                  setShowScheduleModal(true);
+                }}
+                className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-3 py-1.5 rounded-xl shadow-md shadow-orange-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Configurar Horario Laboral Oficial de la Empresa"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Horario Oficial</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
