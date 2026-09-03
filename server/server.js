@@ -1434,121 +1434,259 @@ app.delete('/api/attendance/:id', authenticateToken, (req, res) => {
 
 const handleExportExcel = (req, res) => {
   const { date_from, date_to, user_id } = req.query;
-  let query = `
-    SELECT a.date, u.name, u.rut,
-           a.entry_time, a.lunch_out_time,
-           a.lunch_in_time, a.exit_time,
-           a.total_hours,
-           a.modified_by_admin,
-           a.admin_note
-    FROM attendance a
-    JOIN users u ON a.user_id = u.id
-    WHERE 1=1
-  `;
-  const params = [];
-  if (date_from) {
-    query += ' AND a.date >= ?';
-    params.push(date_from);
-  }
-  if (date_to) {
-    query += ' AND a.date <= ?';
-    params.push(date_to);
-  }
+
+  // 1. Obtener los trabajadores contratados reales (excluyendo cuentas de kiosco)
+  let userSql = "SELECT id, name, rut, role, work_days FROM users WHERE role != 'kiosk' AND username != 'kiosco' AND name NOT LIKE '%kiosco%'";
+  const userParams = [];
   if (user_id) {
-    query += ' AND a.user_id = ?';
-    params.push(user_id);
+    userSql += " AND id = ?";
+    userParams.push(user_id);
   }
-  query += ' ORDER BY a.date DESC, u.name ASC';
+  userSql += " ORDER BY name ASC";
 
-  db.all(query, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: 'Error al generar Excel: ' + err.message });
+  db.all(userSql, userParams, (err, users) => {
+    if (err) return res.status(500).json({ error: 'Error al consultar trabajadores: ' + err.message });
+    if (!users || users.length === 0) return res.status(404).json({ error: 'No se encontraron trabajadores.' });
 
-    let totalSumMinutes = 0;
-    const excelRows = [];
+    // 2. Determinar rango de fechas oficial
+    const todayStr = getLocalDateString();
+    let startDateStr = date_from || '2026-08-31'; // Fecha base de operación del sistema virtual
+    let endDateStr = date_to || todayStr;
 
-    (rows || []).forEach(r => {
-      // Cálculo exacto de minutos trabajados restando colación
-      const workedMinutes = calculateWorkMinutes(r.entry_time, r.lunch_out_time, r.lunch_in_time, r.exit_time);
-      totalSumMinutes += workedMinutes;
+    // Asegurar orden de fechas
+    if (startDateStr > endDateStr) {
+      const temp = startDateStr;
+      startDateStr = endDateStr;
+      endDateStr = temp;
+    }
 
-      const formattedHours = formatMinutesToHoursMinutes(workedMinutes);
-      const decimalHours = workedMinutes > 0 ? Number((workedMinutes / 60).toFixed(2)) : 0;
+    const dates = [];
+    let curDate = new Date(startDateStr + 'T00:00:00Z');
+    const stopDate = new Date(endDateStr + 'T00:00:00Z');
+    while (curDate <= stopDate) {
+      dates.push(curDate.toISOString().split('T')[0]);
+      curDate.setUTCDate(curDate.getUTCDate() + 1);
+    }
+    // Ordenar de más reciente a más antiguo
+    dates.reverse();
 
-      const delayMinutes = calculateDelayMinutesServer(r);
-      const overtimeMinutes = calculateOvertimeMinutesServer(r);
+    // 3. Consultar todas las asistencias en el rango
+    let attSql = "SELECT a.*, u.name, u.rut FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.date >= ? AND a.date <= ?";
+    const attParams = [startDateStr, endDateStr];
+    if (user_id) {
+      attSql += " AND a.user_id = ?";
+      attParams.push(user_id);
+    }
 
-      excelRows.push({
-        'Fecha': r.date,
-        'Trabajador': r.name,
-        'RUT': r.rut || 'Sin RUT',
-        '1. Entrada': r.entry_time || '--:--:--',
-        '2. Salida Colacion': r.lunch_out_time || '--:--:--',
-        '3. Entrada Colacion': r.lunch_in_time || '--:--:--',
-        '4. Salida Jornada': r.exit_time || '--:--:--',
-        'Total Horas Trabajadas (HH:MM)': formattedHours,
-        'Horas Decimales': decimalHours,
-        'Atraso (Minutos)': delayMinutes > 0 ? `+${delayMinutes}m` : '0m',
-        'Horas Extras (HH:MM)': formatMinutesToHoursMinutes(overtimeMinutes),
-        'Editado por Admin': r.modified_by_admin === 1 ? 'Si (Admin)' : 'No',
-        'Nota Auditoria': r.admin_note || ''
+    db.all(attSql, attParams, (attErr, attendanceRows) => {
+      if (attErr) return res.status(500).json({ error: 'Error al consultar asistencias: ' + attErr.message });
+
+      // 4. Consultar licencias médicas y justificativos legales en el rango
+      db.all("SELECT * FROM worker_leaves WHERE date_to >= ? AND date_from <= ?", [startDateStr, endDateStr], (leaveErr, leaveRows) => {
+        const attendanceMap = new Map();
+        (attendanceRows || []).forEach(r => {
+          attendanceMap.set(`${r.user_id}_${r.date}`, r);
+        });
+
+        const leavesMap = new Map();
+        (leaveRows || []).forEach(l => {
+          let lCur = new Date(l.date_from + 'T00:00:00Z');
+          const lEnd = new Date(l.date_to + 'T00:00:00Z');
+          while (lCur <= lEnd) {
+            leavesMap.set(`${l.user_id}_${lCur.toISOString().split('T')[0]}`, l);
+            lCur.setUTCDate(lCur.getUTCDate() + 1);
+          }
+        });
+
+        let totalSumMinutes = 0;
+        let totalPresent = 0;
+        let totalAbsent = 0;
+        let totalJustified = 0;
+        let totalRest = 0;
+        const excelRows = [];
+
+        dates.forEach(dateStr => {
+          const dObj = new Date(dateStr + 'T00:00:00Z');
+          const dayShort = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][dObj.getUTCDay()];
+          const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][dObj.getUTCDay()];
+
+          users.forEach(u => {
+            // Obtener días programados para este trabajador
+            let scheduledDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+            if (u.work_days) {
+              try {
+                const parsed = JSON.parse(u.work_days);
+                if (Array.isArray(parsed) && parsed.length > 0) scheduledDays = parsed;
+              } catch (e) {}
+            }
+
+            const isScheduledDay = scheduledDays.includes(dayShort);
+            const att = attendanceMap.get(`${u.id}_${dateStr}`);
+            const leave = leavesMap.get(`${u.id}_${dateStr}`);
+
+            if (att) {
+              totalPresent++;
+              const workedMinutes = calculateWorkMinutes(att.entry_time, att.lunch_out_time, att.lunch_in_time, att.exit_time);
+              totalSumMinutes += workedMinutes;
+              const formattedHours = formatMinutesToHoursMinutes(workedMinutes);
+              const decimalHours = workedMinutes > 0 ? Number((workedMinutes / 60).toFixed(2)) : 0;
+              const delayMinutes = calculateDelayMinutesServer(att);
+              const overtimeMinutes = calculateOvertimeMinutesServer(att);
+
+              excelRows.push({
+                'Fecha': dateStr,
+                'Día': dayName,
+                'Trabajador': u.name,
+                'RUT': u.rut || 'Sin RUT',
+                'Cargo': (u.role === 'admin' || u.role === 'superadmin') ? 'Administrador' : 'Trabajador',
+                'Estado': 'ASISTIÓ',
+                '1. Entrada': att.entry_time || '--:--:--',
+                '2. Salida Colacion': att.lunch_out_time || '--:--:--',
+                '3. Entrada Colacion': att.lunch_in_time || '--:--:--',
+                '4. Salida Jornada': att.exit_time || '--:--:--',
+                'Total Horas Trabajadas (HH:MM)': formattedHours,
+                'Horas Decimales': decimalHours,
+                'Atraso (Minutos)': delayMinutes > 0 ? `+${delayMinutes}m` : '0m',
+                'Horas Extras (HH:MM)': formatMinutesToHoursMinutes(overtimeMinutes),
+                'Editado por Admin': att.modified_by_admin === 1 ? 'Sí (Admin)' : 'No',
+                'Nota Auditoria / Observación': att.admin_note || 'Marcación registrada en reloj control'
+              });
+            } else if (leave) {
+              totalJustified++;
+              excelRows.push({
+                'Fecha': dateStr,
+                'Día': dayName,
+                'Trabajador': u.name,
+                'RUT': u.rut || 'Sin RUT',
+                'Cargo': (u.role === 'admin' || u.role === 'superadmin') ? 'Administrador' : 'Trabajador',
+                'Estado': 'JUSTIFICADO',
+                '1. Entrada': '--:--:--',
+                '2. Salida Colacion': '--:--:--',
+                '3. Entrada Colacion': '--:--:--',
+                '4. Salida Jornada': '--:--:--',
+                'Total Horas Trabajadas (HH:MM)': '00H:00M',
+                'Horas Decimales': 0,
+                'Atraso (Minutos)': '0m',
+                'Horas Extras (HH:MM)': '00H:00M',
+                'Editado por Admin': 'No',
+                'Nota Auditoria / Observación': `${leave.leave_type}${leave.document_number ? ` (N° ${leave.document_number})` : ''} - ${leave.remarks || 'Acreditado legalmente'}`
+              });
+            } else if (isScheduledDay) {
+              totalAbsent++;
+              excelRows.push({
+                'Fecha': dateStr,
+                'Día': dayName,
+                'Trabajador': u.name,
+                'RUT': u.rut || 'Sin RUT',
+                'Cargo': (u.role === 'admin' || u.role === 'superadmin') ? 'Administrador' : 'Trabajador',
+                'Estado': 'FALTA / INASISTENCIA',
+                '1. Entrada': '--:--:--',
+                '2. Salida Colacion': '--:--:--',
+                '3. Entrada Colacion': '--:--:--',
+                '4. Salida Jornada': '--:--:--',
+                'Total Horas Trabajadas (HH:MM)': '00H:00M',
+                'Horas Decimales': 0,
+                'Atraso (Minutos)': '0m',
+                'Horas Extras (HH:MM)': '00H:00M',
+                'Editado por Admin': 'No',
+                'Nota Auditoria / Observación': 'INASISTENCIA INJUSTIFICADA (Día laboral pactado sin marcación de reloj)'
+              });
+            } else {
+              totalRest++;
+              excelRows.push({
+                'Fecha': dateStr,
+                'Día': dayName,
+                'Trabajador': u.name,
+                'RUT': u.rut || 'Sin RUT',
+                'Cargo': (u.role === 'admin' || u.role === 'superadmin') ? 'Administrador' : 'Trabajador',
+                'Estado': 'DESCANSO PACTADO',
+                '1. Entrada': '--:--:--',
+                '2. Salida Colacion': '--:--:--',
+                '3. Entrada Colacion': '--:--:--',
+                '4. Salida Jornada': '--:--:--',
+                'Total Horas Trabajadas (HH:MM)': '00H:00M',
+                'Horas Decimales': 0,
+                'Atraso (Minutos)': '0m',
+                'Horas Extras (HH:MM)': '00H:00M',
+                'Editado por Admin': 'No',
+                'Nota Auditoria / Observación': 'Descanso semanal / Día no laboral pactado en contrato'
+              });
+            }
+          });
+        });
+
+        // Fila de separación
+        excelRows.push({
+          'Fecha': '---',
+          'Día': '---',
+          'Trabajador': '---',
+          'RUT': '---',
+          'Cargo': '---',
+          'Estado': '---',
+          '1. Entrada': '---',
+          '2. Salida Colacion': '---',
+          '3. Entrada Colacion': '---',
+          '4. Salida Jornada': '---',
+          'Total Horas Trabajadas (HH:MM)': '---',
+          'Horas Decimales': '---',
+          'Atraso (Minutos)': '---',
+          'Horas Extras (HH:MM)': '---',
+          'Editado por Admin': '---',
+          'Nota Auditoria / Observación': '---'
+        });
+
+        // Fila de RESUMEN GENERAL
+        const totalAccumulatedFormatted = formatMinutesToHoursMinutes(totalSumMinutes);
+        const totalAccumulatedDecimal = totalSumMinutes > 0 ? Number((totalSumMinutes / 60).toFixed(2)) : 0;
+
+        excelRows.push({
+          'Fecha': 'TOTALES Y RESUMEN',
+          'Día': `${dates.length} Días Auditados`,
+          'Trabajador': user_id ? (users[0] ? users[0].name : 'Trabajador') : 'TODA LA NÓMINA',
+          'RUT': `Asistencias: ${totalPresent} | Faltas: ${totalAbsent} | Justificados: ${totalJustified}`,
+          'Cargo': '',
+          'Estado': `Tasa Asistencia: ${(totalPresent + totalAbsent) > 0 ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100) : 100}%`,
+          '1. Entrada': '',
+          '2. Salida Colacion': '',
+          '3. Entrada Colacion': '',
+          '4. Salida Jornada': 'SUMA TOTAL:',
+          'Total Horas Trabajadas (HH:MM)': totalAccumulatedFormatted,
+          'Horas Decimales': totalAccumulatedDecimal,
+          'Atraso (Minutos)': '',
+          'Horas Extras (HH:MM)': '',
+          'Editado por Admin': '',
+          'Nota Auditoria / Observación': `Total: ${excelRows.length - 1} registros evaluados. ${totalSumMinutes} minutos trabajados.`
+        });
+
+        const ws = XLSX.utils.json_to_sheet(excelRows);
+        ws['!cols'] = [
+          { wch: 14 }, // Fecha
+          { wch: 12 }, // Día
+          { wch: 26 }, // Trabajador
+          { wch: 16 }, // RUT
+          { wch: 16 }, // Cargo
+          { wch: 22 }, // Estado
+          { wch: 14 }, // Entrada
+          { wch: 16 }, // Salida Colacion
+          { wch: 16 }, // Entrada Colacion
+          { wch: 16 }, // Salida Jornada
+          { wch: 30 }, // Total Horas (HH:MM)
+          { wch: 16 }, // Horas Decimales
+          { wch: 18 }, // Atraso
+          { wch: 20 }, // Horas Extras
+          { wch: 18 }, // Editado por Admin
+          { wch: 45 }  // Nota Auditoria
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Registro_Completo');
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        const filename = 'Reporte_Asistencia_Completo_' + getLocalDateString() + '.xlsx';
+        res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
       });
     });
-
-    // Fila de separación
-    excelRows.push({
-      'Fecha': '---',
-      'Trabajador': '---',
-      'RUT': '---',
-      '1. Entrada': '---',
-      '2. Salida Colacion': '---',
-      '3. Entrada Colacion': '---',
-      '4. Salida Jornada': '---',
-      'Total Horas Trabajadas (HH:MM)': '---',
-      'Horas Decimales': '---',
-      'Editado por Admin': '---',
-      'Nota Auditoria': '---'
-    });
-
-    // Fila de TOTAL GENERAL / ACUMULADO
-    const totalAccumulatedFormatted = formatMinutesToHoursMinutes(totalSumMinutes);
-    const totalAccumulatedDecimal = totalSumMinutes > 0 ? Number((totalSumMinutes / 60).toFixed(2)) : 0;
-
-    excelRows.push({
-      'Fecha': 'TOTAL ACUMULADO',
-      'Trabajador': user_id ? (rows[0] ? rows[0].name : 'Trabajador Seleccionado') : 'TODOS LOS TRABAJADORES',
-      'RUT': `Total Registros: ${rows.length}`,
-      '1. Entrada': '',
-      '2. Salida Colacion': '',
-      '3. Entrada Colacion': '',
-      '4. Salida Jornada': 'SUMA TOTAL:',
-      'Total Horas Trabajadas (HH:MM)': totalAccumulatedFormatted, // Exacto: e.g. "42H:30M"
-      'Horas Decimales': totalAccumulatedDecimal,
-      'Editado por Admin': '',
-      'Nota Auditoria': `Suma total exacta: ${totalSumMinutes} minutos trabajados.`
-    });
-
-    const ws = XLSX.utils.json_to_sheet(excelRows);
-    ws['!cols'] = [
-      { wch: 14 }, // Fecha
-      { wch: 26 }, // Trabajador
-      { wch: 16 }, // RUT
-      { wch: 16 }, // Entrada
-      { wch: 18 }, // Salida Colacion
-      { wch: 18 }, // Entrada Colacion
-      { wch: 18 }, // Salida Jornada
-      { wch: 30 }, // Total Horas (HH:MM)
-      { wch: 16 }, // Horas Decimales
-      { wch: 18 }, // Editado por Admin
-      { wch: 35 }  // Nota Auditoria
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Registro_Asistencia');
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const filename = 'Reporte_Asistencia_' + getLocalDateString() + '.xlsx';
-    res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
   });
 };
 

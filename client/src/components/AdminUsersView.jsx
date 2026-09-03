@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, ShieldCheck, QrCode, Save, Plus, Camera, Search, Download, FileSpreadsheet } from 'lucide-react';
+import { Users, UserPlus, MapPin, Upload, Trash2, Edit3, CheckCircle, AlertTriangle, Lock, X, Key, ShieldCheck, QrCode, Save, Plus, Camera, Search, Download, FileSpreadsheet, Calendar } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   apiGetUsers, 
@@ -22,6 +22,7 @@ import {
 export default function AdminUsersView({ currentUser, theme }) {
   const [users, setUsers] = useState(() => [...getMasterVault().users].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(null);
   const [actionError, setActionError] = useState('');
@@ -335,13 +336,25 @@ export default function AdminUsersView({ currentUser, theme }) {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Crear Nuevo Usuario</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowScheduleModal(true)}
+            className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/40 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            title="Configurar pauta de días laborales por trabajador (medio tiempo, días específicos)"
+          >
+            <Calendar className="w-4 h-4 text-blue-400" />
+            <span>Pauta Días Laborales</span>
+          </button>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Crear Nuevo Usuario</span>
+          </button>
+        </div>
       </div>
 
       {/* Toast Flotante de Notificaciones para evitar saltos en la pantalla */}
@@ -826,6 +839,13 @@ export default function AdminUsersView({ currentUser, theme }) {
         </div>
       )}
 
+          {/* Modal para configurar días laborales por trabajador */}
+      <WorkerScheduleModal
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        workers={users}
+        onWorkerUpdated={() => fetchUsers()}
+      />
     </div>
   );
 }

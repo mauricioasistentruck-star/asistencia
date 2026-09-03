@@ -1,4 +1,5 @@
 import WorkerLeavesModal from './WorkerLeavesModal.jsx';
+import WorkerScheduleModal from './WorkerScheduleModal.jsx';
 import { apiDtGetActiveSession } from '../api';
 import React, { useState, useEffect, useMemo } from 'react';
 import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save, FileText } from 'lucide-react';
@@ -107,6 +108,7 @@ export default function AdminAttendanceView({ user, theme }) {
   const [editLoading, setEditLoading] = useState(false);
   const [lastLiveAlert, setLastLiveAlert] = useState(null);
   const [showLeavesModal, setShowLeavesModal] = useState(false);
+  const [showWorkerDaysModal, setShowWorkerDaysModal] = useState(false);
   const [dtInspectionNotice, setDtInspectionNotice] = useState(null);
 
   // Horario Laboral Oficial
@@ -763,6 +765,17 @@ export default function AdminAttendanceView({ user, theme }) {
           >
             <Download className="w-4 h-4" />
             <span>Descargar Excel</span>
+          </button>
+
+          {/* Botón Pauta Días Laborales por Trabajador */}
+          <button
+            type="button"
+            onClick={() => setShowWorkerDaysModal(true)}
+            className="bg-blue-600/30 hover:bg-blue-600 active:scale-95 text-blue-300 hover:text-white text-xs font-black px-3.5 py-2 rounded-xl border border-blue-500/50 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Configurar días de trabajo por trabajador (medio tiempo, días específicos, turnos rotativos)"
+          >
+            <Calendar className="w-4 h-4 text-blue-400" />
+            <span>Días Laborales por Trabajador</span>
           </button>
 
           {/* Botón Licencias Médicas / Justificativos DT */}
@@ -1468,6 +1481,17 @@ export default function AdminAttendanceView({ user, theme }) {
         isOpen={showLeavesModal}
         onClose={() => setShowLeavesModal(false)}
         workers={usersList}
+      />
+
+      {/* Modal para configurar días laborales específicos por trabajador */}
+      <WorkerScheduleModal
+        isOpen={showWorkerDaysModal}
+        onClose={() => setShowWorkerDaysModal(false)}
+        workers={usersList}
+        onWorkerUpdated={() => {
+          fetchUsers();
+          fetchRecords(true);
+        }}
       />
     </div>
   );
