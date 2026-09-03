@@ -588,6 +588,13 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       }
     };
 
+    let wakeLockSentinel = null;
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(wl => {
+        wakeLockSentinel = wl;
+      }).catch(() => {});
+    }
+
     // 1. Solicitar permisos de GPS explícitos en Android nativo y Web
     const initGps = async () => {
       try {
@@ -655,6 +662,9 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     }, 8000);
 
     return () => {
+      if (wakeLockSentinel) {
+        try { wakeLockSentinel.release().catch(() => {}); } catch(e) {}
+      }
       clearInterval(backupInterval);
       if (watchIdRef.current !== null) {
         try {

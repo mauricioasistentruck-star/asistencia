@@ -1,7 +1,7 @@
 ﻿const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
-function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
+function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken) {
   function isSuperAdminUser(user) {
     if (!user) return false;
     return Boolean(
@@ -537,7 +537,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
   });
 
   // 7. Módulo Administrativo: Licencias Médicas y Justificativos Legales
-  app.get('/api/admin/worker-leaves', requireAdmin, (req, res) => {
+  app.get('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     db.all(
       "SELECT wl.*, u.name as user_name, u.rut as user_rut FROM worker_leaves wl JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
       (err, rows) => {
@@ -547,7 +547,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
     );
   });
 
-  app.post('/api/admin/worker-leaves', requireAdmin, (req, res) => {
+  app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     try {
       const { user_id, date_from, date_to, leave_type, document_number, remarks } = req.body;
       if (!user_id || !date_from || !date_to || !leave_type) {
@@ -572,7 +572,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
     }
   });
 
-  app.delete('/api/admin/worker-leaves/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/worker-leaves/:id', authenticateToken, requireAdmin, (req, res) => {
     db.run("DELETE FROM worker_leaves WHERE id = ?", [req.params.id], function(err) {
       if (err) return res.status(500).json({ error: 'Error al eliminar justificativo' });
       res.json({ success: true });
@@ -580,7 +580,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
   });
 
   // 8. Configurar Días Laborables Específicos por Trabajador (users.work_days)
-  app.patch('/api/admin/users/:id/work-days', requireAdmin, (req, res) => {
+  app.patch('/api/admin/users/:id/work-days', authenticateToken, requireAdmin, (req, res) => {
     try {
       const { work_days } = req.body;
       const workDaysJson = Array.isArray(work_days) ? JSON.stringify(work_days) : '["mon","tue","wed","thu","fri"]';

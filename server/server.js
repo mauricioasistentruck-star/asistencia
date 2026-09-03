@@ -1580,14 +1580,16 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       user.gps_tracking_enabled === true || 
       user.gps_tracking_enabled === '1' || 
       user.gps_tracking_enabled === 'true';
+
+    // Si el usuario está transmitiendo coordenadas desde su dispositivo móvil, auto-activar su GPS
     if (!isGpsActiveForUser) {
-      return res.status(403).json({ message: 'Rastreo GPS desactivado para este usuario' });
+      db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [userId]);
+      io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 1 });
     }
 
-    // Filtrar únicamente puntos con imprecisión extrema (> 120 metros)
-        // Filtrar unicamente puntos con error grosero (> 80 metros)
-    if (accuracy && accuracy > 80) {
-      return res.json({ success: true, message: 'Punto descartado por precision GPS insuficiente (> 80m)' });
+    // Aceptar todas las lecturas reales en carretera y ciudad (descartar solo error grosero > 350m)
+    if (accuracy && accuracy > 350) {
+      return res.json({ success: true, message: 'Punto descartado por precisión GPS insuficiente (> 350m)' });
     }
 
     const today = getLocalDateString();
@@ -1631,10 +1633,9 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
           if (lastPoint) {
             addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
             
-            // 1. Si esta detenido o muy lento (< 2 km/h) y se movio menos de 10m, no anadir punto duplicado
-            const speedKmH = (speed || 0) * 3.6;
-            const minMoveKm = speedKmH < 2.0 ? 0.010 : 0.005;
-            if (addedDist < minMoveKm) {
+            // Registrar cada movimiento de al menos 3 metros, o cada 20 segundos para un trazado continuo
+            const timeSinceLastPoint = lastPoint.timestamp ? (new Date().getTime() - new Date(lastPoint.timestamp).getTime()) : 99999;
+            if (addedDist < 0.003 && timeSinceLastPoint < 20000) {
               shouldAddPoint = false;
             }
 
@@ -2226,7 +2227,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // INICIALIZAR MÓDULO OFICIAL FISCALIZACIÓN DT (DIRECCIÓN DEL TRABAJO)
 // =========================================================================
 const { setupDtInspection } = require('./dtInspection');
-setupDtInspection(app, db, io, JWT_SECRET, requireAdmin);
+setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('====================================================');
