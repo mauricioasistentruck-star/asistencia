@@ -111,13 +111,7 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
           <span>Fiscalización DT</span>
         </button>
 
-        <button
-          onClick={onEnterKiosk}
-          className="px-3 py-1.5 bg-orange-500 text-black hover:bg-orange-600 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/20 active:scale-95"
-        >
-          <Monitor className="w-3.5 h-3.5" />
-          <span>Kiosco</span>
-        </button>
+        
 
         <button
           onClick={() => setShowIphoneModal(true)}
@@ -278,6 +272,15 @@ export default function LoginView({ onLoginSuccess, onEnterKiosk, theme, toggleT
         isOpen={showIphoneModal}
         onClose={() => setShowIphoneModal(false)}
         theme={theme}
+      />
+
+      <DtAuditPortalModal
+        isOpen={showDtModal}
+        onClose={() => setShowDtModal(false)}
+        onLoginSuccess={(session) => {
+          setShowDtModal(false);
+          if (onDtLoginSuccess) onDtLoginSuccess(session);
+        }}
       />
     </div>
   );

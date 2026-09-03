@@ -872,6 +872,16 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
         </div>
       )}
 
+
+      {/* Modal Oficial de Fiscalización DT */}
+      <DtAuditPortalModal
+        isOpen={showDtModal}
+        onClose={() => setShowDtModal(false)}
+        onLoginSuccess={(session) => {
+          setShowDtModal(false);
+          if (onDtLoginSuccess) onDtLoginSuccess(session);
+        }}
+      />
     </div>
   );
 }
