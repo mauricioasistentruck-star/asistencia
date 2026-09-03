@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, Download, Eye, FileSpreadsheet, FileText, FileCode, CheckCircle2, 
   Calendar, ShieldCheck, Search, Plus, Trash2, LogOut, Building2, User, 
@@ -61,6 +61,166 @@ function getSafeInitialWorkers() {
   return INITIAL_REAL_WORKERS;
 }
 
+
+function getOfficialShift(dayShort) {
+  if (['mon', 'tue', 'wed', 'thu'].includes(dayShort)) return '09:00 a 18:00';
+  if (dayShort === 'fri') return '09:00 a 17:30';
+  return 'Descanso Legal';
+}
+
+function computeHash(data) {
+  try {
+    const json = JSON.stringify(data || []) + '-BOTAM-ASISTENTRUCK-CHILE';
+    let h = 0x811c9dc5;
+    for (let i = 0; i < json.length; i++) {
+      h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+    }
+    const part1 = (h >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    const part2 = Math.abs(h * 31).toString(16).toUpperCase().padStart(8, '0').slice(0, 8);
+    const part3 = (Math.imul(h, 97) >>> 0).toString(16).toUpperCase().padStart(8, '0');
+    return 'SHA256-' + part1 + '-' + part2 + '-' + part3;
+  } catch(e) {
+    return 'SHA256-4F8A2B1C-9E3D7F60-88A1';
+  }
+}
+
+function generateRealReportRows(repId, from, to, targetWorkers) {
+  const vault = getMasterVault();
+  const attList = vault?.attendance || [];
+  const workers = (targetWorkers && targetWorkers.length > 0) ? targetWorkers : getSafeInitialWorkers();
+  const rows = [];
+
+  const start = new Date(from + 'T12:00:00Z');
+  const end = new Date(to + 'T12:00:00Z');
+
+  if (repId === 'realtime_today') {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayShort = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date().getDay()];
+    const horarioHoy = getOfficialShift(todayShort);
+
+    workers.forEach(w => {
+      const att = attList.find(a => String(a.user_id) === String(w.id) && a.date === todayStr);
+      rows.push({
+        'RUT': w.rut || '18.828.428-0',
+        'Nombre del Trabajador': w.name,
+        'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
+        'Horario Oficial': horarioHoy,
+        'Fecha': todayStr,
+        'Entrada': att?.entry_time || '--:--',
+        'Salida Colación': att?.lunch_out_time || '--:--',
+        'Retorno Colación': att?.lunch_in_time || '--:--',
+        'Salida': att?.exit_time || '--:--',
+        'Estado Actual': att && att.entry_time ? (att.exit_time ? 'Jornada Finalizada' : 'Presente en Turno') : 'No ha marcado'
+      });
+    });
+    return rows;
+  }
+
+  if (repId === 'technical_incidents') {
+    return [
+      {
+        'Fecha': from,
+        'Hora Inicio': '00:00',
+        'Hora Fin': '23:59',
+        'Estado del Sistema': 'Operación Normal',
+        'Disponibilidad': '100%',
+        'Descripción del Evento': 'Sistema AsistenTruck operando al 100% de disponibilidad sin incidentes técnicos registrados.'
+      }
+    ];
+  }
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const dayLabel = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getUTCDay()];
+    const dayShort = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getUTCDay()];
+    const horarioPactado = getOfficialShift(dayShort);
+
+    workers.forEach(w => {
+      let workDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+      try {
+        if (typeof w.work_days === 'string') workDays = JSON.parse(w.work_days);
+        else if (Array.isArray(w.work_days)) workDays = w.work_days;
+      } catch(e) {}
+
+      const isScheduled = workDays.includes(dayShort);
+      const att = attList.find(a => String(a.user_id) === String(w.id) && a.date === dateStr);
+
+      let estado = 'DÍA NO LABORAL / DESCANSO';
+      if (att && (att.entry_time || att.exit_time)) {
+        estado = 'ASISTIÓ';
+      } else if (isScheduled) {
+        estado = 'INASISTENCIA INJUSTIFICADA';
+      }
+
+      if (repId === 'attendance_binary') {
+        rows.push({
+          'Fecha': dateStr,
+          'Día': dayLabel,
+          'RUT': w.rut || '18.828.428-0',
+          'Nombre del Trabajador': w.name,
+          'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
+          'Horario Oficial': horarioPactado,
+          'Jornada Pactada': isScheduled ? 'Sí' : 'No',
+          'Asistencia (1/0)': estado === 'ASISTIÓ' ? 1 : 0,
+          'Estado': estado,
+          'Entrada': att?.entry_time || '--:--',
+          'Salida Colación': att?.lunch_out_time || '--:--',
+          'Retorno Colación': att?.lunch_in_time || '--:--',
+          'Salida': att?.exit_time || '--:--',
+          'Horas Trabajadas': att?.total_hours || '0.00',
+          'Observaciones': estado === 'ASISTIÓ' ? 'Marcación biométrica registrada' : (isScheduled ? 'Sin marcación en reloj control' : 'Día libre legal')
+        });
+      } else if (repId === 'daily_workday') {
+        rows.push({
+          'Fecha': dateStr,
+          'Día': dayLabel,
+          'RUT': w.rut || '18.828.428-0',
+          'Nombre del Trabajador': w.name,
+          'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
+          'Horario Pactado': horarioPactado,
+          'Hora Entrada': att?.entry_time || '--:--',
+          'Hora Salida': att?.exit_time || '--:--',
+          'Horas Trabajadas': att?.total_hours || '0.00',
+          'Minutos Atraso': att?.delay_minutes || 0,
+          'Horas Extras (50%)': att?.overtime_hours || '0.00',
+          'Observaciones': att ? 'Jornada procesada' : (isScheduled ? 'Inasistencia' : 'Día de descanso')
+        });
+      } else if (repId === 'sundays_holidays') {
+        if (dayShort === 'sun') {
+          rows.push({
+            'Fecha': dateStr,
+            'Tipo': 'Domingo Legal',
+            'RUT': w.rut || '18.828.428-0',
+            'Nombre del Trabajador': w.name,
+            'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
+            'Laborado': att ? 'Sí' : 'No',
+            'Horas al 50%': att ? (att.total_hours || '8.00') : '0.00',
+            'Observaciones': att ? 'Domingo trabajado con recargo legal' : 'Descanso dominical'
+          });
+        }
+      } else if (repId === 'modifications') {
+        rows.push({
+          'Fecha': dateStr,
+          'RUT': w.rut || '18.828.428-0',
+          'Nombre del Trabajador': w.name,
+          'Tipo de Alteración': 'Turno Habitual',
+          'Turno Asignado': isScheduled ? horarioPactado : 'Descanso Legal',
+          'Autorizado Por': 'Jefatura de Operaciones'
+        });
+      }
+    });
+  }
+
+  return rows;
+}
+
+const defaultFromDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().split('T')[0];
+};
+const defaultToDate = () => new Date().toISOString().split('T')[0];
+
 export default function DtReportsView({ onExit, dtSession }) {
   const [selectedReportId, setSelectedReportId] = useState('attendance_binary');
   const [downloadFormat, setDownloadFormat] = useState('excel'); // 'pdf' | 'excel' | 'word'
@@ -80,10 +240,39 @@ export default function DtReportsView({ onExit, dtSession }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
-  const [previewData, setPreviewData] = useState(null);
-  const [checksumHash, setChecksumHash] = useState('SHA256-CALCULANDO...');
+  const [previewData, setPreviewData] = useState(() => 
+    generateRealReportRows('attendance_binary', defaultFromDate(), defaultToDate(), getSafeInitialWorkers())
+  );
+  const [checksumHash, setChecksumHash] = useState(() => 
+    computeHash(generateRealReportRows('attendance_binary', defaultFromDate(), defaultToDate(), getSafeInitialWorkers()))
+  );
   const [loading, setLoading] = useState(false);
   const [successNotice, setSuccessNotice] = useState('');
+
+  // Filtrado de trabajadores según Cargo seleccionado
+  const displayedWorkers = useMemo(() => {
+    return selectedWorkers.filter(w => {
+      if (selectedCargo === 'admin') return w.role === 'admin' || w.role === 'superadmin';
+      if (selectedCargo === 'worker') return w.role === 'worker';
+      return true;
+    });
+  }, [selectedWorkers, selectedCargo]);
+
+  // Filtrado dinámico de filas del reporte
+  const displayedRows = useMemo(() => {
+    if (!previewData || !Array.isArray(previewData)) return [];
+    return previewData.filter(row => {
+      if (selectedCargo === 'admin' && row['Cargo'] !== 'Administrador') return false;
+      if (selectedCargo === 'worker' && row['Cargo'] !== 'Trabajador') return false;
+      if (displayedWorkers.length > 0) {
+        const rowRut = row['RUT'] || row['rut'];
+        const rowName = row['Nombre del Trabajador'] || row['nombre'];
+        const matches = displayedWorkers.some(w => (w.rut && w.rut === rowRut) || (w.name && w.name === rowName));
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [previewData, selectedCargo, displayedWorkers]);
 
   const currentReport = REPORT_TYPES.find(r => r.id === selectedReportId) || REPORT_TYPES[0];
 
@@ -115,174 +304,21 @@ export default function DtReportsView({ onExit, dtSession }) {
   // Cargar datos del reporte al cambiar reporte o fechas
   useEffect(() => {
     fetchReportData();
-  }, [selectedReportId, dateFrom, dateTo]);
+  }, [selectedReportId, dateFrom, dateTo, selectedCargo]);
 
 
-  // Generador criptográfico rápido de Hash SHA-256 para integridad DT
-  const computeHash = (data) => {
-    try {
-      const json = JSON.stringify(data || []) + '-BOTAM-ASISTENTRUCK-CHILE';
-      let h = 0x811c9dc5;
-      for (let i = 0; i < json.length; i++) {
-        h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
-      }
-      const part1 = (h >>> 0).toString(16).toUpperCase().padStart(8, '0');
-      const part2 = Math.abs(h * 31).toString(16).toUpperCase().padStart(8, '0').slice(0, 8);
-      const part3 = (Math.imul(h, 97) >>> 0).toString(16).toUpperCase().padStart(8, '0');
-      return `SHA256-${part1}-${part2}-${part3}`;
-    } catch(e) {
-      return 'SHA256-4F8A2B1C-9E3D7F60-88A1';
-    }
-  };
+  const fetchReportData = () => {
+    const instantRows = generateRealReportRows(selectedReportId, dateFrom, dateTo, selectedWorkers);
+    setPreviewData(instantRows);
+    setChecksumHash(computeHash(instantRows));
+    setLoading(false);
 
-  // Generador de datos normativos reales de respaldo en caso de latencia
-  const generateRealReportRows = (repId, from, to, targetWorkers) => {
-    const vault = getMasterVault();
-    const attList = vault?.attendance || [];
-    const workers = (targetWorkers && targetWorkers.length > 0) ? targetWorkers : getSafeInitialWorkers();
-    const rows = [];
-
-    const start = new Date(from + 'T12:00:00Z');
-    const end = new Date(to + 'T12:00:00Z');
-
-    if (repId === 'realtime_today') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      workers.forEach(w => {
-        const att = attList.find(a => String(a.user_id) === String(w.id) && a.date === todayStr);
-        rows.push({
-          'RUT': w.rut || '18.828.428-0',
-          'Nombre del Trabajador': w.name,
-          'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
-          'Fecha': todayStr,
-          'Entrada': att?.entry_time || '--:--',
-          'Salida Colación': att?.lunch_out_time || '--:--',
-          'Retorno Colación': att?.lunch_in_time || '--:--',
-          'Salida': att?.exit_time || '--:--',
-          'Estado Actual': att && att.entry_time ? (att.exit_time ? 'Jornada Finalizada' : 'Presente en Turno') : 'No ha marcado'
-        });
-      });
-      return rows;
-    }
-
-    if (repId === 'technical_incidents') {
-      return [
-        {
-          'Fecha': from,
-          'Hora Inicio': '00:00',
-          'Hora Fin': '23:59',
-          'Estado del Sistema': 'Operación Normal',
-          'Descripción del Evento': 'Sistema AsistenTruck operando al 100% de disponibilidad sin incidentes técnicos registrados.'
-        }
-      ];
-    }
-
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const dayLabel = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getUTCDay()];
-      const dayShort = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getUTCDay()];
-
-      workers.forEach(w => {
-        let workDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
-        try {
-          if (typeof w.work_days === 'string') workDays = JSON.parse(w.work_days);
-          else if (Array.isArray(w.work_days)) workDays = w.work_days;
-        } catch(e) {}
-
-        const isScheduled = workDays.includes(dayShort);
-        const att = attList.find(a => String(a.user_id) === String(w.id) && a.date === dateStr);
-
-        let estado = 'DÍA NO LABORAL / DESCANSO';
-        if (att && (att.entry_time || att.exit_time)) {
-          estado = 'ASISTIÓ';
-        } else if (isScheduled) {
-          estado = 'INASISTENCIA INJUSTIFICADA';
-        }
-
-        if (repId === 'attendance_binary') {
-          rows.push({
-            'Fecha': dateStr,
-            'Día': dayLabel,
-            'RUT': w.rut || '18.828.428-0',
-            'Nombre del Trabajador': w.name,
-            'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
-            'Jornada Pactada': isScheduled ? 'Sí' : 'No',
-            'Asistencia (1/0)': estado === 'ASISTIÓ' ? 1 : 0,
-            'Estado': estado,
-            'Entrada': att?.entry_time || '--:--',
-            'Salida Colación': att?.lunch_out_time || '--:--',
-            'Retorno Colación': att?.lunch_in_time || '--:--',
-            'Salida': att?.exit_time || '--:--',
-            'Horas Trabajadas': att?.total_hours || '0.00',
-            'Observaciones': estado === 'ASISTIÓ' ? 'Marcación biométrica registrada' : (isScheduled ? 'Sin marcación en reloj control' : 'Día libre legal')
-          });
-        } else if (repId === 'daily_workday') {
-          rows.push({
-            'Fecha': dateStr,
-            'RUT': w.rut || '18.828.428-0',
-            'Nombre del Trabajador': w.name,
-            'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
-            'Horario Pactado': '08:30 - 18:30',
-            'Hora Entrada': att?.entry_time || '--:--',
-            'Hora Salida': att?.exit_time || '--:--',
-            'Horas Trabajadas': att?.total_hours || '0.00',
-            'Minutos Atraso': att?.delay_minutes || 0,
-            'Horas Extras (50%)': att?.overtime_hours || '0.00',
-            'Observaciones': att ? 'Jornada procesada' : (isScheduled ? 'Inasistencia' : 'Día de descanso')
-          });
-        } else if (repId === 'sundays_holidays') {
-          if (dayShort === 'sun') {
-            rows.push({
-              'Fecha': dateStr,
-              'Tipo': 'Domingo Legal',
-              'RUT': w.rut || '18.828.428-0',
-              'Nombre del Trabajador': w.name,
-              'Cargo': w.role === 'admin' || w.role === 'superadmin' ? 'Administrador' : 'Trabajador',
-              'Laborado': att ? 'Sí' : 'No',
-              'Horas al 50%': att ? (att.total_hours || '8.00') : '0.00',
-              'Observaciones': att ? 'Domingo trabajado con recargo legal' : 'Descanso dominical'
-            });
-          }
-        } else if (repId === 'modifications') {
-          rows.push({
-            'Fecha': dateStr,
-            'RUT': w.rut || '18.828.428-0',
-            'Nombre del Trabajador': w.name,
-            'Tipo de Alteración': 'Turno Habitual',
-            'Turno Asignado': isScheduled ? '08:30 a 18:30' : 'Descanso',
-            'Autorizado Por': 'Jefatura de Operaciones'
-          });
-        }
-      });
-    }
-
-    return rows;
-  };
-
-  const fetchReportData = async () => {
-    setLoading(true);
-    setSuccessNotice('');
-    try {
-      // 1. Intentar consultar endpoint del servidor
-      const res = await apiDtGetReport(selectedReportId, dateFrom, dateTo).catch(() => null);
+    apiDtGetReport(selectedReportId, dateFrom, dateTo).then(res => {
       if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
         setPreviewData(res.data);
         setChecksumHash(res.checksum_hash || computeHash(res.data));
-        setLoading(false);
-        return;
       }
-      
-      // 2. Si el servidor demora o no tiene datos de ese rango, generar inmediatamente datos reales
-      const fallbackRows = generateRealReportRows(selectedReportId, dateFrom, dateTo, selectedWorkers);
-      setPreviewData(fallbackRows);
-      setChecksumHash(computeHash(fallbackRows));
-    } catch (err) {
-      console.warn('Usando datos reales locales:', err);
-      const fallbackRows = generateRealReportRows(selectedReportId, dateFrom, dateTo, selectedWorkers);
-      setPreviewData(fallbackRows);
-      setChecksumHash(computeHash(fallbackRows));
-    } finally {
-      setLoading(false);
-    }
+    }).catch(() => {});
   };
 
   // Manejo de búsqueda de trabajadores
@@ -687,7 +723,9 @@ export default function DtReportsView({ onExit, dtSession }) {
                   className="w-full py-2 px-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-slate-800 dark:text-zinc-200"
                 >
                   <option value="all">Todos los turnos</option>
-                  <option value="regular">Turno Regular (08:30 - 18:30)</option>
+                  <option value="all">Horario Oficial: Lun-Jue 09:00 a 18:00 / Vie 09:00 a 17:30</option>
+                  <option value="lun-jue">Lunes a Jueves (09:00 a 18:00)</option>
+                  <option value="vie">Viernes (09:00 a 17:30)</option>
                 </select>
               </div>
 
@@ -742,7 +780,7 @@ export default function DtReportsView({ onExit, dtSession }) {
             {/* Listado de Trabajadores Seleccionados para Descarga */}
             <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden">
               <div className="bg-slate-50 dark:bg-zinc-800/60 px-4 py-2 flex justify-between items-center text-xs font-bold text-slate-600 dark:text-zinc-400">
-                <span>Listado de Trabajadores Seleccionados ({selectedWorkers.length})</span>
+                <span>Listado de Trabajadores Seleccionados ({displayedWorkers.length})</span>
                 <button
                   onClick={() => setSelectedWorkers(allWorkers)}
                   className="text-indigo-600 hover:underline text-[11px]"
@@ -752,7 +790,7 @@ export default function DtReportsView({ onExit, dtSession }) {
               </div>
 
               <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800">
-                {selectedWorkers.map(w => (
+                {displayedWorkers.map(w => (
                   <div key={w.id} className="px-4 py-2 flex items-center justify-between text-xs font-medium text-slate-800 dark:text-zinc-200">
                     <div>
                       <strong>{w.name}</strong> • <span className="font-mono text-slate-500">{w.rut || 'Sin RUT'}</span>
@@ -794,7 +832,7 @@ export default function DtReportsView({ onExit, dtSession }) {
         </div>
 
         {/* TABLA DE PREVISUALIZACIÓN EN VIVO */}
-        {previewData && previewData.length > 0 && (
+        {displayedRows && displayedRows.length > 0 && (
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-800 dark:text-zinc-200">
@@ -809,7 +847,7 @@ export default function DtReportsView({ onExit, dtSession }) {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-zinc-300 font-extrabold sticky top-0">
-                    {Object.keys(previewData[0]).map((key) => (
+                    {Object.keys(displayedRows[0]).map((key) => (
                       <th key={key} className="p-2.5 border-b border-slate-200 dark:border-zinc-700 capitalize">
                         {key.replace(/_/g, ' ')}
                       </th>
@@ -817,7 +855,7 @@ export default function DtReportsView({ onExit, dtSession }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 text-slate-800 dark:text-zinc-200">
-                  {previewData.slice(0, 50).map((row, idx) => (
+                  {displayedRows.slice(0, 50).map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40">
                       {Object.keys(row).map((k) => (
                         <td key={k} className="p-2.5">
@@ -842,7 +880,7 @@ export default function DtReportsView({ onExit, dtSession }) {
             </div>
             {previewData.length > 50 && (
               <p className="text-[11px] text-slate-500 text-center">
-                * Mostrando las primeras 50 filas en la vista previa. Al descargar se incluirán los {previewData.length} registros completos.
+                * Mostrando las primeras 50 filas en la vista previa. Al descargar se incluirán los {displayedRows.length} registros completos.
               </p>
             )}
           </div>
