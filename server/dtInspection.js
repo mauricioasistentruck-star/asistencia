@@ -284,17 +284,27 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
                         status = 'INASISTENCIA';
                       }
 
+                      const dayShort = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getUTCDay()];
+                      let horarioOficial = 'Descanso Legal';
+                      if (['mon', 'tue', 'wed', 'thu'].includes(dayShort)) horarioOficial = '09:00 a 18:00';
+                      else if (dayShort === 'fri') horarioOficial = '09:00 a 17:30';
+
                       reportData.push({
-                        fecha: dateStr,
-                        dia: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getUTCDay()],
-                        rut: u.rut || 'N/A',
-                        nombre: u.name,
-                        programado: isScheduled ? 'Sí' : 'No',
-                        asistencia_binaria: status === 'ASISTIO' ? 1 : 0,
-                        estado: status,
-                        justificacion: justification,
-                        entrada: attRecord ? attRecord.entry_time || '--:--' : '--:--',
-                        salida: attRecord ? attRecord.exit_time || '--:--' : '--:--'
+                        'Fecha': dateStr,
+                        'Día': ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getUTCDay()],
+                        'RUT': u.rut || 'N/A',
+                        'Nombre del Trabajador': u.name,
+                        'Cargo': (u.role === 'admin' || u.role === 'superadmin') ? 'Administrador' : 'Trabajador',
+                        'Horario Oficial': horarioOficial,
+                        'Jornada Pactada': isScheduled ? 'Sí' : 'No',
+                        'Asistencia (1/0)': status === 'ASISTIO' ? 1 : 0,
+                        'Estado': status === 'ASISTIO' ? 'ASISTIÓ' : (isScheduled ? 'INASISTENCIA INJUSTIFICADA' : 'DÍA NO LABORAL / DESCANSO'),
+                        'Entrada': attRecord ? attRecord.entry_time || '--:--' : '--:--',
+                        'Salida Colación': attRecord ? attRecord.lunch_out_time || attRecord.lunch_start || '--:--' : '--:--',
+                        'Retorno Colación': attRecord ? attRecord.lunch_in_time || attRecord.lunch_end || '--:--' : '--:--',
+                        'Salida': attRecord ? attRecord.exit_time || '--:--' : '--:--',
+                        'Horas Trabajadas': attRecord ? attRecord.total_hours || '0.00' : '0.00',
+                        'Observaciones': status === 'ASISTIO' ? 'Marcación biométrica registrada' : (isScheduled ? 'Sin marcación en reloj control' : 'Día libre legal')
                       });
                     }
                   }

@@ -214,12 +214,17 @@ function generateRealReportRows(repId, from, to, targetWorkers) {
   return rows;
 }
 
-const defaultFromDate = () => {
+// Fecha base oficial de inicio del sistema de registro virtual: Lunes 31 de Agosto de 2026
+const BASE_START_DATE = '2026-08-31';
+const TODAY_DATE = new Date().toISOString().split('T')[0];
+const FIVE_YEARS_AGO = (() => {
   const d = new Date();
-  d.setDate(d.getDate() - 7);
+  d.setFullYear(d.getFullYear() - 5);
   return d.toISOString().split('T')[0];
-};
-const defaultToDate = () => new Date().toISOString().split('T')[0];
+})();
+
+const defaultFromDate = () => BASE_START_DATE;
+const defaultToDate = () => TODAY_DATE;
 
 export default function DtReportsView({ onExit, dtSession }) {
   const [selectedReportId, setSelectedReportId] = useState('attendance_binary');
@@ -262,8 +267,9 @@ export default function DtReportsView({ onExit, dtSession }) {
   const displayedRows = useMemo(() => {
     if (!previewData || !Array.isArray(previewData)) return [];
     return previewData.filter(row => {
-      if (selectedCargo === 'admin' && row['Cargo'] !== 'Administrador') return false;
-      if (selectedCargo === 'worker' && row['Cargo'] !== 'Trabajador') return false;
+      const cargo = row['Cargo'] || row['cargo'];
+      if (selectedCargo === 'admin' && cargo !== 'Administrador') return false;
+      if (selectedCargo === 'worker' && cargo !== 'Trabajador') return false;
       if (displayedWorkers.length > 0) {
         const rowRut = row['RUT'] || row['rut'];
         const rowName = row['Nombre del Trabajador'] || row['nombre'];
@@ -634,19 +640,27 @@ export default function DtReportsView({ onExit, dtSession }) {
 
           {/* SELECCIÓN GENERAL DE TRABAJADORES (FILTROS) */}
           <div className="space-y-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-zinc-500">
-              Selección General de Criterios y Filtros
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                Selección General de Criterios y Filtros
+              </h3>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900">
+                <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Antigüedad auditable: Hasta 5 años (Art. 514 CT) • Base: 31/08/2026</span>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {/* Filtro Período Desde */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 dark:text-zinc-400 mb-1">
-                  Desde Fecha:
+                  Desde Fecha (Base: 31 Ago 2026):
                 </label>
                 <input
                   type="date"
                   value={dateFrom}
+                  min={FIVE_YEARS_AGO}
+                  max={dateTo}
                   onChange={(e) => setDateFrom(e.target.value)}
                   className="w-full py-2 px-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-slate-800 dark:text-zinc-200"
                 />
@@ -655,11 +669,13 @@ export default function DtReportsView({ onExit, dtSession }) {
               {/* Filtro Período Hasta */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 dark:text-zinc-400 mb-1">
-                  Hasta Fecha:
+                  Hasta Fecha (Hoy):
                 </label>
                 <input
                   type="date"
                   value={dateTo}
+                  min={dateFrom}
+                  max={TODAY_DATE}
                   onChange={(e) => setDateTo(e.target.value)}
                   className="w-full py-2 px-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-slate-800 dark:text-zinc-200"
                 />
@@ -748,14 +764,14 @@ export default function DtReportsView({ onExit, dtSession }) {
               Buscar Trabajadores a Fiscalizar
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-              Introduzca el nombre y/o primer apellido o su número de cédula de identidad sin puntos y con guión.
+              Introduzca el nombre o número de RUT del trabajador contratado para filtrar en la fiscalización.
             </p>
 
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar por Nombre o RUT (ej: Juan Poblete o 12345678-9)..."
+                placeholder="Buscar por Nombre o RUT de trabajador contratado..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -780,7 +796,7 @@ export default function DtReportsView({ onExit, dtSession }) {
             {/* Listado de Trabajadores Seleccionados para Descarga */}
             <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden">
               <div className="bg-slate-50 dark:bg-zinc-800/60 px-4 py-2 flex justify-between items-center text-xs font-bold text-slate-600 dark:text-zinc-400">
-                <span>Listado de Trabajadores Seleccionados ({displayedWorkers.length})</span>
+                <span>Listado de Trabajadores Contratados ({displayedWorkers.length})</span>
                 <button
                   onClick={() => setSelectedWorkers(allWorkers)}
                   className="text-indigo-600 hover:underline text-[11px]"
