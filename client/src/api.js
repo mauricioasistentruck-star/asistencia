@@ -138,6 +138,7 @@ export const getApiBaseUrl = () => {
       if (window.location.port === '5173' || window.location.port === '5174') {
         return `${window.location.protocol || 'http:'}//${hostname}:3001`;
       }
+      return `${window.location.protocol || 'http:'}//${hostname}:${window.location.port || '3001'}`;
     }
     if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '') {
       return window.location.origin;
@@ -198,7 +199,7 @@ export async function apiRequest(endpoint, options = {}) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 || (res.status === 403 && data.error && (data.error.includes('Token') || data.error.includes('expirado') || data.error.includes('autorizado')))) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !localStorage.getItem('dt_session_data')) {
           console.warn('Sesion expirada o invalida, renovando credenciales...');
           localStorage.removeItem('asistencia_token');
           window.dispatchEvent(new CustomEvent('auth_expired'));
