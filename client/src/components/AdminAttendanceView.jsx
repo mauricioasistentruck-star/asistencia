@@ -1,7 +1,7 @@
 import WorkerLeavesModal from './WorkerLeavesModal.jsx';
 import { apiDtGetActiveSession } from '../api';
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save } from 'lucide-react';
+import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save, FileText } from 'lucide-react';
 import { 
   apiGetAttendanceRecords, 
   apiGetUsers, 
