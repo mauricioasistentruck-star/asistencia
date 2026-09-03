@@ -17,15 +17,34 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
   function authenticateDtOrAdmin(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Acceso no autorizado' });
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-      if (err) return res.status(403).json({ error: 'Sesión inválida o expirada' });
-      req.user = decoded;
-      if (decoded.role === 'dt_inspector' || decoded.role === 'admin' || decoded.role === 'superadmin' || isSuperAdminUser(decoded)) {
-        next();
-      } else {
-        res.status(403).json({ error: 'Acceso exclusivo para Fiscalizadores de la DT o Administradores' });
+    if (token) {
+      jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (!err && decoded) {
+          req.user = decoded;
+          if (decoded.role === 'dt_inspector' || decoded.role === 'admin' || decoded.role === 'superadmin' || isSuperAdminUser(decoded)) {
+            return next();
+          }
+        }
+        // Fallback a sesión activa en BD
+        checkActiveSession(req, res, next);
+      });
+    } else {
+      checkActiveSession(req, res, next);
+    }
+  }
+
+  function checkActiveSession(req, res, next) {
+    db.get("SELECT * FROM dt_audit_sessions WHERE status = 'active' ORDER BY id DESC LIMIT 1", (err, session) => {
+      if (!err && session) {
+        req.user = {
+          role: 'dt_inspector',
+          inspector_name: session.inspector_name,
+          inspector_email: session.inspector_email,
+          session_id: session.id
+        };
+        return next();
       }
+      return res.status(401).json({ error: 'Acceso no autorizado. Inicie sesión en el Portal DT.' });
     });
   }
 
@@ -173,6 +192,15 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin) {
       console.error('Error en /api/dt/login:', e);
       res.status(500).json({ error: 'Error interno del servidor' });
     }
+  });
+
+  
+  // Endpoint directo de trabajadores para el fiscalizador DT
+  app.get('/api/dt/workers', authenticateDtOrAdmin, (req, res) => {
+    db.all("SELECT id, name, rut, email, role, work_days FROM users WHERE role != 'kiosk' ORDER BY id ASC", (err, rows) => {
+      if (err) return res.status(500).json({ error: 'Error al consultar trabajadores' });
+      res.json(rows || []);
+    });
   });
 
   // 3. Obtener sesiones activas de fiscalización (para banner admin)

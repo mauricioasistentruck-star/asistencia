@@ -176,7 +176,7 @@ export const getFullPhotoUrl = (photoPath) => {
 
 export async function apiRequest(endpoint, options = {}) {
   const baseUrl = getApiBaseUrl();
-  const token = localStorage.getItem('asistencia_token');
+  const token = localStorage.getItem('dt_auth_token') || localStorage.getItem('asistencia_token');
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -250,7 +250,7 @@ export const apiToggleGps = (id, enabled) => apiRequest('/api/users/' + id + '/t
 
 export const apiUploadPhoto = async (id, fileOrBase64) => {
   const baseUrl = getApiBaseUrl();
-  const token = localStorage.getItem('asistencia_token');
+  const token = localStorage.getItem('dt_auth_token') || localStorage.getItem('asistencia_token');
   if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
     const res = await fetch(baseUrl + '/api/users/' + id + '/photo-base64', {
       method: 'POST',
@@ -337,7 +337,7 @@ export const apiChangeMyPassword = (newPassword) => apiRequest('/api/auth/change
 });
 
 export const apiExportBackup = async () => {
-  const token = getToken();
+  const token = localStorage.getItem('dt_auth_token') || getToken();
   const res = await fetch(`${getApiBaseUrl()}/api/admin/backup/export`, {
     headers: {
       Authorization: `Bearer ${token}`
@@ -704,6 +704,9 @@ export const apiDtLogin = (inspector_email, token) =>
 
 export const apiDtGetActiveSession = () =>
   apiRequest('/api/dt/active-session');
+
+export const apiDtGetWorkers = () =>
+  apiRequest('/api/dt/workers');
 
 export const apiDtGetReport = (reportType, dateFrom, dateTo, userId) => {
   let query = `?date_from=${dateFrom || ''}&date_to=${dateTo || ''}`;

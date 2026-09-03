@@ -71,6 +71,7 @@ export default function DtAuditPortalModal({ isOpen, onClose, onLoginSuccess }) 
       const res = await apiDtLogin(cleanEmail, loginToken.trim().toUpperCase());
       if (res && res.success) {
         localStorage.setItem('dt_auth_token', res.jwt_token);
+        localStorage.setItem('asistencia_token', res.jwt_token);
         localStorage.setItem('dt_session_data', JSON.stringify(res));
         if (onLoginSuccess) {
           onLoginSuccess(res);

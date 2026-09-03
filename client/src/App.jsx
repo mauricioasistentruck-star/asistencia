@@ -9,9 +9,9 @@ import KioskView from './components/KioskView.jsx';
 import DtReportsView from './components/DtReportsView.jsx';
 import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
 import { unlockIOSAudio } from './api';
-import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive } from './api';
+import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive, apiDtGetActiveSession } from './api';
 import { Geolocation } from '@capacitor/geolocation';
-import { Volume2, Radio, LogOut } from 'lucide-react';
+import { Volume2, Radio, LogOut, ShieldAlert, X, FileText } from 'lucide-react';
 
 function playIncomingBeep() {
   try {
@@ -47,6 +47,82 @@ export default function App() {
   const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('asistencia_theme') || 'dark');
   const [incomingAudio, setIncomingAudio] = useState(null);
+
+  const [globalDtAlert, setGlobalDtAlert] = useState(null);
+  const [globalDtToast, setGlobalDtToast] = useState(null);
+
+  // Listener Global de Alerta de Fiscalización DT y Notificaciones en Celular
+  useEffect(() => {
+    const socket = getSocket();
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch (e) {}
+    }
+
+    const handleDtAlert = (data) => {
+      setGlobalDtAlert(data);
+      playIncomingBeep();
+      if (navigator.vibrate) {
+        try { navigator.vibrate([400, 150, 400, 150, 800]); } catch (e) {}
+      }
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('⚠️ FISCALIZACIÓN LABORAL EN CURSO (DT)', {
+            body: `El fiscalizador ${data.inspector_name || ''} (${data.inspector_email || ''}) ha iniciado revisión de asistencia conforme al D.F.L. N°2 de 1967.`,
+            icon: '/logo.png',
+            tag: 'dt_alert_inspection',
+            requireInteraction: true
+          });
+        } catch (e) {}
+      }
+    };
+
+    const handleDtDownload = (data) => {
+      const msg = `📋 Fiscalización DT: El funcionario ${data.inspector_name || 'DT'} descargó: ${data.report_title || data.reportType || 'Reporte de Asistencia'}`;
+      setGlobalDtToast(msg);
+      if (navigator.vibrate) {
+        try { navigator.vibrate([150, 100, 150]); } catch (e) {}
+      }
+      setTimeout(() => setGlobalDtToast(null), 8000);
+    };
+
+    const handleDtClosed = () => {
+      setGlobalDtAlert(null);
+      setGlobalDtToast("El funcionario de la Dirección del Trabajo ha finalizado la sesión de fiscalización.");
+      setTimeout(() => setGlobalDtToast(null), 6000);
+    };
+
+    socket.on('dt_inspection_alert', handleDtAlert);
+    socket.on('dt_download_alert', handleDtDownload);
+    socket.on('dt_session_closed', handleDtClosed);
+
+    const checkActiveSession = () => {
+      apiDtGetActiveSession().then(res => {
+        if (res && res.active && res.session) {
+          setGlobalDtAlert({
+            inspector_name: res.session.inspector_name,
+            inspector_email: res.session.inspector_email,
+            started_at: res.session.started_at,
+            title: res.title,
+            legal_text: res.legal_text
+          });
+        } else if (res && !res.active) {
+          setGlobalDtAlert(null);
+        }
+      }).catch(() => {});
+    };
+
+    checkActiveSession();
+    const interval = setInterval(checkActiveSession, 8000);
+
+    return () => {
+      socket.off('dt_inspection_alert', handleDtAlert);
+      socket.off('dt_download_alert', handleDtDownload);
+      socket.off('dt_session_closed', handleDtClosed);
+      clearInterval(interval);
+    };
+  }, []);
+
   const [gpsTransmitting, setGpsTransmitting] = useState(false);
   const [dtSession, setDtSession] = useState(() => {
     try {
@@ -644,7 +720,68 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   }
 
   if (!user) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />;
+    return (
+      <>
+        
+      {/* BANNER GLOBAL OFICIAL DE FISCALIZACIÓN DT (VISIBLE EN TODA LA APP) */}
+      {globalDtAlert && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999999] max-w-xl w-[94%] bg-red-950/95 text-white border-2 border-red-500 rounded-3xl p-4 shadow-2xl shadow-red-500/30 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
+          <div className="flex items-start justify-between gap-2.5 mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/30 border border-red-500 flex items-center justify-center text-red-300 flex-shrink-0 animate-pulse">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-red-400 font-mono">
+                    PROCEDIMIENTO DE FISCALIZACIÓN LABORAL EN CURSO (DT)
+                  </span>
+                </div>
+                <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                  Se ha iniciado un proceso de revisión de información por parte de un funcionario de la Dirección del Trabajo.
+                </h4>
+              </div>
+            </div>
+            <button
+              onClick={() => setGlobalDtAlert(null)}
+              className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+              title="Cerrar aviso visual"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <p className="text-[11px] text-zinc-200 leading-relaxed bg-black/60 p-3 rounded-2xl border border-red-500/40">
+            Se informa a usted que, de acuerdo con las facultades y obligaciones legales contenidas en el Código del Trabajo y sus leyes complementarias; en el D.F.L. N°2 de 1967, del Ministerio del Trabajo y Previsión Social, y en otras disposiciones reglamentarias, se está iniciando un procedimiento de fiscalización laboral.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-between text-[10px] font-mono text-zinc-300 gap-2 mt-2 pt-1 border-t border-red-500/30">
+            <div>
+              Fiscalizador: <strong className="text-red-300">{globalDtAlert.inspector_name || 'Funcionario DT'}</strong> ({globalDtAlert.inspector_email || 'dt@dt.gob.cl'})
+            </div>
+            <div>
+              Inicio: <strong>{new Date(globalDtAlert.started_at || Date.now()).toLocaleTimeString('es-CL')} hrs</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOAST FLOTANTE DE ACCIONES Y DESCARGAS DEL FISCALIZADOR */}
+      {globalDtToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999999] max-w-md w-[90%] bg-black/95 text-white border-2 border-orange-500 rounded-2xl p-3 shadow-2xl shadow-orange-500/20 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-300 flex items-center gap-3 pointer-events-auto">
+          <div className="w-8 h-8 rounded-xl bg-orange-500 text-black flex items-center justify-center flex-shrink-0 font-black animate-pulse">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div className="flex-1 text-xs font-bold text-zinc-200">
+            {globalDtToast}
+          </div>
+        </div>
+      )}
+
+        <LoginView onLoginSuccess={handleLoginSuccess} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />
+      </>
+    );
   }
 
   // Modo Kiosco activado EXCLUSIVAMENTE si el usuario que inicio sesion es el usuario de Kiosco
@@ -661,6 +798,63 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   return (
     <div className={'min-h-screen h-screen flex flex-col overflow-hidden ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
+
+      {/* BANNER GLOBAL OFICIAL DE FISCALIZACIÓN DT (VISIBLE EN TODA LA APP) */}
+      {globalDtAlert && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999999] max-w-xl w-[94%] bg-red-950/95 text-white border-2 border-red-500 rounded-3xl p-4 shadow-2xl shadow-red-500/30 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
+          <div className="flex items-start justify-between gap-2.5 mb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/30 border border-red-500 flex items-center justify-center text-red-300 flex-shrink-0 animate-pulse">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-red-400 font-mono">
+                    PROCEDIMIENTO DE FISCALIZACIÓN LABORAL EN CURSO (DT)
+                  </span>
+                </div>
+                <h4 className="text-xs sm:text-sm font-black text-white leading-tight">
+                  Se ha iniciado un proceso de revisión de información por parte de un funcionario de la Dirección del Trabajo.
+                </h4>
+              </div>
+            </div>
+            <button
+              onClick={() => setGlobalDtAlert(null)}
+              className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+              title="Cerrar aviso visual"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <p className="text-[11px] text-zinc-200 leading-relaxed bg-black/60 p-3 rounded-2xl border border-red-500/40">
+            Se informa a usted que, de acuerdo con las facultades y obligaciones legales contenidas en el Código del Trabajo y sus leyes complementarias; en el D.F.L. N°2 de 1967, del Ministerio del Trabajo y Previsión Social, y en otras disposiciones reglamentarias, se está iniciando un procedimiento de fiscalización laboral.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-between text-[10px] font-mono text-zinc-300 gap-2 mt-2 pt-1 border-t border-red-500/30">
+            <div>
+              Fiscalizador: <strong className="text-red-300">{globalDtAlert.inspector_name || 'Funcionario DT'}</strong> ({globalDtAlert.inspector_email || 'dt@dt.gob.cl'})
+            </div>
+            <div>
+              Inicio: <strong>{new Date(globalDtAlert.started_at || Date.now()).toLocaleTimeString('es-CL')} hrs</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOAST FLOTANTE DE ACCIONES Y DESCARGAS DEL FISCALIZADOR */}
+      {globalDtToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999999] max-w-md w-[90%] bg-black/95 text-white border-2 border-orange-500 rounded-2xl p-3 shadow-2xl shadow-orange-500/20 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-300 flex items-center gap-3 pointer-events-auto">
+          <div className="w-8 h-8 rounded-xl bg-orange-500 text-black flex items-center justify-center flex-shrink-0 font-black animate-pulse">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div className="flex-1 text-xs font-bold text-zinc-200">
+            {globalDtToast}
+          </div>
+        </div>
+      )}
+
       
       {/* Banner Flotante de Audio Walkie-Talkie Entrante */}
       {incomingAudio && (

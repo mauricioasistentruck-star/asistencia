@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DtLogo from './DtLogo';
-import { apiDtGetReport, apiDtLogDownload, apiDtCloseSession, apiGetUsers } from '../api';
+import { apiDtGetReport, apiDtLogDownload, apiDtCloseSession, apiGetUsers, apiDtGetWorkers } from '../api';
 
 const REPORT_TYPES = [
   {
@@ -51,7 +51,7 @@ export default function DtReportsView({ onExit, dtSession }) {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCargo, setSelectedCargo] = useState('all');
-  const [selectedLocal, setSelectedLocal] = useState('all');
+  const [selectedLocal, setSelectedLocal] = useState('matriz');
   const [selectedJornada, setSelectedJornada] = useState('all');
   const [selectedTurno, setSelectedTurno] = useState('all');
 
@@ -67,15 +67,29 @@ export default function DtReportsView({ onExit, dtSession }) {
 
   const currentReport = REPORT_TYPES.find(r => r.id === selectedReportId) || REPORT_TYPES[0];
 
-  // Cargar lista de trabajadores
+  // Cargar lista de trabajadores reales
   useEffect(() => {
-    apiGetUsers().then(users => {
-      if (Array.isArray(users)) {
-        const workers = users.filter(u => u.role !== 'kiosk');
-        setAllWorkers(workers);
-        setSelectedWorkers(workers); // Por defecto todos seleccionados para fiscalización
-      }
-    }).catch(() => {});
+    const loadWorkers = async () => {
+      try {
+        const dtWorkers = await apiDtGetWorkers();
+        if (Array.isArray(dtWorkers) && dtWorkers.length > 0) {
+          const valid = dtWorkers.filter(u => u.role !== 'kiosk');
+          setAllWorkers(valid);
+          setSelectedWorkers(valid);
+          return;
+        }
+      } catch (e) {}
+
+      try {
+        const users = await apiGetUsers();
+        if (Array.isArray(users) && users.length > 0) {
+          const valid = users.filter(u => u.role !== 'kiosk');
+          setAllWorkers(valid);
+          setSelectedWorkers(valid);
+        }
+      } catch (e) {}
+    };
+    loadWorkers();
   }, []);
 
   // Cargar datos del reporte al cambiar reporte o fechas
@@ -470,9 +484,7 @@ export default function DtReportsView({ onExit, dtSession }) {
                   onChange={(e) => setSelectedLocal(e.target.value)}
                   className="w-full py-2 px-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-slate-800 dark:text-zinc-200"
                 >
-                  <option value="all">Todos los locales</option>
-                  <option value="central">Casa Matriz - Santiago</option>
-                  <option value="terreno">Cuadrilla en Terreno</option>
+                  <option value="matriz">Casa Matriz - Inversiones Botam SpA</option>
                 </select>
               </div>
             </div>
