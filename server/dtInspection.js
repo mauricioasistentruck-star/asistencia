@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 ﻿const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
@@ -549,22 +551,82 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
 
   app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     try {
-      const { user_id, date_from, date_to, leave_type, document_number, remarks } = req.body;
+      const { user_id, date_from, date_to, leave_type, document_number, remarks, pdf_base64, pdf_filename } = req.body;
       if (!user_id || !date_from || !date_to || !leave_type) {
         return res.status(400).json({ error: 'Faltan campos obligatorios para registrar el justificativo.' });
       }
 
       const adminName = req.user ? req.user.name || req.user.username : 'Administrador';
 
+      // 1. Guardar archivo PDF o comprobante en servidor si fue adjuntado
+      let pdfUrl = null;
+      if (pdf_base64) {
+        try {
+          const uploadsLeavesDir = path.join(__dirname, 'uploads', 'leaves');
+          if (!fs.existsSync(uploadsLeavesDir)) {
+            fs.mkdirSync(uploadsLeavesDir, { recursive: true });
+          }
+          const matches = pdf_base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+          const buffer = matches ? Buffer.from(matches[2], 'base64') : Buffer.from(pdf_base64, 'base64');
+          const ext = (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf')) ? '.pdf' : (pdf_filename ? path.extname(pdf_filename) || '.pdf' : '.pdf');
+          const fileName = `licencia_${Date.now()}_u${user_id}${ext}`;
+          const filePath = path.join(uploadsLeavesDir, fileName);
+          fs.writeFileSync(filePath, buffer);
+          pdfUrl = `/uploads/leaves/${fileName}`;
+        } catch (pdfErr) {
+          console.error('Error al guardar archivo de licencia:', pdfErr);
+        }
+      }
+
+      // 2. Registrar en worker_leaves
       db.run(
-        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [user_id, date_from, date_to, leave_type, document_number || null, remarks || null, adminName],
+        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [user_id, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
         function(err) {
           if (err) {
             console.error('Error guardando worker_leave:', err);
             return res.status(500).json({ error: 'Error al guardar justificativo' });
           }
-          res.json({ success: true, id: this.lastID, message: 'Justificativo/Licencia legal registrada con éxito' });
+          const leaveId = this.lastID;
+
+          // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA
+          // Para cada fecha del período de la licencia, justificar los días con o sin marcación
+          const cur = new Date(date_from + 'T00:00:00Z');
+          const stop = new Date(date_to + 'T00:00:00Z');
+          const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc N° ${document_number})` : ''}`;
+
+          while (cur <= stop) {
+            const dStr = cur.toISOString().split('T')[0];
+            const currentDStr = dStr;
+            
+            db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [user_id, currentDStr], (checkErr, row) => {
+              if (row) {
+                // Actualizar marcación existente a JUSTIFICADO
+                db.run(
+                  "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
+                  [leaveNote, row.id]
+                );
+              } else {
+                // Insertar registro formal de justificación para que la inasistencia quede saldada
+                db.run(
+                  "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', '00:00', ?, 1)",
+                  [user_id, currentDStr, leaveNote]
+                );
+              }
+            });
+
+            cur.setUTCDate(cur.getUTCDate() + 1);
+          }
+
+          // Notificar en tiempo real a todas las pantallas abiertas
+          io.emit('attendance_updated', { user_id, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
+
+          res.json({
+            success: true,
+            id: leaveId,
+            pdf_url: pdfUrl,
+            message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
+          });
         }
       );
     } catch (e) {
@@ -573,9 +635,32 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   });
 
   app.delete('/api/admin/worker-leaves/:id', authenticateToken, requireAdmin, (req, res) => {
-    db.run("DELETE FROM worker_leaves WHERE id = ?", [req.params.id], function(err) {
-      if (err) return res.status(500).json({ error: 'Error al eliminar justificativo' });
-      res.json({ success: true });
+    // Consultar detalles de la licencia antes de borrar para restaurar historial
+    db.get("SELECT * FROM worker_leaves WHERE id = ?", [req.params.id], (getErr, leave) => {
+      if (getErr || !leave) {
+        return res.status(404).json({ error: 'Justificativo no encontrado' });
+      }
+
+      db.run("DELETE FROM worker_leaves WHERE id = ?", [req.params.id], function(delErr) {
+        if (delErr) return res.status(500).json({ error: 'Error al eliminar justificativo' });
+
+        // Limpiar registros que fueron insertados únicamente para justificar
+        db.run(
+          "DELETE FROM attendance WHERE user_id = ? AND date >= ? AND date <= ? AND entry_time = '--:--' AND status = 'JUSTIFICADO'",
+          [leave.user_id, leave.date_from, leave.date_to],
+          () => {
+            // Revertir a ASISTIÓ los registros que tenían marcación real
+            db.run(
+              "UPDATE attendance SET status = 'ASISTIO', admin_note = NULL WHERE user_id = ? AND date >= ? AND date <= ? AND status = 'JUSTIFICADO'",
+              [leave.user_id, leave.date_from, leave.date_to],
+              () => {
+                io.emit('attendance_updated', { user_id: leave.user_id, date_from: leave.date_from, date_to: leave.date_to, deleted: true });
+                res.json({ success: true, message: 'Justificativo eliminado e historial restaurado' });
+              }
+            );
+          }
+        );
+      });
     });
   });
 

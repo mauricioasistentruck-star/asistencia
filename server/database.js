@@ -339,6 +339,7 @@ function initDatabase() {
         leave_type TEXT NOT NULL,
         document_number TEXT,
         remarks TEXT,
+      pdf_url TEXT,
         created_by TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

@@ -1491,6 +1491,7 @@ export default function AdminAttendanceView({ user, theme }) {
         isOpen={showLeavesModal}
         onClose={() => setShowLeavesModal(false)}
         workers={usersList}
+        onLeaveUpdated={() => fetchRecords(true)}
       />
 
       {/* Modal para configurar días laborales específicos por trabajador */}
