@@ -77,6 +77,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const [routeSuccessMsg, setRouteSuccessMsg] = useState('');
 
   const routeWatchRef = useRef(null);
+  const lastHeartbeatRef = useRef(0);
   const routeTimerRef = useRef(null);
 
   const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
@@ -250,7 +251,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 const nLng = newPos.coords.longitude;
                 const nSpeed = newPos.coords.speed || 0;
                 const nAcc = Math.round(newPos.coords.accuracy || 10);
-                if (nAcc > 25) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
+                if (nAcc > 200) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
 
                 const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
 
@@ -261,7 +262,14 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     const speedKmH = nSpeed * 3.6;
                     // Si está casi quieto (< 2 km/h), requerir al menos 15m para evitar cuadrados y temblor en esquinas
                     const threshold = speedKmH < 2.0 ? 0.015 : 0.010;
-                    if (dist < threshold) return prev;
+                    if (dist < threshold) {
+                      const now = Date.now();
+                      if (now - lastHeartbeatRef.current > 25000) {
+                        lastHeartbeatRef.current = now;
+                        apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
+                      }
+                      return prev;
+                    }
 
                     // Descartar picos de velocidad imposible (> 130 km/h)
                     const t1 = new Date(lastPt.timestamp || 0).getTime();
@@ -298,7 +306,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 const nLng = newPos.coords.longitude;
                 const nSpeed = newPos.coords.speed || 0;
                 const nAcc = Math.round(newPos.coords.accuracy || 10);
-                if (nAcc > 25) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
+                if (nAcc > 200) return; // Filtrar estrictamente lecturas imprecisas (> 25m)
 
                 const pt = { latitude: nLat, longitude: nLng, timestamp: new Date().toISOString(), time: formatChileTime(), speed: nSpeed, accuracy: nAcc };
 
@@ -309,7 +317,14 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     const speedKmH = nSpeed * 3.6;
                     // Si está casi quieto (< 2 km/h), requerir al menos 15m para evitar cuadrados y temblor en esquinas
                     const threshold = speedKmH < 2.0 ? 0.015 : 0.010;
-                    if (dist < threshold) return prev;
+                    if (dist < threshold) {
+                      const now = Date.now();
+                      if (now - lastHeartbeatRef.current > 25000) {
+                        lastHeartbeatRef.current = now;
+                        apiSendGpsPoint({ latitude: nLat, longitude: nLng, accuracy: nAcc, speed: nSpeed }).catch(() => {});
+                      }
+                      return prev;
+                    }
 
                     // Descartar picos de velocidad imposible (> 130 km/h)
                     const t1 = new Date(lastPt.timestamp || 0).getTime();

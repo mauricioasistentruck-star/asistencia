@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, 
@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { 
   apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
-  apiDeleteGpsRoute, apiToggleGps, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
+  apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
   getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime 
 } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
@@ -24,30 +24,31 @@ const getWorkerColor = (userId, index = 0) => {
 };
 
 const createTruckIcon = (color = '#f97316', label = '', photoUrl = null) => {
+  const fullUrl = photoUrl ? getFullPhotoUrl(photoUrl) : null;
   return L.divIcon({
     className: 'custom-truck-marker',
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        <div style="background-color: ${color}; width: 38px; height: 38px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; font-size: 17px; overflow: hidden;">
-          ${photoUrl ? `<img src="${photoUrl}" style="width:100%; height:100%; object-fit:cover;" />` : '🚚'}
+        <div style="background-color: ${color}; width: 42px; height: 42px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; font-size: 18px; overflow: hidden;">
+          ${fullUrl ? `<img src="${fullUrl}" style="width:100%; height:100%; object-fit:cover; object-position:center; display:block;" onerror="this.style.display='none'; this.parentElement.innerText='🚚';" />` : '🚚'}
         </div>
-        ${label ? `<div style="background: rgba(0,0,0,0.9); color: ${color}; font-size: 10px; font-weight: 900; padding: 2px 6px; border-radius: 6px; margin-top: 2px; border: 1.5px solid ${color}; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8);">${label}</div>` : ''}
+        ${label ? `<div style="background: rgba(0,0,0,0.92); color: ${color}; font-size: 10px; font-weight: 900; padding: 2px 7px; border-radius: 6px; margin-top: 2px; border: 1.5px solid ${color}; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8);">${label}</div>` : ''}
       </div>
     `,
-    iconSize: [40, 56],
-    iconAnchor: [20, 28]
+    iconSize: [44, 60],
+    iconAnchor: [22, 30]
   });
 };
 
-const createMyLocationIcon = () => {
+const createMyLocationIcon = (isCalibrated = false) => {
   return L.divIcon({
     className: 'custom-my-location-marker',
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="position: absolute; width: 48px; height: 48px; background-color: rgba(59, 130, 246, 0.35); border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <div style="width: 24px; height: 24px; background-color: #2563eb; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px rgba(37,99,235,0.9); z-index: 10;"></div>
-        <div style="background: #1e3a8a; color: #93c5fd; font-size: 9px; font-weight: 900; padding: 1px 6px; border-radius: 6px; margin-top: 24px; border: 1px solid #3b82f6; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
-          📍 Tú estás aquí
+        <div style="position: absolute; width: 48px; height: 48px; background-color: ${isCalibrated ? 'rgba(16, 185, 129, 0.35)' : 'rgba(59, 130, 246, 0.35)'}; border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+        <div style="width: 24px; height: 24px; background-color: ${isCalibrated ? '#059669' : '#2563eb'}; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px ${isCalibrated ? 'rgba(5,150,105,0.9)' : 'rgba(37,99,235,0.9)'}; z-index: 10;"></div>
+        <div style="background: ${isCalibrated ? '#064e3b' : '#1e3a8a'}; color: ${isCalibrated ? '#a7f3d0' : '#93c5fd'}; font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 6px; margin-top: 24px; border: 1px solid ${isCalibrated ? '#10b981' : '#3b82f6'}; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
+          ${isCalibrated ? '📍 Lugar de Trabajo (Fijado)' : '📍 Tú estás aquí'}
         </div>
       </div>
     `,
@@ -79,6 +80,17 @@ function calculateDistanceBetween(lat1, lon1, lat2, lon2) {
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
+}
+
+function MapClickHandler({ onMapClick, isCalibrating }) {
+  useMapEvents({
+    click(e) {
+      if (isCalibrating && e && e.latlng) {
+        onMapClick(e.latlng);
+      }
+    }
+  });
+  return null;
 }
 
 function MapController({ targetCenter, targetZoom, targetBounds, moveTrigger }) {
@@ -123,12 +135,14 @@ export default function AdminGpsView({ theme }) {
   const [liveGpsList, setLiveGpsList] = useState([]);
   const [mapLayer, setMapLayer] = useState('satellite');
   
-  // Mi Ubicación en tiempo real
+  // Mi Ubicación en tiempo real y Calibración de Lugar de Trabajo
   const [myLocation, setMyLocation] = useState(null);
   const [myLocationAccuracy, setMyLocationAccuracy] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationTimestamp, setLocationTimestamp] = useState(null);
   const [geoError, setGeoError] = useState('');
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [isCalibrated, setIsCalibrated] = useState(false);
 
   const [activeRouteInfo, setActiveRouteInfo] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -186,34 +200,115 @@ export default function AdminGpsView({ theme }) {
     }
   }, [activeRoutePoints, routePoints, selectedUser?.id, selectedSavedRoute?.id]);
 
-  // Geolocalización continua en tiempo real
+  // Cargar ubicación calibrada en trabajo si existe
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('asistentruck_workplace_location');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.lat && parsed.lng) {
+          setMyLocation([parsed.lat, parsed.lng]);
+          setMyLocationAccuracy(5);
+          setLocationTimestamp(new Date(parsed.timestamp || Date.now()));
+          setIsCalibrated(true);
+          setTargetCenter([parsed.lat, parsed.lng]);
+          setTargetZoom(16);
+          setMoveTrigger(t => t + 1);
+          apiSendGpsPoint({ latitude: parsed.lat, longitude: parsed.lng, accuracy: 5, speed: 0 }).catch(() => {});
+          return;
+        }
+      }
+    } catch (e) {}
+
+    locateMe(false);
+  }, []);
+
+  const handleMapClickForCalibration = (latlng) => {
+    if (!latlng) return;
+    const lat = Number(latlng.lat.toFixed(6));
+    const lng = Number(latlng.lng.toFixed(6));
+    setMyLocation([lat, lng]);
+    setMyLocationAccuracy(5);
+    setLocationTimestamp(new Date());
+    setIsCalibrated(true);
+    setIsCalibrating(false);
+    setGeoError('');
+
+    try {
+      localStorage.setItem('asistentruck_workplace_location', JSON.stringify({
+        lat,
+        lng,
+        timestamp: Date.now()
+      }));
+    } catch (e) {}
+
+    apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: 5, speed: 0 })
+      .then(() => fetchLiveGps())
+      .catch(() => {});
+
+    setTargetCenter([lat, lng]);
+    setTargetZoom(17);
+    setTargetBounds(null);
+    setMoveTrigger(t => t + 1);
+  };
+
+  const handleResetCalibration = () => {
+    try {
+      localStorage.removeItem('asistentruck_workplace_location');
+    } catch (e) {}
+    setIsCalibrated(false);
+    setIsCalibrating(false);
+    locateMe(true);
+  };
+
+  // Geolocalización continua de alta precisión con respaldo automático por red
   const locateMe = async (forceCenter = true) => {
     setIsLocating(true);
     setGeoError('');
     try {
       let lat, lng, acc;
+
+      // 1. Intento de alta precisión (satelital)
       try {
         await Geolocation.requestPermissions().catch(() => {});
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        const pos = await new Promise((resolve, reject) => {
+          if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+              resolve,
+              reject,
+              { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+            );
+          } else {
+            reject(new Error('No geolocation'));
+          }
+        });
         if (pos && pos.coords) {
           lat = pos.coords.latitude;
           lng = pos.coords.longitude;
           acc = Math.round(pos.coords.accuracy || 10);
         }
-      } catch (capErr) {
-        if ('geolocation' in navigator) {
-          await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-              (p) => {
-                lat = p.coords.latitude;
-                lng = p.coords.longitude;
-                acc = Math.round(p.coords.accuracy || 10);
-                resolve();
-              },
-              (err) => reject(err),
-              { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-            );
+      } catch (highErr) {
+        console.warn('GPS satelital timeout/error, usando respaldo por red:', highErr.message);
+        // 2. Respaldo por red celular/Wi-Fi (para interiores donde no llegan satélites)
+        try {
+          const fallbackPos = await new Promise((resolve, reject) => {
+            if ('geolocation' in navigator) {
+              navigator.geolocation.getCurrentPosition(
+                resolve,
+                reject,
+                { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+              );
+            } else {
+              reject(new Error('No geolocation'));
+            }
           });
+          if (fallbackPos && fallbackPos.coords) {
+            lat = fallbackPos.coords.latitude;
+            lng = fallbackPos.coords.longitude;
+            acc = Math.round(fallbackPos.coords.accuracy || 25);
+          }
+        } catch (fbErr) {
+          console.warn('Fallback geolocation failed:', fbErr.message);
         }
       }
 
@@ -221,6 +316,14 @@ export default function AdminGpsView({ theme }) {
         setMyLocation([lat, lng]);
         setMyLocationAccuracy(acc);
         setLocationTimestamp(new Date());
+        setIsCalibrated(false);
+        try { localStorage.removeItem('asistentruck_workplace_location'); } catch(e) {}
+
+        // Sincronizar inmediatamente al servidor para que el mapa y los reportes muestren su posición en el trabajo
+        apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: acc, speed: 0 })
+          .then(() => fetchLiveGps())
+          .catch(() => {});
+
         if (forceCenter) {
           setTargetCenter([lat, lng]);
           setTargetZoom(17);
@@ -229,11 +332,11 @@ export default function AdminGpsView({ theme }) {
         }
         setGeoError('');
       } else {
-        setGeoError('No se pudo obtener la posición GPS actual.');
+        setGeoError('No se pudo obtener señal GPS automática. Use "Calibrar Trabajo" para fijar su ubicación en el mapa.');
       }
     } catch (err) {
       console.warn('Geolocalización error:', err.message);
-      setGeoError('Active el GPS para ver su ubicación actual en vivo');
+      setGeoError('Active el GPS o use "Calibrar Trabajo" para fijar su ubicación.');
     } finally {
       setIsLocating(false);
     }
@@ -241,21 +344,25 @@ export default function AdminGpsView({ theme }) {
 
   // Escuchar posición en tiempo real para mantener el punto azul siempre al día
   useEffect(() => {
-    locateMe(false);
-
     let watchId = null;
     try {
       if ('geolocation' in navigator) {
         watchId = navigator.geolocation.watchPosition(
           (p) => {
             if (p && p.coords) {
-              setMyLocation([p.coords.latitude, p.coords.longitude]);
-              setMyLocationAccuracy(Math.round(p.coords.accuracy || 10));
+              const saved = localStorage.getItem('asistentruck_workplace_location');
+              if (saved && (p.coords.accuracy || 10) > 80) return;
+
+              const nLat = p.coords.latitude;
+              const nLng = p.coords.longitude;
+              const nAcc = Math.round(p.coords.accuracy || 10);
+              setMyLocation([nLat, nLng]);
+              setMyLocationAccuracy(nAcc);
               setLocationTimestamp(new Date());
             }
           },
           () => {},
-          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
         );
       }
     } catch (e) {}
@@ -677,6 +784,22 @@ export default function AdminGpsView({ theme }) {
           {/* Botón 3: Historial de Rutas */}
           <button
             type="button"
+            onClick={() => setIsCalibrating(c => !c)}
+            className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer border ' + (
+              isCalibrating
+                ? 'bg-emerald-500 text-black border-emerald-400 animate-pulse shadow-lg shadow-emerald-500/30'
+                : isCalibrated
+                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/50 hover:bg-emerald-900'
+                  : 'bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border-emerald-500/30 hover:text-emerald-300'
+            )}
+            title="Ajustar o calibrar manualmente su ubicación en el lugar de trabajo si el GPS del navegador marca su casa"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            <span>{isCalibrating ? 'Haga clic en mapa...' : isCalibrated ? 'Trabajo Calibrado ✓' : 'Calibrar Trabajo'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowHistoryModal(true)}
             className="bg-zinc-900 hover:bg-zinc-800 text-orange-400 hover:text-orange-300 border border-orange-500/30 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
             title="Ver rutas archivadas de días anteriores o completadas"
@@ -709,6 +832,42 @@ export default function AdminGpsView({ theme }) {
         </div>
       </div>
 
+      {/* Banner de Calibración Activa */}
+      {isCalibrating && (
+        <div className="bg-emerald-500/20 border-2 border-emerald-500 rounded-2xl p-3 text-emerald-300 text-xs flex items-center justify-between shadow-xl">
+          <div className="flex items-center gap-2 font-bold">
+            <MapPin className="w-5 h-5 text-emerald-400 animate-bounce flex-shrink-0" />
+            <span>
+              <strong>Modo Calibración Activo:</strong> Toque o haga clic directamente en el mapa sobre el lugar donde se encuentra su lugar de trabajo para fijar su ubicación real de inmediato.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsCalibrating(false)}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer ml-3"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {/* Banner de Aviso por Precisión Wi-Fi/IP en Computador */}
+      {!isCalibrated && myLocationAccuracy && myLocationAccuracy > 100 && (
+        <div className="bg-blue-500/15 border border-blue-500/40 rounded-2xl p-3 text-blue-300 text-xs flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />
+            <span>
+              Su dispositivo está usando ubicación aproximada por red/Wi-Fi (±{myLocationAccuracy}m). Si marca su casa u otra comuna, use el botón <strong>"Calibrar Trabajo"</strong> para fijar su ubicación exacta en el mapa.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsCalibrating(true)}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-3 py-1.5 rounded-xl cursor-pointer whitespace-nowrap ml-3"
+          >
+            Calibrar Ahora
+          </button>
+        </div>
+      )}
+
       {/* Banner de Aviso de Mi Ubicación o Error */}
       {geoError && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-amber-400 text-xs flex items-center justify-between">
@@ -716,9 +875,14 @@ export default function AdminGpsView({ theme }) {
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {geoError}
           </span>
-          <button onClick={() => locateMe(true)} className="bg-amber-500 text-black font-black text-xs px-3 py-1 rounded-xl cursor-pointer">
-            Activar GPS
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => locateMe(true)} className="bg-amber-500 text-black font-black text-xs px-3 py-1 rounded-xl cursor-pointer">
+              Reintentar GPS
+            </button>
+            <button onClick={() => setIsCalibrating(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-3 py-1 rounded-xl cursor-pointer">
+              Calibrar Manual
+            </button>
+          </div>
         </div>
       )}
 
@@ -753,8 +917,8 @@ export default function AdminGpsView({ theme }) {
           </div>
         </div>
 
-        {/* Carrusel de Tarjetas Limpias */}
-        <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
+        {/* Carrusel de Tarjetas Limpias con Fotos Proporcionadas */}
+        <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin">
           {workersList.length === 0 ? (
             <span className="text-xs text-zinc-500 py-3">No hay trabajadores registrados.</span>
           ) : (
@@ -764,46 +928,79 @@ export default function AdminGpsView({ theme }) {
               const isGpsOn = isGpsActive(u.gps_tracking_enabled);
               const uColor = getWorkerColor(u.id, idx);
               const speed = livePos?.speed ? Math.round(livePos.speed * 3.6) : 0;
+              const photoUrl = u.photo_url ? getFullPhotoUrl(u.photo_url) : null;
 
               return (
                 <div
                   key={u.id}
                   onClick={() => handleSelectWorker(u)}
-                  className={'flex-shrink-0 p-3 rounded-2xl border transition-all cursor-pointer select-none min-w-[170px] max-w-[205px] flex items-center gap-3 ' + (
+                  className={'flex-shrink-0 p-3 rounded-2xl border transition-all cursor-pointer select-none min-w-[205px] max-w-[240px] flex items-center gap-3.5 shadow-md ' + (
                     isSelected
-                      ? 'bg-orange-500 text-black border-orange-400 shadow-lg shadow-orange-500/30 scale-[1.02]'
+                      ? 'bg-orange-500 text-black border-orange-400 shadow-orange-500/30 scale-[1.02]'
                       : isGpsOn
                         ? 'bg-zinc-900/90 border-emerald-500/50 hover:border-orange-500 text-white'
                         : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 text-zinc-400'
                   )}
                 >
-                  <div
-                    style={{ backgroundColor: isSelected ? '#000' : uColor }}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0 text-white overflow-hidden"
-                  >
-                    {u.photo_url ? (
-                      <img src={getFullPhotoUrl(u.photo_url)} alt="" className="w-full h-full object-fit" />
-                    ) : (
-                      <span>{u.name?.substring(0, 2).toUpperCase()}</span>
+                  {/* Foto de Perfil con Dimensiones Uniformes y Fallback */}
+                  <div className="relative flex-shrink-0">
+                    <div
+                      style={{ backgroundColor: isSelected ? '#18181b' : uColor }}
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm text-white overflow-hidden shadow-inner border-2 border-zinc-700/80"
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={u.name}
+                          className="w-full h-full object-cover object-center block"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        style={{ display: photoUrl ? 'none' : 'flex' }}
+                        className="w-full h-full items-center justify-center text-xs font-black tracking-wider"
+                      >
+                        {u.name?.substring(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Indicador de transmisión en la foto */}
+                    {isGpsOn && (
+                      <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+                        {livePos?.latitude && (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        )}
+                        <span className={'relative inline-flex rounded-full h-4 w-4 border-2 items-center justify-center text-[8px] font-black ' + (
+                          livePos?.latitude
+                            ? 'bg-emerald-500 border-black text-black'
+                            : 'bg-amber-500 border-black text-black'
+                        )}>
+                          ●
+                        </span>
+                      </span>
                     )}
                   </div>
 
-                  <div className="overflow-hidden flex-1">
-                    <div className={'font-black text-xs truncate ' + (isSelected ? 'text-black' : 'text-white')}>
+                  <div className="overflow-hidden flex-1 min-w-0">
+                    <div className={'font-black text-xs truncate leading-snug ' + (isSelected ? 'text-black' : 'text-white')} title={u.name}>
                       {u.name}
                     </div>
-                    <div className="mt-1 flex items-center gap-1 text-[9px] font-bold">
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px]">
                       {isGpsOn ? (
                         livePos?.latitude ? (
-                          <span className={'font-extrabold flex items-center gap-1 ' + (isSelected ? 'text-black' : 'text-emerald-400')}>
-                            <span className={'w-1.5 h-1.5 rounded-full animate-ping ' + (isSelected ? 'bg-black' : 'bg-emerald-400')}></span>
+                          <span className={'font-black flex items-center gap-1 ' + (isSelected ? 'text-black' : 'text-emerald-400')}>
+                            <span className={'w-1.5 h-1.5 rounded-full ' + (isSelected ? 'bg-black' : 'bg-emerald-400 animate-pulse')}></span>
                             {speed > 0 ? `${speed} km/h` : 'En Vivo'}
                           </span>
                         ) : (
                           <span className={isSelected ? 'text-black font-extrabold' : 'text-emerald-400 font-extrabold'}>GPS Activo</span>
                         )
                       ) : (
-                        <span className="text-zinc-500">GPS Inactivo</span>
+                        <span className="text-zinc-500 font-semibold">GPS Inactivo</span>
                       )}
                     </div>
                   </div>
@@ -827,8 +1024,16 @@ export default function AdminGpsView({ theme }) {
                 
                 {/* Avatar y Datos del Trabajador */}
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-orange-500 text-black flex items-center justify-center font-black text-2xl flex-shrink-0 shadow-md">
-                    🚚
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-800 border-2 border-orange-500 text-white flex items-center justify-center font-black text-sm flex-shrink-0 overflow-hidden shadow-lg">
+                    {selectedUser.photo_url ? (
+                      <img
+                        src={getFullPhotoUrl(selectedUser.photo_url)}
+                        alt={selectedUser.name}
+                        className="w-full h-full object-cover object-center block"
+                      />
+                    ) : (
+                      <span className="text-xl">🚚</span>
+                    )}
                   </div>
                   <div>
                     <div className="text-sm font-black text-white flex flex-wrap items-center gap-2">
@@ -929,6 +1134,8 @@ export default function AdminGpsView({ theme }) {
               moveTrigger={moveTrigger}
             />
 
+            <MapClickHandler onMapClick={handleMapClickForCalibration} isCalibrating={isCalibrating} />
+
             {mapLayer === 'satellite' ? (
               <TileLayer
                 attribution='Tiles &copy; Esri World Imagery'
@@ -943,35 +1150,68 @@ export default function AdminGpsView({ theme }) {
               />
             )}
 
-            {/* Marcador de Mi Ubicación en Tiempo Real */}
+            {/* Marcador y Radio de Mi Ubicación en Tiempo Real */}
             {myLocation && (
-              <Marker position={myLocation} icon={createMyLocationIcon()}>
-                <Popup>
-                  <div className="text-xs text-zinc-900 font-sans p-1">
-                    <strong className="text-sm font-black text-blue-600 block">📍 Tu Ubicación Actual</strong>
-                    <div className="text-[11px] text-zinc-700 mt-1">
-                      Coordenadas: {myLocation[0].toFixed(5)}, {myLocation[1].toFixed(5)}
-                    </div>
-                    <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                      Precisión: ±{myLocationAccuracy || 10} metros
-                    </div>
-                    {locationTimestamp && (
-                      <div className="text-[9px] text-zinc-500 mt-1">
-                        Actualizado: {locationTimestamp.toLocaleTimeString('es-CL')}
+              <>
+                <Circle
+                  center={myLocation}
+                  radius={myLocationAccuracy || 15}
+                  pathOptions={{
+                    color: isCalibrated ? '#10b981' : '#3b82f6',
+                    fillColor: isCalibrated ? '#10b981' : '#3b82f6',
+                    fillOpacity: 0.12,
+                    weight: 1.5,
+                    dashArray: '5, 5'
+                  }}
+                />
+                <Marker position={myLocation} icon={createMyLocationIcon(isCalibrated)}>
+                  <Popup>
+                    <div className="text-xs text-zinc-900 font-sans p-1 min-w-[170px]">
+                      <strong className={`text-sm font-black block ${isCalibrated ? 'text-emerald-700' : 'text-blue-600'}`}>
+                        {isCalibrated ? '📍 Lugar de Trabajo (Fijado)' : '📍 Tu Ubicación Actual'}
+                      </strong>
+                      <div className="text-[11px] text-zinc-700 mt-1">
+                        Coordenadas: {myLocation[0].toFixed(5)}, {myLocation[1].toFixed(5)}
                       </div>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
+                      <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
+                        Precisión: ±{myLocationAccuracy || 10} metros {isCalibrated ? '(Calibrado)' : ''}
+                      </div>
+                      {locationTimestamp && (
+                        <div className="text-[9px] text-zinc-500 mt-1">
+                          Actualizado: {locationTimestamp.toLocaleTimeString('es-CL')}
+                        </div>
+                      )}
+                      {isCalibrated ? (
+                        <button
+                          onClick={handleResetCalibration}
+                          className="mt-2.5 w-full bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-[10px] py-1.5 px-2 rounded-lg cursor-pointer transition-colors"
+                        >
+                          Restablecer a GPS Automático
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setIsCalibrating(true)}
+                          className="mt-2.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] py-1.5 px-2 rounded-lg cursor-pointer flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          <span>Calibrar Lugar de Trabajo</span>
+                        </button>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              </>
             )}
 
             {/* Marcadores de Trabajadores en Vivo */}
-            {!selectedSavedRoute && activeLiveMarkers.map((g, idx) => (
-              g.latitude && g.longitude && (
+            {!selectedSavedRoute && activeLiveMarkers.map((g, idx) => {
+              const workerUser = allUsers.find(u => u.id === g.user_id);
+              const workerPhoto = g.photo_url || workerUser?.photo_url;
+              return g.latitude && g.longitude && (
                 <Marker
                   key={g.user_id}
                   position={[g.latitude, g.longitude]}
-                  icon={createTruckIcon(getWorkerColor(g.user_id, idx), g.user_name, g.photo_url)}
+                  icon={createTruckIcon(getWorkerColor(g.user_id, idx), g.user_name, workerPhoto)}
                 >
                   <Popup>
                     <div className="text-xs text-zinc-900 font-sans p-1 min-w-[160px]">
@@ -998,8 +1238,8 @@ export default function AdminGpsView({ theme }) {
                     </div>
                   </Popup>
                 </Marker>
-              )
-            ))}
+              );
+            })}
 
             {/* Trazado de Ruta Recorrida en el Mapa */}
             {(selectedUser || selectedSavedRoute) && displayCoordinates.length > 1 && (
