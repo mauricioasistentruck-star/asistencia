@@ -783,3 +783,10 @@ export const apiUpdateUserWorkDays = (userId, work_days) =>
 
 export const apiSnapRoads = (coordinates) => apiRequest('/api/gps/snap-roads', { method: 'POST', body: JSON.stringify({ coordinates }) });
 export const apiAdminDiscardRoute = (userId) => apiRequest('/api/gps/admin-discard-route', { method: 'POST', body: JSON.stringify({ userId }) });
+
+export function isMobileDevice() {
+  if (typeof window === 'undefined') return false;
+  if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) return true;
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(ua);
+}

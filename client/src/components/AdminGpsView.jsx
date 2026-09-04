@@ -7,7 +7,7 @@ import {
   Square, Save, UserCheck, Activity, ChevronRight, AlertCircle, Compass, Wifi, WifiOff
 } from 'lucide-react';
 import { 
-  apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
+  apiGetLiveGps, isMobileDevice, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
   apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminDiscardRoute, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
   getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime 
 } from '../api';
@@ -40,15 +40,15 @@ const createTruckIcon = (color = '#f97316', label = '', photoUrl = null) => {
   });
 };
 
-const createMyLocationIcon = (isCalibrated = false) => {
+const createMyLocationIcon = () => {
   return L.divIcon({
     className: 'custom-my-location-marker',
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="position: absolute; width: 48px; height: 48px; background-color: ${isCalibrated ? 'rgba(16, 185, 129, 0.35)' : 'rgba(59, 130, 246, 0.35)'}; border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <div style="width: 24px; height: 24px; background-color: ${isCalibrated ? '#059669' : '#2563eb'}; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px ${isCalibrated ? 'rgba(5,150,105,0.9)' : 'rgba(37,99,235,0.9)'}; z-index: 10;"></div>
-        <div style="background: ${isCalibrated ? '#064e3b' : '#1e3a8a'}; color: ${isCalibrated ? '#a7f3d0' : '#93c5fd'}; font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 6px; margin-top: 24px; border: 1px solid ${isCalibrated ? '#10b981' : '#3b82f6'}; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
-          ${isCalibrated ? '📍 Lugar de Trabajo (Fijado)' : '📍 Tú estás aquí'}
+        <div style="position: absolute; width: 48px; height: 48px; background-color: rgba(59, 130, 246, 0.35); border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+        <div style="width: 24px; height: 24px; background-color: #2563eb; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px rgba(37,99,235,0.9); z-index: 10;"></div>
+        <div style="background: #1e3a8a; color: #93c5fd; font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 6px; margin-top: 24px; border: 1px solid #3b82f6; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
+          📍 Mi Ubicación Física
         </div>
       </div>
     `,
@@ -141,8 +141,7 @@ export default function AdminGpsView({ theme }) {
   const [isLocating, setIsLocating] = useState(false);
   const [locationTimestamp, setLocationTimestamp] = useState(null);
   const [geoError, setGeoError] = useState('');
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [targetWorkerLoading, setTargetWorkerLoading] = useState(null);
 
   const [activeRouteInfo, setActiveRouteInfo] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -200,115 +199,43 @@ export default function AdminGpsView({ theme }) {
     }
   }, [activeRoutePoints, routePoints, selectedUser?.id, selectedSavedRoute?.id]);
 
-  // Cargar ubicación calibrada en trabajo si existe
-  useEffect(() => {
+  const handleToggleWorkerGps = async (worker, targetState) => {
+    if (!worker) return;
+    setTargetWorkerLoading(worker.id);
     try {
-      const saved = localStorage.getItem('asistentruck_workplace_location');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.lat && parsed.lng) {
-          setMyLocation([parsed.lat, parsed.lng]);
-          setMyLocationAccuracy(5);
-          setLocationTimestamp(new Date(parsed.timestamp || Date.now()));
-          setIsCalibrated(true);
-          setTargetCenter([parsed.lat, parsed.lng]);
-          setTargetZoom(16);
-          setMoveTrigger(t => t + 1);
-          apiSendGpsPoint({ latitude: parsed.lat, longitude: parsed.lng, accuracy: 5, speed: 0 }).catch(() => {});
-          return;
-        }
+      await apiToggleGps(worker.id, targetState);
+      const val = targetState ? 1 : 0;
+      setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: val } : u));
+      if (selectedUser?.id === worker.id) {
+        setSelectedUser(prev => prev ? { ...prev, gps_tracking_enabled: val } : null);
       }
-    } catch (e) {}
-
-    locateMe(false);
-  }, []);
-
-  const handleMapClickForCalibration = (latlng) => {
-    if (!latlng) return;
-    const lat = Number(latlng.lat.toFixed(6));
-    const lng = Number(latlng.lng.toFixed(6));
-    setMyLocation([lat, lng]);
-    setMyLocationAccuracy(5);
-    setLocationTimestamp(new Date());
-    setIsCalibrated(true);
-    setIsCalibrating(false);
-    setGeoError('');
-
-    try {
-      localStorage.setItem('asistentruck_workplace_location', JSON.stringify({
-        lat,
-        lng,
-        timestamp: Date.now()
-      }));
-    } catch (e) {}
-
-    apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: 5, speed: 0 })
-      .then(() => fetchLiveGps())
-      .catch(() => {});
-
-    setTargetCenter([lat, lng]);
-    setTargetZoom(17);
-    setTargetBounds(null);
-    setMoveTrigger(t => t + 1);
+      await fetchLiveGps();
+    } catch (err) {
+      alert('Error al modificar GPS: ' + (err.message || err));
+    } finally {
+      setTargetWorkerLoading(null);
+    }
   };
 
-  const handleResetCalibration = () => {
-    try {
-      localStorage.removeItem('asistentruck_workplace_location');
-    } catch (e) {}
-    setIsCalibrated(false);
-    setIsCalibrating(false);
-    locateMe(true);
-  };
-
-  // Geolocalización continua de alta precisión con respaldo automático por red
+  // Geolocalización física del dispositivo
   const locateMe = async (forceCenter = true) => {
     setIsLocating(true);
     setGeoError('');
     try {
       let lat, lng, acc;
 
-      // 1. Intento de alta precisión (satelital)
-      try {
-        await Geolocation.requestPermissions().catch(() => {});
+      if ('geolocation' in navigator) {
         const pos = await new Promise((resolve, reject) => {
-          if ('geolocation' in navigator) {
-            navigator.geolocation.getCurrentPosition(
-              resolve,
-              reject,
-              { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-            );
-          } else {
-            reject(new Error('No geolocation'));
-          }
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+          );
         });
         if (pos && pos.coords) {
           lat = pos.coords.latitude;
           lng = pos.coords.longitude;
           acc = Math.round(pos.coords.accuracy || 10);
-        }
-      } catch (highErr) {
-        console.warn('GPS satelital timeout/error, usando respaldo por red:', highErr.message);
-        // 2. Respaldo por red celular/Wi-Fi (para interiores donde no llegan satélites)
-        try {
-          const fallbackPos = await new Promise((resolve, reject) => {
-            if ('geolocation' in navigator) {
-              navigator.geolocation.getCurrentPosition(
-                resolve,
-                reject,
-                { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
-              );
-            } else {
-              reject(new Error('No geolocation'));
-            }
-          });
-          if (fallbackPos && fallbackPos.coords) {
-            lat = fallbackPos.coords.latitude;
-            lng = fallbackPos.coords.longitude;
-            acc = Math.round(fallbackPos.coords.accuracy || 25);
-          }
-        } catch (fbErr) {
-          console.warn('Fallback geolocation failed:', fbErr.message);
         }
       }
 
@@ -316,13 +243,13 @@ export default function AdminGpsView({ theme }) {
         setMyLocation([lat, lng]);
         setMyLocationAccuracy(acc);
         setLocationTimestamp(new Date());
-        setIsCalibrated(false);
-        try { localStorage.removeItem('asistentruck_workplace_location'); } catch(e) {}
 
-        // Sincronizar inmediatamente al servidor para que el mapa y los reportes muestren su posición en el trabajo
-        apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: acc, speed: 0 })
-          .then(() => fetchLiveGps())
-          .catch(() => {});
+        // SOLO transmitir al servidor como posición de flota si este dispositivo es un celular
+        if (isMobileDevice()) {
+          apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: acc, speed: 0 })
+            .then(() => fetchLiveGps())
+            .catch(() => {});
+        }
 
         if (forceCenter) {
           setTargetCenter([lat, lng]);
@@ -332,15 +259,19 @@ export default function AdminGpsView({ theme }) {
         }
         setGeoError('');
       } else {
-        setGeoError('No se pudo obtener señal GPS automática. Use "Calibrar Trabajo" para fijar su ubicación en el mapa.');
+        setGeoError('No se pudo obtener señal GPS del dispositivo.');
       }
     } catch (err) {
       console.warn('Geolocalización error:', err.message);
-      setGeoError('Active el GPS o use "Calibrar Trabajo" para fijar su ubicación.');
+      setGeoError('Active el GPS para ver su ubicación física.');
     } finally {
       setIsLocating(false);
     }
   };
+
+  useEffect(() => {
+    locateMe(false);
+  }, []);
 
   // Escuchar posición en tiempo real para mantener el punto azul siempre al día
   useEffect(() => {
@@ -350,9 +281,6 @@ export default function AdminGpsView({ theme }) {
         watchId = navigator.geolocation.watchPosition(
           (p) => {
             if (p && p.coords) {
-              const saved = localStorage.getItem('asistentruck_workplace_location');
-              if (saved && (p.coords.accuracy || 10) > 80) return;
-
               const nLat = p.coords.latitude;
               const nLng = p.coords.longitude;
               const nAcc = Math.round(p.coords.accuracy || 10);
@@ -374,60 +302,6 @@ export default function AdminGpsView({ theme }) {
     };
   }, []);
 
-  const fetchLiveGps = async () => {
-    try {
-      const data = await apiGetLiveGps();
-      if (Array.isArray(data)) setLiveGpsList(data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const usersData = await apiGetUsers();
-      if (Array.isArray(usersData)) setAllUsers(usersData);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchRoute = async (targetUserId) => {
-    if (!targetUserId) {
-      setRoutePoints([]);
-      setSnappedCoordinates([]);
-      return;
-    }
-    try {
-      const res = await apiGetGpsRoute(targetUserId, selectedDate);
-      setRoutePoints(res.points || []);
-    } catch (err) {
-      console.error('Error al obtener ruta:', err);
-    }
-  };
-
-  const checkActiveRoute = async (userId) => {
-    try {
-      const active = await apiAdminGetActiveRoute(userId);
-      setActiveRouteInfo(active && active.status === 'active' ? active : null);
-    } catch (e) {
-      setActiveRouteInfo(null);
-    }
-  };
-
-  const fetchSavedRoutes = async () => {
-    setLoadingSavedRoutes(true);
-    try {
-      const data = await apiGetGpsRoutes({ date: selectedDate });
-      setSavedRoutes(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingSavedRoutes(false);
-    }
-  };
-
-  
   const handleRequestFleetPing = () => {
     const socket = getSocket();
     if (socket) {
@@ -685,9 +559,7 @@ export default function AdminGpsView({ theme }) {
   }, [selectedDate]);
 
   const activeLiveMarkers = liveGpsList.filter(g => {
-    if (!g.latitude || !g.longitude) return false;
-    // Mostrar a todos los trabajadores con coordenadas registradas hoy
-    return g.is_today || g.is_online || (g.diff_mins !== undefined && g.diff_mins < 1440);
+    return Boolean(g.latitude && g.longitude && Math.abs(g.latitude) > 0.01 && Math.abs(g.longitude) > 0.01);
   });
 
   const displayPoints = selectedSavedRoute ? routePoints : activeRoutePoints;
@@ -809,21 +681,7 @@ export default function AdminGpsView({ theme }) {
           </button>
 
           {/* Botón 3: Historial de Rutas */}
-          <button
-            type="button"
-            onClick={() => setIsCalibrating(c => !c)}
-            className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer border ' + (
-              isCalibrating
-                ? 'bg-emerald-500 text-black border-emerald-400 animate-pulse shadow-lg shadow-emerald-500/30'
-                : isCalibrated
-                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/50 hover:bg-emerald-900'
-                  : 'bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border-emerald-500/30 hover:text-emerald-300'
-            )}
-            title="Ajustar o calibrar manualmente su ubicación en el lugar de trabajo si el GPS del navegador marca su casa"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span>{isCalibrating ? 'Haga clic en mapa...' : isCalibrated ? 'Trabajo Calibrado ✓' : 'Calibrar Trabajo'}</span>
-          </button>
+          
 
           <button
             type="button"
@@ -859,41 +717,7 @@ export default function AdminGpsView({ theme }) {
         </div>
       </div>
 
-      {/* Banner de Calibración Activa */}
-      {isCalibrating && (
-        <div className="bg-emerald-500/20 border-2 border-emerald-500 rounded-2xl p-3 text-emerald-300 text-xs flex items-center justify-between shadow-xl">
-          <div className="flex items-center gap-2 font-bold">
-            <MapPin className="w-5 h-5 text-emerald-400 animate-bounce flex-shrink-0" />
-            <span>
-              <strong>Modo Calibración Activo:</strong> Toque o haga clic directamente en el mapa sobre el lugar donde se encuentra su lugar de trabajo para fijar su ubicación real de inmediato.
-            </span>
-          </div>
-          <button
-            onClick={() => setIsCalibrating(false)}
-            className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer ml-3"
-          >
-            Cancelar
-          </button>
-        </div>
-      )}
-
-      {/* Banner de Aviso por Precisión Wi-Fi/IP en Computador */}
-      {!isCalibrated && myLocationAccuracy && myLocationAccuracy > 100 && (
-        <div className="bg-blue-500/15 border border-blue-500/40 rounded-2xl p-3 text-blue-300 text-xs flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />
-            <span>
-              Su dispositivo está usando ubicación aproximada por red/Wi-Fi (±{myLocationAccuracy}m). Si marca su casa u otra comuna, use el botón <strong>"Calibrar Trabajo"</strong> para fijar su ubicación exacta en el mapa.
-            </span>
-          </div>
-          <button
-            onClick={() => setIsCalibrating(true)}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-3 py-1.5 rounded-xl cursor-pointer whitespace-nowrap ml-3"
-          >
-            Calibrar Ahora
-          </button>
-        </div>
-      )}
+      
 
       {/* Banner de Aviso de Mi Ubicación o Error */}
       {geoError && (
@@ -1016,7 +840,7 @@ export default function AdminGpsView({ theme }) {
                     <div className={'font-black text-xs truncate leading-snug ' + (isSelected ? 'text-black' : 'text-white')} title={u.name}>
                       {u.name}
                     </div>
-                    <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+                    <div className="mt-1 flex items-center justify-between gap-1 text-[10px]">
                       {isGpsOn ? (
                         livePos?.latitude ? (
                           <span className={'font-black flex items-center gap-1 ' + (isSelected ? 'text-black' : 'text-emerald-400')}>
@@ -1024,11 +848,28 @@ export default function AdminGpsView({ theme }) {
                             {speed > 0 ? `${speed} km/h` : 'En Vivo'}
                           </span>
                         ) : (
-                          <span className={isSelected ? 'text-black font-extrabold' : 'text-emerald-400 font-extrabold'}>GPS Activo</span>
+                          <span className={isSelected ? 'text-black font-extrabold' : 'text-amber-400 font-extrabold'}>GPS On (Esp. Celular)</span>
                         )
                       ) : (
-                        <span className="text-zinc-500 font-semibold">GPS Inactivo</span>
+                        <span className="text-zinc-500 font-semibold">GPS Apagado</span>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleWorkerGps(u, !isGpsOn);
+                        }}
+                        disabled={targetWorkerLoading === u.id}
+                        className={'px-2 py-0.5 rounded-lg text-[9px] font-black transition-all cursor-pointer border ' + (
+                          isGpsOn
+                            ? 'bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/40'
+                            : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 border-emerald-500/40'
+                        )}
+                        title={isGpsOn ? 'Apagar rastreo GPS de este trabajador' : 'Activar rastreo GPS de este trabajador'}
+                      >
+                        {isGpsOn ? 'Apagar' : 'Activar'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1102,12 +943,27 @@ export default function AdminGpsView({ theme }) {
 
                 {/* BOTONES DIRECTOS: COMENZAR Y GUARDAR RUTA */}
                 <div className="flex items-center gap-2 pt-2 sm:pt-0 sm:ml-auto border-t sm:border-t-0 border-zinc-800">
+                  {/* BOTÓN DIRECTO PARA APAGAR / ACTIVAR GPS DEL TRABAJADOR */}
+                  <button
+                    type="button"
+                    disabled={targetWorkerLoading === selectedUser.id}
+                    onClick={() => handleToggleWorkerGps(selectedUser, !isGpsActive(selectedUser.gps_tracking_enabled))}
+                    className={'py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md ' + (
+                      isGpsActive(selectedUser.gps_tracking_enabled)
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-emerald-500 hover:bg-emerald-600 text-black'
+                    )}
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>{isGpsActive(selectedUser.gps_tracking_enabled) ? 'Apagar GPS' : 'Activar GPS'}</span>
+                  </button>
+
                   {!activeRouteInfo ? (
                     <button
                       type="button"
                       onClick={handleStartRoute}
                       disabled={actionLoading}
-                      className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/25 transition-all active:scale-95 cursor-pointer"
+                      className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/25 transition-all active:scale-95 cursor-pointer"
                     >
                       <Play className="w-3.5 h-3.5 fill-black" />
                       <span>{actionLoading ? 'Iniciando...' : 'Comenzar Ruta'}</span>
@@ -1161,7 +1017,7 @@ export default function AdminGpsView({ theme }) {
               moveTrigger={moveTrigger}
             />
 
-            <MapClickHandler onMapClick={handleMapClickForCalibration} isCalibrating={isCalibrating} />
+            
 
             {mapLayer === 'satellite' ? (
               <TileLayer
@@ -1177,52 +1033,36 @@ export default function AdminGpsView({ theme }) {
               />
             )}
 
-            {/* Marcador y Radio de Mi Ubicación en Tiempo Real */}
+            {/* Marcador de Mi Ubicación Física */}
             {myLocation && (
               <>
                 <Circle
                   center={myLocation}
                   radius={myLocationAccuracy || 15}
                   pathOptions={{
-                    color: isCalibrated ? '#10b981' : '#3b82f6',
-                    fillColor: isCalibrated ? '#10b981' : '#3b82f6',
+                    color: '#3b82f6',
+                    fillColor: '#3b82f6',
                     fillOpacity: 0.12,
                     weight: 1.5,
                     dashArray: '5, 5'
                   }}
                 />
-                <Marker position={myLocation} icon={createMyLocationIcon(isCalibrated)}>
+                <Marker position={myLocation} icon={createMyLocationIcon()}>
                   <Popup>
                     <div className="text-xs text-zinc-900 font-sans p-1 min-w-[170px]">
-                      <strong className={`text-sm font-black block ${isCalibrated ? 'text-emerald-700' : 'text-blue-600'}`}>
-                        {isCalibrated ? '📍 Lugar de Trabajo (Fijado)' : '📍 Tu Ubicación Actual'}
+                      <strong className="text-sm font-black text-blue-600 block">
+                        📍 Tu Ubicación Física
                       </strong>
                       <div className="text-[11px] text-zinc-700 mt-1">
                         Coordenadas: {myLocation[0].toFixed(5)}, {myLocation[1].toFixed(5)}
                       </div>
                       <div className="text-[10px] text-zinc-600 font-mono mt-0.5">
-                        Precisión: ±{myLocationAccuracy || 10} metros {isCalibrated ? '(Calibrado)' : ''}
+                        Precisión: ±{myLocationAccuracy || 10} metros
                       </div>
                       {locationTimestamp && (
                         <div className="text-[9px] text-zinc-500 mt-1">
                           Actualizado: {locationTimestamp.toLocaleTimeString('es-CL')}
                         </div>
-                      )}
-                      {isCalibrated ? (
-                        <button
-                          onClick={handleResetCalibration}
-                          className="mt-2.5 w-full bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-[10px] py-1.5 px-2 rounded-lg cursor-pointer transition-colors"
-                        >
-                          Restablecer a GPS Automático
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setIsCalibrating(true)}
-                          className="mt-2.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] py-1.5 px-2 rounded-lg cursor-pointer flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <MapPin className="w-3 h-3" />
-                          <span>Calibrar Lugar de Trabajo</span>
-                        </button>
                       )}
                     </div>
                   </Popup>

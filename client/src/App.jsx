@@ -10,7 +10,7 @@ import DtReportsView from './components/DtReportsView.jsx';
 import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
 import RenderKeepAliveWatchdog from './components/RenderKeepAliveWatchdog.jsx';
 import { apiDtCloseSession,  unlockIOSAudio  } from './api';
-import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive, apiDtGetActiveSession } from './api';
+import { apiGetMe, isMobileDevice, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive, apiDtGetActiveSession } from './api';
 import { Geolocation } from '@capacitor/geolocation';
 import { Volume2, Radio, LogOut, ShieldAlert, X, FileText } from 'lucide-react';
 
@@ -578,8 +578,24 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   }, [user]);
 
   // Transmisión GPS continua, precisa y silenciosa en segundo plano
+  // REGLA CRÍTICA: Solo transmitir si es un celular móvil (evita que un PC/página web sobreescriba con Wi-Fi)
   useEffect(() => {
     if (!user || !isGpsActive(user.gps_tracking_enabled)) {
+      if (watchIdRef.current !== null) {
+        try {
+          if (typeof watchIdRef.current === 'string') {
+            Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {});
+          } else if ('geolocation' in navigator) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+          }
+        } catch (e) {}
+        watchIdRef.current = null;
+      }
+      return;
+    }
+
+    // Si es un computador de escritorio o laptop en web, NO enviar pings de Wi-Fi como si fuera el vehículo
+    if (!isMobileDevice()) {
       if (watchIdRef.current !== null) {
         try {
           if (typeof watchIdRef.current === 'string') {

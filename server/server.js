@@ -523,9 +523,7 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
     db.get('SELECT id, name FROM users WHERE id = ?', [userId], (uErr, targetUser) => {
       const uName = targetUser?.name || 'Personal';
       const today = getLocalDateString();
-    const currentTime = (client_scan_time && typeof client_scan_time === 'string' && client_scan_time.trim().length >= 4)
-      ? client_scan_time.trim().slice(0, 8)
-      : getLocalTimeString();
+      const currentTime = getLocalTimeString();
 
       if (gpsVal === 1) {
         // Al activar GPS, verificar o iniciar registro de ruta activa en terreno
@@ -551,6 +549,11 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
           }
         );
       }
+
+      io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
+      io.emit('user_updated', { id: userId, gps_tracking_enabled: gpsVal });
+      savePersistentBackup();
+      return res.json({ message: 'GPS ' + (gpsVal === 1 ? 'activado' : 'desactivado'), enabled: gpsVal });
 
       io.emit('user_gps_toggled', { userId, gps_tracking_enabled: gpsVal });
       io.emit('user_updated', { id: userId, gps_tracking_enabled: gpsVal });
@@ -1777,10 +1780,9 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       user.gps_tracking_enabled === '1' || 
       user.gps_tracking_enabled === 'true';
 
-    // Si el usuario está transmitiendo coordenadas desde su dispositivo móvil, auto-activar su GPS
+    // Si el usuario o administrador apagó el GPS, respetar su decisión y descartar el punto
     if (!isGpsActiveForUser) {
-      db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [userId]);
-      io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 1 });
+      return res.status(403).json({ error: 'Rastreo GPS desactivado', disabled: true });
     }
 
     // Aceptar todas las lecturas reales en carretera y ciudad (descartar solo error grosero > 350m)
