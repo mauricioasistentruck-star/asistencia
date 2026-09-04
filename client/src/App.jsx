@@ -217,6 +217,11 @@ export default function App() {
         });
       }
     };
+    socket.on('all_gps_turned_off', () => {
+      setUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+      setGpsTransmitting(false);
+    });
+
     socket.on('user_gps_toggled', handleGpsToggled);
 
     const handleFleetPingRequest = () => {
@@ -646,7 +651,13 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
           heading: pos.coords.heading || null
         }).then(() => {
           setGpsTransmitting(true);
-        }).catch(() => {});
+        }).catch((err) => {
+          // Si el servidor indica que el GPS está desactivado, apagar localmente
+          if (err && (err.status === 403 || err.disabled || err.message?.includes('desactivado'))) {
+            setGpsTransmitting(false);
+            setUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+          }
+        });
       }
     };
 

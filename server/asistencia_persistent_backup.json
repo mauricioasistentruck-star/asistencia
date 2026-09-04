@@ -183,6 +183,24 @@
   "voice_messages": [],
   "gps_routes": [
     {
+      "id": 3,
+      "user_id": 6,
+      "user_name": "Mauricio Chamorro",
+      "name": "Ruta Mauricio Chamorro - 2026-09-04 17:15:33",
+      "date": "2026-09-04",
+      "start_time": "17:15:33",
+      "end_time": "17:15:33",
+      "start_lat": -33.45,
+      "start_lng": -70.65,
+      "end_lat": -33.45,
+      "end_lng": -70.65,
+      "total_distance_km": 0,
+      "total_points": 1,
+      "points_json": "[{\"latitude\":-33.45,\"longitude\":-70.65,\"timestamp\":\"2026-09-04T21:15:33.320Z\",\"time\":\"17:15:33\",\"speed\":0,\"accuracy\":10}]",
+      "status": "completed",
+      "created_at": "2026-09-04 21:15:33"
+    },
+    {
       "id": 2,
       "user_id": 6,
       "user_name": "Mauricio Chamorro",
@@ -201,5 +219,5 @@
       "created_at": "2026-09-04 20:17:25"
     }
   ],
-  "saved_at": "2026-09-04T20:17:25.919Z"
+  "saved_at": "2026-09-04T21:15:33.458Z"
 }

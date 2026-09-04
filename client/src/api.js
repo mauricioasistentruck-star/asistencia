@@ -790,3 +790,5 @@ export function isMobileDevice() {
   const ua = navigator.userAgent || navigator.vendor || window.opera || '';
   return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(ua);
 }
+
+export const apiTurnOffAllGps = () => apiRequest('/api/gps/turn-off-all', { method: 'POST' });

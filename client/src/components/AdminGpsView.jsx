@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { 
   apiGetLiveGps, isMobileDevice, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
-  apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminDiscardRoute, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
+  apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminDiscardRoute, apiTurnOffAllGps, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
   getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime 
 } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
@@ -244,12 +244,7 @@ export default function AdminGpsView({ theme }) {
         setMyLocationAccuracy(acc);
         setLocationTimestamp(new Date());
 
-        // SOLO transmitir al servidor como posición de flota si este dispositivo es un celular
-        if (isMobileDevice()) {
-          apiSendGpsPoint({ latitude: lat, longitude: lng, accuracy: acc, speed: 0 })
-            .then(() => fetchLiveGps())
-            .catch(() => {});
-        }
+// locateMe es para centrar la vista del supervisor en el mapa, no transmite como móvil de flota
 
         if (forceCenter) {
           setTargetCenter([lat, lng]);
@@ -376,6 +371,21 @@ export default function AdminGpsView({ theme }) {
       alert('Trazado descartado correctamente.');
     } catch (e) {
       alert('Error al descartar trazado: ' + e.message);
+    }
+  };
+
+    const handleTurnOffAllGps = async () => {
+    if (!window.confirm('¿Está seguro de apagar el rastreo GPS de TODA la flota?')) return;
+    try {
+      await apiTurnOffAllGps();
+      setAllUsers(prev => prev.map(u => ({ ...u, gps_tracking_enabled: 0 })));
+      setLiveGpsList(prev => prev.map(g => ({ ...g, latitude: null, longitude: null, gps_tracking_enabled: 0, is_online: false })));
+      if (selectedUser) {
+        setSelectedUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+      }
+      alert('Rastreo GPS apagado para todos los dispositivos.');
+    } catch (e) {
+      alert('Error al apagar GPS de la flota: ' + e.message);
     }
   };
 
@@ -586,6 +596,14 @@ export default function AdminGpsView({ theme }) {
     };
 
     socket.on('gps_position_updated', handleLiveGpsSocket);
+    socket.on('all_gps_turned_off', () => {
+      setAllUsers(prev => prev.map(u => ({ ...u, gps_tracking_enabled: 0 })));
+      setLiveGpsList(prev => prev.map(g => ({ ...g, latitude: null, longitude: null, gps_tracking_enabled: 0, is_online: false })));
+      if (selectedUser) {
+        setSelectedUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+      }
+    });
+
     socket.on('user_gps_toggled', handleUserGpsToggled);
     socket.on('routes_updated', fetchSavedRoutes);
 
@@ -611,9 +629,16 @@ export default function AdminGpsView({ theme }) {
     fetchSavedRoutes();
   }, [selectedDate]);
 
-  const activeLiveMarkers = liveGpsList.filter(g => {
-    return Boolean(g.latitude && g.longitude && Math.abs(g.latitude) > 0.01 && Math.abs(g.longitude) > 0.01);
-  });
+  const activeLiveMarkers = useMemo(() => {
+    return liveGpsList.filter(g => {
+      if (!g.latitude || !g.longitude) return false;
+      if (Math.abs(g.latitude) < 0.01 || Math.abs(g.longitude) < 0.01) return false;
+      // Buscar usuario en allUsers para respetar su estado GPS actualizado
+      const user = allUsers.find(u => u.id === g.user_id);
+      const isGpsOn = user ? isGpsActive(user.gps_tracking_enabled) : isGpsActive(g.gps_tracking_enabled);
+      return Boolean(isGpsOn);
+    });
+  }, [liveGpsList, allUsers]);
 
   const displayPoints = selectedSavedRoute ? routePoints : activeRoutePoints;
   const displayCoordinates = (selectedUser || selectedSavedRoute)
@@ -693,6 +718,16 @@ export default function AdminGpsView({ theme }) {
         {/* GRUPO UNIFICADO DE BOTONES (ORDENADOS, COHERENTES Y ALINEADOS) */}
         <div className="flex flex-wrap items-center gap-2">
           
+          <button
+            type="button"
+            onClick={handleTurnOffAllGps}
+            className="bg-zinc-900 hover:bg-red-950 text-red-400 hover:text-red-300 border border-red-500/40 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            title="Apagar el rastreo GPS de todos los trabajadores de la flota simultáneamente"
+          >
+            <Radio className="w-3.5 h-3.5" />
+            <span>Apagar Flota Completa</span>
+          </button>
+
           {/* Botón 1: Ver Todos en Vivo */}
           <button
             type="button"
@@ -1047,7 +1082,11 @@ export default function AdminGpsView({ theme }) {
                 <Users className="w-4 h-4 text-orange-400" />
                 <div className="text-xs">
                   <span className="font-bold text-orange-400">Flota en Terreno:</span>
-                  <span className="text-zinc-300 ml-1.5">{activeLiveMarkers.length} transmitiendo en vivo</span>
+                  <span className="text-zinc-300 ml-1.5">
+                    {activeLiveMarkers.length > 0 
+                      ? `${activeLiveMarkers.length} transmitiendo en vivo` 
+                      : '0 transmitiendo (GPS apagado en todos)'}
+                  </span>
                   {myLocation && (
                     <span className="text-blue-400 ml-2 font-bold">• Tu GPS Activo</span>
                   )}

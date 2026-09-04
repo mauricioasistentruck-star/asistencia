@@ -1882,6 +1882,18 @@ app.post('/api/gps/admin-discard-route', authenticateToken, requireAdmin, (req, 
   });
 });
 
+app.post('/api/gps/turn-off-all', authenticateToken, requireAdmin, (req, res) => {
+  db.run('UPDATE users SET gps_tracking_enabled = 0 WHERE role != "kiosk" AND role != "kiosco"', [], function(err) {
+    if (err) return res.status(500).json({ error: 'Error al desactivar flota' });
+    const currentTime = getLocalTimeString();
+    db.run('UPDATE gps_routes SET status = "completed", end_time = ? WHERE status = "active"', [currentTime]);
+    io.emit('all_gps_turned_off');
+    io.emit('fleet_gps_updated');
+    savePersistentBackup();
+    return res.json({ success: true, message: 'GPS desactivado para toda la flota' });
+  });
+});
+
 app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
   const today = getLocalDateString();
   const query = `
@@ -1901,13 +1913,17 @@ app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
     const now = Date.now();
     const enriched = (rows || []).map(r => {
       const isToday = r.date === today;
+      const isGpsOn = r.gps_tracking_enabled === 1 || r.gps_tracking_enabled === '1' || r.gps_tracking_enabled === true;
       let diffMins = 999999;
       if (r.timestamp) {
         diffMins = Math.round((now - new Date(r.timestamp).getTime()) / 60000);
       }
       return {
         ...r,
-        is_online: diffMins < 15,
+        gps_tracking_enabled: isGpsOn ? 1 : 0,
+        latitude: isGpsOn ? r.latitude : null,
+        longitude: isGpsOn ? r.longitude : null,
+        is_online: isGpsOn && diffMins < 15,
         is_today: isToday,
         diff_mins: diffMins
       };
