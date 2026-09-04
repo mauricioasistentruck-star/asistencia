@@ -448,11 +448,25 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
         isProcessingRef.current = false;
       }, 4500);
     } catch (err) {
-      setErrorMsg(err.message || 'Código QR no válido o error de registro');
-      setTimeout(() => {
-        setErrorMsg('');
-        isProcessingRef.current = false;
-      }, 4000);
+      if (err.message && (err.message.includes('completadas') || err.message.includes('4 marcaciones'))) {
+        setScanResult({
+          completed: true,
+          label: 'JORNADA COMPLETADA',
+          time: new Date().toLocaleTimeString('es-CL'),
+          user: { name: 'Trabajador' },
+          message: 'Todas las marcaciones del día ya están registradas.'
+        });
+        setTimeout(() => {
+          setScanResult(null);
+          isProcessingRef.current = false;
+        }, 4500);
+      } else {
+        setErrorMsg(err.message || 'Código QR no válido o error de registro');
+        setTimeout(() => {
+          setErrorMsg('');
+          isProcessingRef.current = false;
+        }, 4000);
+      }
     }
   };
 
@@ -630,8 +644,10 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
               )}
             </div>
 
-            <span className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-0.5">
-              Marcación Registrada
+            <span className={`text-xs font-black uppercase tracking-wider mb-0.5 ${
+              scanResult.completed ? 'text-amber-400' : 'text-emerald-400'
+            }`}>
+              {scanResult.completed ? 'Jornada Diaria Completa' : 'Marcación Registrada'}
             </span>
             <h3 className="text-lg sm:text-xl font-black text-white leading-tight">
               {scanResult.user?.name || 'Trabajador'}

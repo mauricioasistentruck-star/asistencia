@@ -1124,7 +1124,7 @@ app.post('/api/attendance/scan', (req, res) => {
           return res.json(payload);
         });
       } else {
-        if (!record.entry_time) {
+        if (!record.entry_time || record.entry_time === "--:--" || record.entry_time === "--:--:--") {
           markType = 'entry_time';
           markLabel = '1. ENTRADA';
           db.run('UPDATE attendance SET entry_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [currentTime, record.id], () => {
@@ -1135,7 +1135,7 @@ app.post('/api/attendance/scan', (req, res) => {
             savePersistentBackup();
             return res.json(payload);
           });
-        } else if (!record.lunch_out_time) {
+        } else if (!record.lunch_out_time || record.lunch_out_time === "--:--" || record.lunch_out_time === "--:--:--") {
           markType = 'lunch_out_time';
           markLabel = '2. SALIDA A COLACIÓN';
           db.run('UPDATE attendance SET lunch_out_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [currentTime, record.id], () => {
@@ -1146,7 +1146,7 @@ app.post('/api/attendance/scan', (req, res) => {
             savePersistentBackup();
             return res.json(payload);
           });
-        } else if (!record.lunch_in_time) {
+        } else if (!record.lunch_in_time || record.lunch_in_time === "--:--" || record.lunch_in_time === "--:--:--") {
           markType = 'lunch_in_time';
           markLabel = '3. ENTRADA DE COLACIÓN';
           db.run('UPDATE attendance SET lunch_in_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [currentTime, record.id], () => {
@@ -1157,7 +1157,7 @@ app.post('/api/attendance/scan', (req, res) => {
             savePersistentBackup();
             return res.json(payload);
           });
-        } else if (!record.exit_time) {
+        } else if (!record.exit_time || record.exit_time === "--:--" || record.exit_time === "--:--:--") {
           markType = 'exit_time';
           markLabel = '4. SALIDA DE JORNADA';
           const calculatedHours = calculateWorkHours(record.entry_time, record.lunch_out_time, record.lunch_in_time, currentTime);
@@ -1170,10 +1170,20 @@ app.post('/api/attendance/scan', (req, res) => {
             return res.json(payload);
           });
         } else {
-          return res.status(400).json({
-            error: 'Las 4 marcaciones de hoy ya han sido completadas para este usuario',
+          const payload = {
+            success: true,
+            completed: true,
+            label: 'JORNADA COMPLETADA',
+            message: 'Todas las marcaciones de hoy ya han sido completadas para este trabajador.',
+            time: currentTime,
+            date: today,
+            user,
+            userId: user.id,
+            user_id: user.id,
+            rut: user.rut,
             record
-          });
+          };
+          return res.json(payload);
         }
       }
     });
