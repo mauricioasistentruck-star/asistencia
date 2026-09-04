@@ -25,7 +25,6 @@ function isExcludedFromAttendance(u) {
 
   // Boris Aguirre SI marca asistencia y se incluye en la planilla
   // Solo se excluye el usuario del Puesto Kiosco (estación de escaneo físico)
-  if (id === 20) return true;
   if (name.includes('puesto') || name.includes('kiosco')) return true;
   if (username === 'kiosco') return true;
   if (role === 'kiosk' || role === 'kiosco') return true;
