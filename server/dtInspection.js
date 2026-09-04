@@ -237,11 +237,22 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
         if (err || !row) {
           return res.json({ active: false });
         }
+
+        // Auto-caducar sesiones de prueba o inspecciones de días anteriores o de más de 2 horas
+        const startTime = new Date(row.started_at).getTime();
+        const now = Date.now();
+        const diffHours = (now - startTime) / (1000 * 60 * 60);
+
+        if (isNaN(startTime) || diffHours > 2 || diffHours < 0) {
+          db.run("UPDATE dt_audit_sessions SET status = 'completed', ended_at = CURRENT_TIMESTAMP WHERE id = ?", [row.id]);
+          return res.json({ active: false });
+        }
+
         res.json({
           active: true,
           session: row,
           title: "Se ha iniciado un proceso de revisión de información por parte de un funcionario de la Dirección del Trabajo.",
-          legal_text: "Se informa a usted que, de acuerdo con las facultades y obligaciones legales contenidas en el Código del Trabajo y sus leyes complementarias; en el D.F.L. N°2 de 1967, del Ministerio del Trabajo y Previsión Social, y en otras disposiciones reglamentarias, se está iniciando un procedimiento de fiscalización laboral."
+          legal_text: "Se informa a usted que, de acuerdo con las facultades y obligaciones legales contenidas en el Código del Trabajo y sus leyes complementarias; en el D.F.L. Nº2 de 1967, del Ministerio del Trabajo y Previsión Social, y en otras disposiciones reglamentarias, se está iniciando un procedimiento de fiscalización laboral."
         });
       }
     );
@@ -534,12 +545,14 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   // 6. Finalizar y cerrar sesión de fiscalización
   app.post('/api/dt/close-session', authenticateDtOrAdmin, (req, res) => {
     try {
-      const { session_id } = req.body;
+      const { session_id } = req.body || {};
       const sId = session_id || (req.user ? req.user.session_id : null);
       const inspectorName = req.user ? req.user.inspector_name || 'Fiscalizador DT' : 'Fiscalizador DT';
 
       if (sId) {
         db.run("UPDATE dt_audit_sessions SET ended_at = CURRENT_TIMESTAMP, status = 'completed' WHERE id = ?", [sId]);
+      } else {
+        db.run("UPDATE dt_audit_sessions SET ended_at = CURRENT_TIMESTAMP, status = 'completed' WHERE status = 'active'");
       }
 
       const closeNotice = {

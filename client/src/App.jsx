@@ -9,7 +9,7 @@ import KioskView from './components/KioskView.jsx';
 import DtReportsView from './components/DtReportsView.jsx';
 import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
 import RenderKeepAliveWatchdog from './components/RenderKeepAliveWatchdog.jsx';
-import { unlockIOSAudio } from './api';
+import { apiDtCloseSession,  unlockIOSAudio  } from './api';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive, apiDtGetActiveSession } from './api';
 import { Geolocation } from '@capacitor/geolocation';
 import { Volume2, Radio, LogOut, ShieldAlert, X, FileText } from 'lucide-react';
@@ -100,7 +100,12 @@ export default function App() {
     const checkActiveSession = () => {
       apiDtGetActiveSession().then(res => {
         if (res && res.active && res.session) {
+          const sId = res.session.id;
+          if (sessionStorage.getItem('dismissed_dt_alert_' + sId)) {
+            return;
+          }
           setGlobalDtAlert({
+            session_id: sId,
             inspector_name: res.session.inspector_name,
             inspector_email: res.session.inspector_email,
             started_at: res.session.started_at,
@@ -235,6 +240,24 @@ export default function App() {
       socket.off('user_gps_toggled', handleGpsToggled);
     };
   }, []);
+
+  
+  const handleDismissGlobalDtAlert = () => {
+    if (globalDtAlert && globalDtAlert.session_id) {
+      sessionStorage.setItem('dismissed_dt_alert_' + globalDtAlert.session_id, 'true');
+    }
+    setGlobalDtAlert(null);
+  };
+
+  const handleEndGlobalDtSession = async () => {
+    try {
+      if (globalDtAlert && globalDtAlert.session_id) {
+        await apiDtCloseSession(globalDtAlert.session_id);
+        sessionStorage.setItem('dismissed_dt_alert_' + globalDtAlert.session_id, 'true');
+      }
+    } catch (e) {}
+    setGlobalDtAlert(null);
+  };
 
   const isMauricio = user && (
     user.is_superadmin === 1 || 
