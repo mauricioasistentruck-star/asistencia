@@ -28,6 +28,64 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   db.run("ALTER TABLE attendance ADD COLUMN admin_note TEXT", () => {});
   db.run("ALTER TABLE attendance ADD COLUMN modified_by_admin INTEGER DEFAULT 0", () => {});
 
+  // Función maestra: Sincronizar automáticamente todas las licencias activas con la tabla attendance
+  function syncWorkerLeavesToAttendance(callback) {
+    db.all("SELECT * FROM worker_leaves ORDER BY date_from ASC", (err, leaves) => {
+      if (err || !Array.isArray(leaves) || leaves.length === 0) {
+        if (typeof callback === 'function') callback();
+        return;
+      }
+
+      const promises = [];
+      leaves.forEach(l => {
+        const targetUserId = Number(l.user_id);
+        const leaveNote = `Justificado: ${l.leave_type}${l.document_number ? ` (Doc Nº ${l.document_number})` : ''}`;
+        const cur = new Date(l.date_from + 'T00:00:00Z');
+        const stop = new Date(l.date_to + 'T00:00:00Z');
+
+        while (cur <= stop) {
+          const currentDStr = cur.toISOString().split('T')[0];
+          promises.push(new Promise((resolve) => {
+            db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [targetUserId, currentDStr], (checkErr, row) => {
+              if (row) {
+                if (row.status !== 'JUSTIFICADO') {
+                  db.run(
+                    "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
+                    [leaveNote, row.id],
+                    () => resolve()
+                  );
+                } else {
+                  resolve();
+                }
+              } else {
+                db.run(
+                  "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
+                  [targetUserId, currentDStr, leaveNote],
+                  () => resolve()
+                );
+              }
+            });
+          }));
+          cur.setUTCDate(cur.getUTCDate() + 1);
+        }
+      });
+
+      Promise.all(promises).then(() => {
+        console.log(`[DT LEAVES] Sincronización automática de licencias completada (${leaves.length} registros).`);
+        if (typeof callback === 'function') callback();
+      }).catch((syncErr) => {
+        console.warn('[DT LEAVES] Advertencia en sincronización:', syncErr);
+        if (typeof callback === 'function') callback();
+      });
+    });
+  }
+
+  // Ejecutar sincronización al inicio del servidor
+  setTimeout(() => {
+    syncWorkerLeavesToAttendance();
+  }, 1000);
+
+
   function isSuperAdminUser(user) {
     if (!user) return false;
     return Boolean(
@@ -665,6 +723,9 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
 
           await Promise.all(dayPromises);
 
+          // Ejecutar sincronización global de seguridad
+          syncWorkerLeavesToAttendance();
+
           if (io) {
             io.emit('attendance_updated', { user_id: targetUserId, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
             io.emit('leaves_updated', { user_id: targetUserId, leave_id: leaveId });
@@ -694,23 +755,60 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
       db.run("DELETE FROM worker_leaves WHERE id = ?", [req.params.id], function(delErr) {
         if (delErr) return res.status(500).json({ error: 'Error al eliminar justificativo' });
 
-        // Limpiar registros que fueron insertados únicamente para justificar
-        db.run(
-          "DELETE FROM attendance WHERE user_id = ? AND date >= ? AND date <= ? AND entry_time = '--:--' AND status = 'JUSTIFICADO'",
-          [leave.user_id, leave.date_from, leave.date_to],
-          () => {
-            // Revertir a ASISTIÓ los registros que tenían marcación real
-            db.run(
-              "UPDATE attendance SET status = 'ASISTIO', admin_note = NULL WHERE user_id = ? AND date >= ? AND date <= ? AND status = 'JUSTIFICADO'",
-              [leave.user_id, leave.date_from, leave.date_to],
-              () => {
-                io.emit('attendance_updated', { user_id: leave.user_id, date_from: leave.date_from, date_to: leave.date_to, deleted: true });
-                res.json({ success: true, message: 'Justificativo eliminado e historial restaurado' });
+        // Consultar las licencias que aún quedan para este trabajador
+        db.all(
+          "SELECT date_from, date_to FROM worker_leaves WHERE user_id = ?",
+          [leave.user_id],
+          (remErr, remainingLeaves) => {
+            const isCovered = (dateStr) => {
+              return (remainingLeaves || []).some(rl => dateStr >= rl.date_from && dateStr <= rl.date_to);
+            };
+
+            const cur = new Date(leave.date_from + 'T00:00:00Z');
+            const stop = new Date(leave.date_to + 'T00:00:00Z');
+            const cleanupPromises = [];
+
+            while (cur <= stop) {
+              const dStr = cur.toISOString().split('T')[0];
+              // SOLO eliminar o revertir días que NO estén cubiertos por otra licencia vigente
+              if (!isCovered(dStr)) {
+                cleanupPromises.push(new Promise((resolve) => {
+                  db.run(
+                    "DELETE FROM attendance WHERE user_id = ? AND date = ? AND entry_time = '--:--' AND status = 'JUSTIFICADO'",
+                    [leave.user_id, dStr],
+                    () => {
+                      db.run(
+                        "UPDATE attendance SET status = 'ASISTIO', admin_note = NULL WHERE user_id = ? AND date = ? AND status = 'JUSTIFICADO'",
+                        [leave.user_id, dStr],
+                        () => resolve()
+                      );
+                    }
+                  );
+                }));
               }
-            );
+              cur.setUTCDate(cur.getUTCDate() + 1);
+            }
+
+            Promise.all(cleanupPromises).then(() => {
+              // Sincronizar para garantizar que los días de las demás licencias sigan firmes
+              syncWorkerLeavesToAttendance(() => {
+                if (io) {
+                  io.emit('attendance_updated', { user_id: leave.user_id, deleted: true });
+                  io.emit('leaves_updated', { user_id: leave.user_id });
+                }
+                res.json({ success: true, message: 'Justificativo eliminado e historial restaurado correctamente' });
+              });
+            });
           }
         );
       });
+    });
+  });
+
+  // Endpoint explícito para forzar re-sincronización de todas las licencias con el historial
+  app.post('/api/admin/worker-leaves/sync', authenticateToken, requireAdmin, (req, res) => {
+    syncWorkerLeavesToAttendance(() => {
+      res.json({ success: true, message: 'Todas las licencias han sido sincronizadas con el historial de asistencia.' });
     });
   });
 
