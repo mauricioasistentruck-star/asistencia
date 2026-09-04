@@ -523,7 +523,9 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
     db.get('SELECT id, name FROM users WHERE id = ?', [userId], (uErr, targetUser) => {
       const uName = targetUser?.name || 'Personal';
       const today = getLocalDateString();
-      const currentTime = getLocalTimeString();
+    const currentTime = (client_scan_time && typeof client_scan_time === 'string' && client_scan_time.trim().length >= 4)
+      ? client_scan_time.trim().slice(0, 8)
+      : getLocalTimeString();
 
       if (gpsVal === 1) {
         // Al activar GPS, verificar o iniciar registro de ruta activa en terreno
@@ -1098,9 +1100,9 @@ app.post('/api/admin/backup/import', authenticateToken, requireSuperAdmin, async
   }
 });
 
-// Scanner 4 Marcaciones
+// Scanner 4 Marcaciones con proteccion de hora de escaneo
 app.post('/api/attendance/scan', (req, res) => {
-  const { qr_token } = req.body;
+  const { qr_token, client_scan_time } = req.body;
   if (!qr_token) return res.status(400).json({ error: 'Código QR no proporcionado' });
   db.get('SELECT id, rut, name, role, photo_url, qr_token FROM users WHERE qr_token = ?', [qr_token.trim()], (err, user) => {
     if (err) return res.status(500).json({ error: 'Error en la base de datos' });
@@ -2376,6 +2378,25 @@ process.on('unhandledRejection', (reason, promise) => {
 // =========================================================================
 const { setupDtInspection } = require('./dtInspection');
 setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken);
+
+// =========================================================================
+// SISTEMA ANTI-SUSPENSIÓN INTELIGENTE PARA RENDER / NUBE (KEEP-ALIVE)
+// =========================================================================
+const RENDER_CLOUD_URL = 'https://asistenciasistentruck.onrender.com';
+const isCloudDeploy = Boolean(process.env.RENDER || process.env.PORT || process.env.RENDER_EXTERNAL_URL);
+
+if (isCloudDeploy) {
+  const https = require('https');
+  const keepAliveIntervalMs = 8 * 60 * 1000; // Cada 8 minutos (Render suspende a los 15)
+  setInterval(() => {
+    try {
+      https.get(`${RENDER_CLOUD_URL}/api/health`, (res) => {
+        // Inbound HTTP traffic counts as active request on Render
+      }).on('error', () => {});
+    } catch (e) {}
+  }, keepAliveIntervalMs);
+  console.log('[ANTI-SUSPENSION] Tarea periódica Keep-Alive activada cada 8 minutos para Render');
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('====================================================');

@@ -8,6 +8,7 @@ import DtLogo from './DtLogo.jsx';
 export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
   const [scanResult, setScanResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [connectingStatus, setConnectingStatus] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('es-CL'));
@@ -41,6 +42,23 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
   const containerRef = useRef(null);
 
   const isDark = theme === 'dark';
+
+  useEffect(() => {
+    const handleSleeping = () => {
+      setConnectingStatus('⚡ Servidor reactivándose en la nube... Tu hora fue capturada, guardando...');
+    };
+    const handleAwakened = () => {
+      setConnectingStatus('');
+    };
+
+    window.addEventListener('render_server_sleeping', handleSleeping);
+    window.addEventListener('render_server_awakened', handleAwakened);
+
+    return () => {
+      window.removeEventListener('render_server_sleeping', handleSleeping);
+      window.removeEventListener('render_server_awakened', handleAwakened);
+    };
+  }, []);
 
   // DESPERTAR DEL MODO SUSPENSIÓN
   const wakeUpFromSleep = (reason = 'touch') => {
@@ -435,6 +453,7 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
       } catch (e) {}
 
       const data = await apiScanQr(token);
+      setConnectingStatus('');
       if (data && data.success) {
         mergeAttendanceToVault([{
           user_id: data.userId || data.user_id,
@@ -661,6 +680,16 @@ export default function KioskView({ onExitKiosk, theme, onDtLoginSuccess }) {
               <div className="text-xl sm:text-2xl font-black font-mono text-white mt-0.5">
                 {scanResult.time}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Aviso de Servidor Reactivándose durante Marcación */}
+        {connectingStatus && (
+          <div className="absolute top-2 left-2 right-2 z-40 bg-amber-600/95 border-2 border-amber-300 rounded-2xl p-3 shadow-2xl text-center animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className="flex items-center justify-center gap-2 text-white font-black text-xs sm:text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-200" />
+              <span>{connectingStatus}</span>
             </div>
           </div>
         )}

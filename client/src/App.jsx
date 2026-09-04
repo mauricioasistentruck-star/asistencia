@@ -8,6 +8,7 @@ import AdminGpsView from './components/AdminGpsView.jsx';
 import KioskView from './components/KioskView.jsx';
 import DtReportsView from './components/DtReportsView.jsx';
 import IphonePermissionsModal from './components/IphonePermissionsModal.jsx';
+import RenderKeepAliveWatchdog from './components/RenderKeepAliveWatchdog.jsx';
 import { unlockIOSAudio } from './api';
 import { apiGetMe, apiSendGpsPoint, getSocket, getFullPhotoUrl, autoRestoreAndSyncWithServer, isGpsActive, apiDtGetActiveSession } from './api';
 import { Geolocation } from '@capacitor/geolocation';
@@ -702,7 +703,9 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   if (loading) {
     return (
-      <div className={'min-h-screen flex items-center justify-center p-4 ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
+      <>
+        <RenderKeepAliveWatchdog autoReload={true} />
+        <div className={'min-h-screen flex items-center justify-center p-4 ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
         <div className="flex flex-col items-center space-y-4 text-center">
           <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-orange-500 shadow-2xl p-1 bg-black flex-shrink-0 animate-spin">
             <img src="/logo.png" alt="Cargando..." className="w-full h-full object-contain" />
@@ -713,6 +716,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
           <p className="text-xs text-zinc-400 font-semibold">Conectando con el servidor central...</p>
         </div>
       </div>
+      </>
     );
   }
 
@@ -732,6 +736,7 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   if (!user) {
     return (
       <>
+        <RenderKeepAliveWatchdog autoReload={true} />
         
       {/* BANNER GLOBAL OFICIAL DE FISCALIZACIÓN DT (VISIBLE EN TODA LA APP) */}
       {globalDtAlert && (
@@ -796,18 +801,29 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
 
   // Modo Kiosco activado EXCLUSIVAMENTE si el usuario que inicio sesion es el usuario de Kiosco
   if (isKioskUser(user)) {
-    return <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} onDtLoginSuccess={(session) => setDtSession(session)} />;
+    return (
+      <>
+        <RenderKeepAliveWatchdog autoReload={true} />
+        <KioskView onExitKiosk={handleLogout} theme={theme} isKioskUser={true} onDtLoginSuccess={(session) => setDtSession(session)} />
+      </>
+    );
   }
 
   // Si un administrador activo manualmente el modo kiosco temporal
   if (kioskMode) {
-    return <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />;
+    return (
+      <>
+        <RenderKeepAliveWatchdog autoReload={true} />
+        <KioskView onExitKiosk={() => setKioskMode(false)} theme={theme} onDtLoginSuccess={(session) => setDtSession(session)} />
+      </>
+    );
   }
 
 
 
   return (
     <div className={'min-h-screen h-screen flex flex-col overflow-hidden ' + (theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-zinc-900')}>
+      <RenderKeepAliveWatchdog autoReload={true} />
 
       {/* BANNER GLOBAL OFICIAL DE FISCALIZACIÓN DT (VISIBLE EN TODA LA APP) */}
       {globalDtAlert && (

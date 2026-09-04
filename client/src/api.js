@@ -277,7 +277,37 @@ export const apiUploadPhoto = async (id, fileOrBase64) => {
   return data;
 };
 
-export const apiScanQr = (qr_token) => apiRequest('/api/attendance/scan', { method: 'POST', body: JSON.stringify({ qr_token }) });
+export const apiScanQr = async (qr_token, maxRetries = 6) => {
+  const client_scan_time = new Date().toLocaleTimeString('es-CL');
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      const data = await apiRequest('/api/attendance/scan', {
+        method: 'POST',
+        body: JSON.stringify({ qr_token, client_scan_time })
+      });
+      return data;
+    } catch (err) {
+      const isConnectionError = err.message && (
+        err.message.includes('No se pudo conectar') ||
+        err.message.includes('Failed to fetch') ||
+        err.message.includes('502') ||
+        err.message.includes('503') ||
+        err.message.includes('504') ||
+        err.message.includes('NetworkError')
+      );
+      if (isConnectionError && attempt < maxRetries) {
+        attempt++;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('render_server_sleeping'));
+        }
+        await new Promise(r => setTimeout(r, 2500));
+        continue;
+      }
+      throw err;
+    }
+  }
+};
 export const apiGetUserHistory = (userId, range = 'all') => apiRequest('/api/attendance/user/' + userId + '/history?range=' + range);
 export const apiGetTodayAttendance = () => apiRequest('/api/attendance/today');
 export const apiGetAttendanceRecords = (params = {}) => {
