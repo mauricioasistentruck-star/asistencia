@@ -617,10 +617,10 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
             const leaveId = this.lastID;
 
             // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA
+              const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc Nº ${document_number})` : ''}`;
             try {
               const cur = new Date(date_from + 'T00:00:00Z');
               const stop = new Date(date_to + 'T00:00:00Z');
-              const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc Nº ${document_number})` : ''}`;
 
               while (cur <= stop) {
                 const currentDStr = cur.toISOString().split('T')[0];
