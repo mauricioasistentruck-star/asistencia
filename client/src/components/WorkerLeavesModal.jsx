@@ -279,14 +279,26 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
           </div>
 
           {activeTab === 'list' && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('create')}
-              className="mb-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Nuevo Justificativo</span>
-            </button>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => loadLeaves()}
+                disabled={loading}
+                title="Actualizar listado de justificativos"
+                className="bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 font-bold text-xs px-3 py-1.5 rounded-xl border border-zinc-700 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
+                <span>Actualizar</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('create')}
+                className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Nuevo Justificativo</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -426,10 +438,10 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
                         {/* Información del Trabajador y Justificativo */}
                         <div className="space-y-2 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-black text-sm text-white">{l.user_name}</span>
-                            {l.user_rut && (
+                            <span className="font-black text-sm text-white">{l.user_name || workers.find(w => String(w.id) === String(l.user_id))?.name || `Trabajador ID #${l.user_id}`}</span>
+                            {(l.user_rut || workers.find(w => String(w.id) === String(l.user_id))?.rut) && (
                               <span className="font-mono text-[11px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-lg">
-                                RUT: {l.user_rut}
+                                RUT: {l.user_rut || workers.find(w => String(w.id) === String(l.user_id))?.rut}
                               </span>
                             )}
                             <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">

@@ -563,17 +563,18 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   });
 
   // 7. Módulo Administrativo: Licencias Médicas y Justificativos Legales
+      // 7. Módulo Administrativo: Licencias Médicas y Justificativos Legales
   app.get('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     db.all(
-      "SELECT wl.*, u.name as user_name, u.rut as user_rut FROM worker_leaves wl JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
+      "SELECT wl.*, u.name as user_name, u.rut as user_rut FROM worker_leaves wl LEFT JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
       (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Error al consultar licencias' });
+        if (err) return res.status(500).json({ error: 'Error al consultar licencias: ' + (err.message || err) });
         res.json(rows || []);
       }
     );
   });
 
-  app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
+  app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, async (req, res) => {
     try {
       const { user_id, date_from, date_to, leave_type, document_number, remarks, pdf_base64, pdf_filename } = req.body;
       const targetUserId = Number(user_id);
@@ -604,61 +605,69 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
         }
       }
 
-      // 2. Asegurar que las columnas existan y luego registrar en worker_leaves
-      db.run("ALTER TABLE worker_leaves ADD COLUMN pdf_url TEXT", () => {
-        db.run(
-          "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [targetUserId, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
-          function(err) {
-            if (err) {
-              console.error('Error guardando worker_leave:', err);
-              return res.status(500).json({ error: 'Error al guardar justificativo: ' + (err.message || err) });
-            }
-            const leaveId = this.lastID;
+      // 2. Registrar en worker_leaves
+      db.run(
+        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [targetUserId, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
+        async function(err) {
+          if (err) {
+            console.error('Error guardando worker_leave:', err);
+            return res.status(500).json({ error: 'Error al guardar justificativo: ' + (err.message || err) });
+          }
+          const leaveId = this.lastID;
 
-            // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA
-              const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc Nº ${document_number})` : ''}`;
-            try {
-              const cur = new Date(date_from + 'T00:00:00Z');
-              const stop = new Date(date_to + 'T00:00:00Z');
+          // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA DÍA A DÍA
+          const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc Nº ${document_number})` : ''}`;
+          const dayPromises = [];
 
-              while (cur <= stop) {
-                const currentDStr = cur.toISOString().split('T')[0];
-                
+          try {
+            const cur = new Date(date_from + 'T00:00:00Z');
+            const stop = new Date(date_to + 'T00:00:00Z');
+
+            while (cur <= stop) {
+              const currentDStr = cur.toISOString().split('T')[0];
+              dayPromises.push(new Promise((resolve) => {
                 db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [targetUserId, currentDStr], (checkErr, row) => {
                   if (row) {
                     db.run(
                       "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
-                      [leaveNote, row.id]
+                      [leaveNote, row.id],
+                      () => resolve()
                     );
                   } else {
                     db.run(
-                      "INSERT OR IGNORE INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
-                      [targetUserId, currentDStr, leaveNote]
+                      "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
+                      [targetUserId, currentDStr, leaveNote],
+                      () => resolve()
                     );
                   }
                 });
+              }));
 
-                cur.setUTCDate(cur.getUTCDate() + 1);
-              }
-            } catch (histErr) {
-              console.warn('Advertencia actualizando historial de asistencia:', histErr);
+              cur.setUTCDate(cur.getUTCDate() + 1);
             }
-
-            io.emit('attendance_updated', { user_id: targetUserId, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
-
-            res.json({
-              success: true,
-              id: leaveId,
-              pdf_url: pdfUrl,
-              message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
-            });
+          } catch (histErr) {
+            console.warn('Advertencia actualizando historial de asistencia:', histErr);
           }
-        );
-      });
-    } catch (e) {
-      console.error('Error procesando worker_leave:', e);
-      res.status(500).json({ error: 'Error al procesar justificativo: ' + (e.message || e) });
+
+          await Promise.all(dayPromises);
+
+          if (io) {
+            io.emit('attendance_updated', { user_id: targetUserId, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
+            io.emit('leaves_updated', { user_id: targetUserId, leave_id: leaveId });
+          }
+
+          res.json({
+            success: true,
+            id: leaveId,
+            pdf_url: pdfUrl,
+            message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
+          });
+        }
+      );
+    } catch (err) {
+      console.error('Error general en worker-leaves:', err);
+      res.status(500).json({ error: 'Error al procesar justificativo: ' + (err.message || err) });
     }
   });
 

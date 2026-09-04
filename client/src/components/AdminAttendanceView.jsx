@@ -464,8 +464,17 @@ export default function AdminAttendanceView({ user, theme }) {
       overtimeMins += calculateOvertimeMinutes(r);
     });
 
-    const daysWorked = attendedDates.size;
-    // Días laborables en el rango donde el trabajador no registró asistencia
+    // Separar días justificados por licencia médica de asistencias reales trabajadas
+    const justifiedRecords = userRecords.filter(r => r.status === 'JUSTIFICADO' || (r.admin_note && r.admin_note.toLowerCase().includes('justificado')));
+    const justifiedDates = new Set(justifiedRecords.map(r => r.date));
+
+    const workedRecords = userRecords.filter(r => r.status !== 'JUSTIFICADO' && (!r.admin_note || !r.admin_note.toLowerCase().includes('justificado')));
+    const actualAttendedDates = new Set(workedRecords.map(r => r.date));
+
+    const daysWorked = actualAttendedDates.size;
+    const daysJustified = justifiedDates.size;
+
+    // Días laborables en el rango según pauta asignada
     let userAssignedDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
     try {
       if (typeof worker.work_days === 'string') {
@@ -480,12 +489,14 @@ export default function AdminAttendanceView({ user, theme }) {
       return userAssignedDays.includes(dayName);
     });
 
-    const missingDays = workerDaysInRange.filter(d => !attendedDates.has(d)).length;
+    // Inasistencias reales: ni asistió ni tiene justificativo
+    const missingDays = workerDaysInRange.filter(d => !actualAttendedDates.has(d) && !justifiedDates.has(d)).length;
 
     return {
       worker,
       userRecords,
       daysWorked,
+      daysJustified,
       missingDays: Math.max(0, missingDays),
       totalMinutesWorked: totalMins,
       totalDelayMinutes: delayMins,
@@ -979,7 +990,7 @@ export default function AdminAttendanceView({ user, theme }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50 font-medium">
-                {workersSummary.map(({ worker, daysWorked, missingDays, totalMinutesWorked, totalDelayMinutes, delayCount, totalOvertimeMinutes }) => (
+                {workersSummary.map(({ worker, daysWorked, daysJustified = 0, missingDays, totalMinutesWorked, totalDelayMinutes, delayCount, totalOvertimeMinutes }) => (
                   <tr key={worker.id || worker.username} className={isDark ? 'hover:bg-zinc-900/50' : 'hover:bg-orange-50/50'}>
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <div className="font-black text-sm whitespace-nowrap">{worker.name}</div>
@@ -989,9 +1000,16 @@ export default function AdminAttendanceView({ user, theme }) {
                       {worker.rut || 'Sin RUT'}
                     </td>
                     <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center bg-emerald-500/20 text-emerald-400 font-black px-3 py-1 rounded-full text-xs border border-emerald-500/30 whitespace-nowrap leading-none">
-                        {daysWorked} días
-                      </span>
+                      <div className="inline-flex flex-col items-center gap-1">
+                        <span className="inline-flex items-center justify-center bg-emerald-500/20 text-emerald-400 font-black px-3 py-1 rounded-full text-xs border border-emerald-500/30 whitespace-nowrap leading-none">
+                          {daysWorked} días
+                        </span>
+                        {daysJustified > 0 && (
+                          <span className="inline-flex items-center justify-center bg-blue-500/20 text-blue-400 font-bold px-2 py-0.5 rounded-full text-[10px] border border-blue-500/40 whitespace-nowrap leading-none">
+                            +{daysJustified} con licencia
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-3 text-center whitespace-nowrap">
                       {missingDays > 0 ? (
@@ -1110,6 +1128,46 @@ export default function AdminAttendanceView({ user, theme }) {
                           </td>
                           <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
                             <span className="text-zinc-600 text-xs font-bold font-mono">--</span>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // FILA DESTACADA PARA INASISTENCIAS JUSTIFICADAS / LICENCIAS MÉDICAS
+                    const isJustified = r.status === 'JUSTIFICADO' || (r.admin_note && r.admin_note.toLowerCase().includes('justificado'));
+                    if (isJustified) {
+                      return (
+                        <tr key={r.id} className={isDark ? 'hover:bg-zinc-900/50 bg-blue-950/20 border-b border-blue-900/30' : 'hover:bg-blue-50/50 bg-blue-50/30 border-b border-blue-100'}>
+                          <td className="py-3.5 px-3 font-mono text-[11px] font-bold text-orange-400 whitespace-nowrap">
+                            {r.date}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="font-black text-sm whitespace-nowrap">{r.user_name || r.name || 'Personal'}</div>
+                            <div className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">{r.user_rut || r.rut || ''}</div>
+                          </td>
+                          <td colSpan={6} className="py-3.5 px-3 text-center whitespace-nowrap">
+                            <span className="inline-flex items-center gap-2 bg-blue-500/20 text-blue-400 font-bold px-4 py-1.5 rounded-full text-xs border border-blue-500/40 shadow-sm">
+                              <FileText className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                              <span className="truncate max-w-[450px]">{r.admin_note || 'Inasistencia Justificada por Licencia Médica'}</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 text-blue-400 font-bold text-[11px] bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+                              <CheckCircle className="w-3 h-3 text-blue-400" />
+                              <span>Justificado</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(r)}
+                                title="Modificar Horarios (Admin)"
+                                className={'p-1 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 cursor-pointer'}
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

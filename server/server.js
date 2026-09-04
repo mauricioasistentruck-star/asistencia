@@ -2217,16 +2217,23 @@ app.delete('/api/audio/messages/:id', authenticateToken, (req, res) => {
   });
 });
 
+// =========================================================================
+// INICIALIZAR MÓDULO OFICIAL FISCALIZACIÓN DT (DIRECCIÓN DEL TRABAJO)
+// =========================================================================
+const { setupDtInspection } = require('./dtInspection');
+setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken);
+
 const clientDistDir = path.join(__dirname, '..', 'client', 'dist');
 const serverPublicDir = path.join(__dirname, 'public');
 const publicDir = fs.existsSync(clientDistDir) ? clientDistDir : serverPublicDir;
 
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
-  app.get('*', (req, res) => {
+  app.get('*', (req, res, next) => {
     if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
-      res.sendFile(path.join(publicDir, 'index.html'));
+      return res.sendFile(path.join(publicDir, 'index.html'));
     }
+    next();
   });
 }
 
@@ -2373,11 +2380,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 
-// =========================================================================
-// INICIALIZAR MÓDULO OFICIAL FISCALIZACIÓN DT (DIRECCIÓN DEL TRABAJO)
-// =========================================================================
-const { setupDtInspection } = require('./dtInspection');
-setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken);
+
 
 // =========================================================================
 // SISTEMA ANTI-SUSPENSIÓN INTELIGENTE PARA RENDER / NUBE (KEEP-ALIVE)
