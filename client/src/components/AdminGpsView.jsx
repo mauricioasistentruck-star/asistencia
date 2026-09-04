@@ -302,6 +302,59 @@ export default function AdminGpsView({ theme }) {
     };
   }, []);
 
+  const fetchLiveGps = async () => {
+    try {
+      const data = await apiGetLiveGps();
+      if (Array.isArray(data)) setLiveGpsList(data);
+    } catch (err) {
+      console.error('Error al obtener GPS en vivo:', err);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const usersData = await apiGetUsers();
+      if (Array.isArray(usersData)) setAllUsers(usersData);
+    } catch (err) {
+      console.error('Error al obtener usuarios:', err);
+    }
+  };
+
+  const fetchRoute = async (targetUserId) => {
+    if (!targetUserId) {
+      setRoutePoints([]);
+      setSnappedCoordinates([]);
+      return;
+    }
+    try {
+      const res = await apiGetGpsRoute(targetUserId, selectedDate);
+      setRoutePoints(res.points || []);
+    } catch (err) {
+      console.error('Error al obtener ruta:', err);
+    }
+  };
+
+  const checkActiveRoute = async (userId) => {
+    try {
+      const active = await apiAdminGetActiveRoute(userId);
+      setActiveRouteInfo(active && active.status === 'active' ? active : null);
+    } catch (e) {
+      setActiveRouteInfo(null);
+    }
+  };
+
+  const fetchSavedRoutes = async () => {
+    setLoadingSavedRoutes(true);
+    try {
+      const data = await apiGetGpsRoutes({ date: selectedDate });
+      setSavedRoutes(data || []);
+    } catch (err) {
+      console.error('Error al obtener rutas guardadas:', err);
+    } finally {
+      setLoadingSavedRoutes(false);
+    }
+  };
+
   const handleRequestFleetPing = () => {
     const socket = getSocket();
     if (socket) {
