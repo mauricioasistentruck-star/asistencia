@@ -1137,6 +1137,9 @@ app.post('/api/attendance/scan', (req, res) => {
             savePersistentBackup();
             return res.json(payload);
           });
+          // Auto-activar GPS para personal en turno al marcar entrada
+          db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [user.id]);
+          io.emit('user_gps_toggled', { userId: user.id, gps_tracking_enabled: 1 });
         } else if (!record.lunch_out_time || record.lunch_out_time === "--:--" || record.lunch_out_time === "--:--:--") {
           markType = 'lunch_out_time';
           markLabel = '2. SALIDA A COLACIÓN';
@@ -1718,6 +1721,49 @@ function calculateDistanceBetween(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+
+// =========================================================================
+// MOTOR DE ENRUTAMIENTO POR CALLES Y CARRETERAS REALES (OSRM DRIVING ENGINE)
+// =========================================================================
+function fetchOsrmDrivingRoute(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return Promise.resolve(coordinates);
+
+  // Reducir waypoints a un máximo de 30 puntos clave para no saturar la URL de OSRM
+  let waypoints = coordinates;
+  if (coordinates.length > 30) {
+    const step = (coordinates.length - 1) / 29;
+    waypoints = [coordinates[0]];
+    for (let i = 1; i < 29; i++) {
+      waypoints.push(coordinates[Math.round(i * step)]);
+    }
+    waypoints.push(coordinates[coordinates.length - 1]);
+  }
+
+  const coordString = waypoints.map(c => Number(c[1]).toFixed(6) + ',' + Number(c[0]).toFixed(6)).join(';');
+  const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
+
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AsistenTruck/2.0' }, timeout: 9000 }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.code === 'Ok' && json.routes && json.routes[0]) {
+            // OSRM retorna [lng, lat], convertimos a Leaflet [lat, lng]
+            const roadPoints = json.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            resolve(roadPoints);
+          } else {
+            resolve(coordinates);
+          }
+        } catch(e) { resolve(coordinates); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); resolve(coordinates); });
+    req.on('error', () => resolve(coordinates));
+  });
+}
+
 // GPS
 app.post('/api/gps/track', authenticateToken, (req, res) => {
   const userId = req.user.id;
@@ -1754,57 +1800,50 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
       const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, time: currentTime, timestamp: utcIso, date: today };
       io.emit('gps_position_updated', gpsData);
 
-            // Registrar y actualizar ruta activa en terreno
+      // Registrar en ruta activa SOLAMENTE si hay una ruta explícitamente iniciada
       db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (routeErr, activeRoute) => {
         if (!activeRoute) {
-          // Si el usuario no tiene una ruta activa iniciada, crearla automaticamente para registrar su recorrido
-          const routeName = 'Ruta ' + user.name + ' - ' + today + ' ' + currentTime;
-          const initialPoints = [newPoint];
-          db.run(
-            'INSERT INTO gps_routes (user_id, user_name, name, date, start_time, start_lat, start_lng, total_distance_km, total_points, points_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, "active")',
-            [userId, user.name, routeName, today, currentTime, latitude, longitude, JSON.stringify(initialPoints)],
-            function () {
+          // NO auto-crear rutas por simples pings aislados para evitar líneas rectas de la casa al trabajo
+          return;
+        }
+
+        let points = [];
+        try {
+          points = JSON.parse(activeRoute.points_json || '[]');
+        } catch (e) {
+          points = [];
+        }
+
+        const lastPoint = points[points.length - 1];
+
+        // Si han transcurrido más de 45 minutos sin señal, concluir la ruta anterior para no trazar líneas irreales
+        if (lastPoint && lastPoint.timestamp) {
+          const gapMs = new Date().getTime() - new Date(lastPoint.timestamp).getTime();
+          if (gapMs > 45 * 60 * 1000) {
+            db.run('UPDATE gps_routes SET status = "completed", end_time = ? WHERE id = ?', [currentTime, activeRoute.id], () => {
               io.emit('routes_updated');
-            }
-          );
-        } else {
-          let points = [];
-          try {
-            points = JSON.parse(activeRoute.points_json || '[]');
-          } catch (e) {
-            points = [];
+            });
+            return;
           }
-          const startLat = (activeRoute.start_lat && activeRoute.start_lat !== 0) ? activeRoute.start_lat : latitude;
-          const startLng = (activeRoute.start_lng && activeRoute.start_lng !== 0) ? activeRoute.start_lng : longitude;
-          const lastPoint = points[points.length - 1];
-          let addedDist = 0;
-          let shouldAddPoint = true;
+        }
 
-          if (lastPoint) {
-            addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
-            
-            // Registrar cada movimiento de al menos 3 metros, o cada 20 segundos para un trazado continuo
-            const timeSinceLastPoint = lastPoint.timestamp ? (new Date().getTime() - new Date(lastPoint.timestamp).getTime()) : 99999;
-            if (addedDist < 0.003 && timeSinceLastPoint < 20000) {
-              shouldAddPoint = false;
-            }
+        const startLat = (activeRoute.start_lat && activeRoute.start_lat !== 0) ? activeRoute.start_lat : latitude;
+        const startLng = (activeRoute.start_lng && activeRoute.start_lng !== 0) ? activeRoute.start_lng : longitude;
+        let addedDist = 0;
+        let shouldAddPoint = true;
 
-            // 2. Si el salto representa una velocidad imposible (> 130 km/h), descartar salto espurio
-            const t1 = new Date(lastPoint.timestamp || 0).getTime();
-            const t2 = new Date().getTime();
-            if (t1 > 0 && t2 > t1) {
-              const hours = (t2 - t1) / (1000 * 3600);
-              const calcSpeedKmH = addedDist / hours;
-              if (calcSpeedKmH > 130) {
-                shouldAddPoint = false;
-              }
-            }
+        if (lastPoint) {
+          addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
+          const timeSinceLastPoint = lastPoint.timestamp ? (new Date().getTime() - new Date(lastPoint.timestamp).getTime()) : 99999;
+          // Guardar si se movió al menos 4 metros o cada 15 segundos
+          if (addedDist < 0.004 && timeSinceLastPoint < 15000) {
+            shouldAddPoint = false;
           }
-          if (shouldAddPoint) {
-            points.push(newPoint);
-          }
+        }
 
-          const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.003 ? addedDist : 0)).toFixed(2));
+        if (shouldAddPoint) {
+          points.push(newPoint);
+          const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.004 ? addedDist : 0)).toFixed(2));
           db.run(
             'UPDATE gps_routes SET start_lat = ?, start_lng = ?, end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
             [startLat, startLng, currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id]
@@ -1817,9 +1856,34 @@ app.post('/api/gps/track', authenticateToken, (req, res) => {
   });
 });
 
+
+app.post('/api/gps/snap-roads', authenticateToken, async (req, res) => {
+  const { coordinates } = req.body;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    return res.json({ route: coordinates || [] });
+  }
+  try {
+    const roadRoute = await fetchOsrmDrivingRoute(coordinates);
+    res.json({ route: roadRoute || coordinates });
+  } catch(e) {
+    res.json({ route: coordinates });
+  }
+});
+
+app.post('/api/gps/admin-discard-route', authenticateToken, requireAdmin, (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: 'userId requerido' });
+  db.run('DELETE FROM gps_routes WHERE user_id = ? AND status = "active"', [userId], (err) => {
+    if (err) return res.status(500).json({ error: 'Error al descartar ruta' });
+    io.emit('routes_updated');
+    res.json({ success: true, message: 'Ruta activa descartada exitosamente' });
+  });
+});
+
 app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
+  const today = getLocalDateString();
   const query = `
-    SELECT u.id as user_id, u.name as user_name, u.photo_url, u.gps_tracking_enabled, 
+    SELECT u.id as user_id, u.name as user_name, u.photo_url, u.role, u.gps_tracking_enabled, 
            g.latitude, g.longitude, g.accuracy, g.speed, g.timestamp, g.date 
     FROM users u 
     LEFT JOIN (
@@ -1828,11 +1892,25 @@ app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
         SELECT user_id, MAX(id) as max_id FROM gps_logs GROUP BY user_id
       ) g2 ON g1.id = g2.max_id
     ) g ON u.id = g.user_id 
-    WHERE (u.gps_tracking_enabled = 1 OR u.gps_tracking_enabled = '1' OR u.gps_tracking_enabled = 'true')
+    WHERE u.role != 'kiosk' AND u.role != 'kiosco'
   `;
   db.all(query, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar GPS' });
-    res.json(rows || []);
+    const now = Date.now();
+    const enriched = (rows || []).map(r => {
+      const isToday = r.date === today;
+      let diffMins = 999999;
+      if (r.timestamp) {
+        diffMins = Math.round((now - new Date(r.timestamp).getTime()) / 60000);
+      }
+      return {
+        ...r,
+        is_online: diffMins < 15,
+        is_today: isToday,
+        diff_mins: diffMins
+      };
+    });
+    res.json(enriched);
   });
 });
 
@@ -2238,6 +2316,9 @@ if (fs.existsSync(publicDir)) {
 }
 
 io.on('connection', (socket) => {
+  socket.on('request_fleet_gps_ping', () => {
+    io.emit('request_fleet_gps_ping');
+  });
   console.log('Dispositivo conectado:', socket.id);
 
   // Unirse a la sala personal del usuario

@@ -1,9 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Clock, ShieldAlert, Sparkles, RefreshCw, X } from 'lucide-react';
-import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString } from '../api';
+import { Clock, ShieldAlert, Sparkles, RefreshCw, X, Radio, Crosshair, MapPin } from 'lucide-react';
+import { apiGetUserHistory, getFullPhotoUrl, getSocket, getChileTodayString, apiSendGpsPoint } from '../api';
 
 export default function CredentialView({ user, theme, showHistoryModal, setShowHistoryModal }) {
+  const [gpsSending, setGpsSending] = useState(false);
+  const [gpsMsg, setGpsMsg] = useState('');
+
+  const handleManualGpsPing = () => {
+    if (gpsSending) return;
+    setGpsSending(true);
+    setGpsMsg('Obteniendo señal GPS...');
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          if (p && p.coords) {
+            const acc = Math.round(p.coords.accuracy || 10);
+            apiSendGpsPoint({
+              latitude: p.coords.latitude,
+              longitude: p.coords.longitude,
+              accuracy: acc,
+              speed: p.coords.speed || 0
+            }).then(() => {
+              setGpsMsg(`Transmitido con éxito (±${acc}m)`);
+              setTimeout(() => setGpsMsg(''), 4500);
+            }).catch(() => {
+              setGpsMsg('Error al enviar coordenadas');
+            }).finally(() => {
+              setGpsSending(false);
+            });
+          }
+        },
+        (err) => {
+          setGpsMsg('Active el GPS y permisos del teléfono');
+          setGpsSending(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      setGpsMsg('GPS no disponible');
+      setGpsSending(false);
+    }
+  };
+
   const [sheenPos, setSheenPos] = useState(50);
   const [sheenAngle, setSheenAngle] = useState(65);
 

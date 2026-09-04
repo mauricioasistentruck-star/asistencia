@@ -780,3 +780,6 @@ export const apiUpdateUserWorkDays = (userId, work_days) =>
     body: JSON.stringify({ work_days })
   });
 
+
+export const apiSnapRoads = (coordinates) => apiRequest('/api/gps/snap-roads', { method: 'POST', body: JSON.stringify({ coordinates }) });
+export const apiAdminDiscardRoute = (userId) => apiRequest('/api/gps/admin-discard-route', { method: 'POST', body: JSON.stringify({ userId }) });

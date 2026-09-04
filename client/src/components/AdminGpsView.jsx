@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { 
   apiGetLiveGps, apiGetGpsRoute, apiGetUsers, apiGetGpsRoutes, apiGetGpsRouteById, 
-  apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
+  apiDeleteGpsRoute, apiToggleGps, apiSendGpsPoint, apiAdminDiscardRoute, apiAdminStartRoute, apiAdminFinishRoute, apiAdminGetActiveRoute,
   getFullPhotoUrl, getSocket, getChileTodayString, isGpsActive, formatChileTime, formatChileDateTime 
 } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
@@ -427,6 +427,31 @@ export default function AdminGpsView({ theme }) {
     }
   };
 
+  
+  const handleRequestFleetPing = () => {
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('request_fleet_gps_ping');
+    }
+    handleManualRefresh();
+    alert('Señal de actualización enviada a todos los dispositivos de la flota.');
+  };
+
+  const handleDiscardCurrentRoute = async () => {
+    if (!selectedUser) return;
+    if (!window.confirm(`¿Está seguro de descartar y limpiar el trazado actual de ${selectedUser.name}?`)) return;
+    try {
+      await apiAdminDiscardRoute(selectedUser.id);
+      setActiveRouteInfo(null);
+      setRoutePoints([]);
+      setSnappedCoordinates([]);
+      fetchSavedRoutes();
+      alert('Trazado descartado correctamente.');
+    } catch (e) {
+      alert('Error al descartar trazado: ' + e.message);
+    }
+  };
+
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -466,21 +491,13 @@ export default function AdminGpsView({ theme }) {
 
     const isCurrentlyActive = isGpsActive(worker.gps_tracking_enabled);
 
-    // Si se presiona de nuevo sobre el mismo trabajador activo: desactivar su GPS
-    if (selectedUser?.id === worker.id && isCurrentlyActive) {
-      try {
-        await apiToggleGps(worker.id, false);
-        setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: 0 } : u));
-        setSelectedUser(null);
-        setActiveRouteInfo(null);
-        setRoutePoints([]);
-        setSnappedCoordinates([]);
-        setLiveGpsList(prev => prev.filter(g => g.user_id !== worker.id));
-        fetchSavedRoutes();
-        return;
-      } catch (err) {
-        console.warn('Error al desactivar GPS:', err);
-      }
+    // Si se presiona de nuevo sobre el mismo trabajador: deseleccionarlo sin apagar su GPS
+    if (selectedUser?.id === worker.id) {
+      setSelectedUser(null);
+      setActiveRouteInfo(null);
+      setRoutePoints([]);
+      setSnappedCoordinates([]);
+      return;
     }
 
     // Seleccionar y activar GPS si estaba inactivo
@@ -669,8 +686,8 @@ export default function AdminGpsView({ theme }) {
 
   const activeLiveMarkers = liveGpsList.filter(g => {
     if (!g.latitude || !g.longitude) return false;
-    const found = allUsers.find(u => u.id === g.user_id);
-    return !found || isGpsActive(found.gps_tracking_enabled);
+    // Mostrar a todos los trabajadores con coordenadas registradas hoy
+    return g.is_today || g.is_online || (g.diff_mins !== undefined && g.diff_mins < 1440);
   });
 
   const displayPoints = selectedSavedRoute ? routePoints : activeRoutePoints;
@@ -752,6 +769,16 @@ export default function AdminGpsView({ theme }) {
         <div className="flex flex-wrap items-center gap-2">
           
           {/* Botón 1: Ver Todos en Vivo */}
+          <button
+            type="button"
+            onClick={handleRequestFleetPing}
+            className="bg-zinc-900 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            title="Solicitar ubicación en tiempo real a todos los trabajadores en terreno"
+          >
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span>Solicitar Señal Flota</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleSelectWorker(null)}

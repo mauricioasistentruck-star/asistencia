@@ -219,6 +219,27 @@ export default function App() {
     };
     socket.on('user_gps_toggled', handleGpsToggled);
 
+    const handleFleetPingRequest = () => {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (p) => {
+            if (p && p.coords) {
+              apiSendGpsPoint({
+                latitude: p.coords.latitude,
+                longitude: p.coords.longitude,
+                accuracy: Math.round(p.coords.accuracy || 10),
+                speed: p.coords.speed || 0
+              }).catch(() => {});
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      }
+    };
+    socket.on('request_fleet_gps_ping', handleFleetPingRequest);
+
+
     const token = localStorage.getItem('asistencia_token');
     if (token) {
       apiGetMe()
@@ -238,6 +259,7 @@ export default function App() {
       window.removeEventListener('auth_expired', handleAuthExpired);
       socket.off('user_updated', handleLiveUserUpdate);
       socket.off('user_gps_toggled', handleGpsToggled);
+    socket.off('request_fleet_gps_ping', handleFleetPingRequest);
     };
   }, []);
 
