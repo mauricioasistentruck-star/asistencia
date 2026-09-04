@@ -21,6 +21,7 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filtros del Listado
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,11 +49,14 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
   useEffect(() => {
     if (isOpen) {
       loadLeaves();
-      if (contractedWorkers.length > 0 && !userId) {
-        setUserId(contractedWorkers[0].id);
-      }
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (contractedWorkers.length > 0 && !userId) {
+      setUserId(contractedWorkers[0].id);
+    }
+  }, [contractedWorkers, userId]);
 
   const loadLeaves = async () => {
     setLoading(true);
@@ -91,14 +95,21 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!userId || !dateFrom || !dateTo || !leaveType) {
-      setErrorMsg('Complete los campos obligatorios para registrar el justificativo.');
+    const targetUserId = Number(userId || contractedWorkers[0]?.id);
+    if (!targetUserId || !dateFrom || !dateTo || !leaveType) {
+      setErrorMsg('Complete los campos obligatorios (trabajador, fechas y tipo) para registrar el justificativo.');
       return;
     }
 
+    if (dateTo < dateFrom) {
+      setErrorMsg('La fecha de término (hasta) no puede ser anterior a la fecha de inicio (desde).');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const res = await apiCreateWorkerLeave({
-        user_id: userId,
+        user_id: targetUserId,
         date_from: dateFrom,
         date_to: dateTo,
         leave_type: leaveType,
@@ -124,6 +135,8 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
       }
     } catch (err) {
       setErrorMsg(err.message || 'Error al conectar con el servidor.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -639,10 +652,11 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
 
                 <button
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Registrar y Justificar Inasistencias</span>
+                  <span>{isSubmitting ? 'Guardando y justificando días...' : 'Registrar y Justificar Inasistencias'}</span>
                 </button>
               </div>
             </form>

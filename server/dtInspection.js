@@ -4,6 +4,30 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 
 function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateToken) {
+  // Asegurar tabla y columnas de worker_leaves y attendance
+  db.run(`
+    CREATE TABLE IF NOT EXISTS worker_leaves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      leave_type TEXT NOT NULL,
+      document_number TEXT,
+      remarks TEXT,
+      pdf_url TEXT,
+      created_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `, () => {
+    db.run("ALTER TABLE worker_leaves ADD COLUMN pdf_url TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN document_number TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN remarks TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN created_by TEXT", () => {});
+  });
+  db.run("ALTER TABLE attendance ADD COLUMN status TEXT DEFAULT 'ASISTIO'", () => {});
+  db.run("ALTER TABLE attendance ADD COLUMN admin_note TEXT", () => {});
+  db.run("ALTER TABLE attendance ADD COLUMN modified_by_admin INTEGER DEFAULT 0", () => {});
+
   function isSuperAdminUser(user) {
     if (!user) return false;
     return Boolean(
@@ -552,11 +576,12 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     try {
       const { user_id, date_from, date_to, leave_type, document_number, remarks, pdf_base64, pdf_filename } = req.body;
-      if (!user_id || !date_from || !date_to || !leave_type) {
+      const targetUserId = Number(user_id);
+      if (!targetUserId || !date_from || !date_to || !leave_type) {
         return res.status(400).json({ error: 'Faltan campos obligatorios para registrar el justificativo.' });
       }
 
-      const adminName = req.user ? req.user.name || req.user.username : 'Administrador';
+      const adminName = req.user ? (req.user.name || req.user.username || 'Administrador') : 'Administrador';
 
       // 1. Guardar archivo PDF o comprobante en servidor si fue adjuntado
       let pdfUrl = null;
@@ -566,10 +591,11 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
           if (!fs.existsSync(uploadsLeavesDir)) {
             fs.mkdirSync(uploadsLeavesDir, { recursive: true });
           }
-          const matches = pdf_base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-          const buffer = matches ? Buffer.from(matches[2], 'base64') : Buffer.from(pdf_base64, 'base64');
+          const matches = String(pdf_base64).match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+          const rawBase64 = matches ? matches[2] : (pdf_base64.includes('base64,') ? pdf_base64.split('base64,')[1] : pdf_base64);
+          const buffer = Buffer.from(rawBase64, 'base64');
           const ext = (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf')) ? '.pdf' : (pdf_filename ? path.extname(pdf_filename) || '.pdf' : '.pdf');
-          const fileName = `licencia_${Date.now()}_u${user_id}${ext}`;
+          const fileName = `licencia_${Date.now()}_u${targetUserId}${ext}`;
           const filePath = path.join(uploadsLeavesDir, fileName);
           fs.writeFileSync(filePath, buffer);
           pdfUrl = `/uploads/leaves/${fileName}`;
@@ -578,59 +604,61 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
         }
       }
 
-      // 2. Registrar en worker_leaves
-      db.run(
-        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [user_id, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
-        function(err) {
-          if (err) {
-            console.error('Error guardando worker_leave:', err);
-            return res.status(500).json({ error: 'Error al guardar justificativo' });
-          }
-          const leaveId = this.lastID;
+      // 2. Asegurar que las columnas existan y luego registrar en worker_leaves
+      db.run("ALTER TABLE worker_leaves ADD COLUMN pdf_url TEXT", () => {
+        db.run(
+          "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [targetUserId, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
+          function(err) {
+            if (err) {
+              console.error('Error guardando worker_leave:', err);
+              return res.status(500).json({ error: 'Error al guardar justificativo: ' + (err.message || err) });
+            }
+            const leaveId = this.lastID;
 
-          // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA
-          // Para cada fecha del período de la licencia, justificar los días con o sin marcación
-          const cur = new Date(date_from + 'T00:00:00Z');
-          const stop = new Date(date_to + 'T00:00:00Z');
-          const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc N° ${document_number})` : ''}`;
+            // 3. ACTUALIZAR AUTOMÁTICAMENTE EL HISTORIAL DE ASISTENCIA
+            try {
+              const cur = new Date(date_from + 'T00:00:00Z');
+              const stop = new Date(date_to + 'T00:00:00Z');
+              const leaveNote = `Justificado: ${leave_type}${document_number ? ` (Doc Nº ${document_number})` : ''}`;
 
-          while (cur <= stop) {
-            const dStr = cur.toISOString().split('T')[0];
-            const currentDStr = dStr;
-            
-            db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [user_id, currentDStr], (checkErr, row) => {
-              if (row) {
-                // Actualizar marcación existente a JUSTIFICADO
-                db.run(
-                  "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
-                  [leaveNote, row.id]
-                );
-              } else {
-                // Insertar registro formal de justificación para que la inasistencia quede saldada
-                db.run(
-                  "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', '00:00', ?, 1)",
-                  [user_id, currentDStr, leaveNote]
-                );
+              while (cur <= stop) {
+                const currentDStr = cur.toISOString().split('T')[0];
+                
+                db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [targetUserId, currentDStr], (checkErr, row) => {
+                  if (row) {
+                    db.run(
+                      "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
+                      [leaveNote, row.id]
+                    );
+                  } else {
+                    db.run(
+                      "INSERT OR IGNORE INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
+                      [targetUserId, currentDStr, leaveNote]
+                    );
+                  }
+                });
+
+                cur.setUTCDate(cur.getUTCDate() + 1);
               }
+            } catch (histErr) {
+              console.warn('Advertencia actualizando historial de asistencia:', histErr);
+            }
+
+            io.emit('attendance_updated', { user_id: targetUserId, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
+
+            res.json({
+              success: true,
+              id: leaveId,
+              pdf_url: pdfUrl,
+              message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
             });
-
-            cur.setUTCDate(cur.getUTCDate() + 1);
           }
-
-          // Notificar en tiempo real a todas las pantallas abiertas
-          io.emit('attendance_updated', { user_id, date_from, date_to, status: 'JUSTIFICADO', note: leaveNote });
-
-          res.json({
-            success: true,
-            id: leaveId,
-            pdf_url: pdfUrl,
-            message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
-          });
-        }
-      );
+        );
+      });
     } catch (e) {
-      res.status(500).json({ error: 'Error al procesar justificativo' });
+      console.error('Error procesando worker_leave:', e);
+      res.status(500).json({ error: 'Error al procesar justificativo: ' + (e.message || e) });
     }
   });
 

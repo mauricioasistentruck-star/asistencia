@@ -361,6 +361,15 @@ function initDatabase() {
       )
     `);
 
+    // Migraciones seguras para worker_leaves y attendance
+    db.run("ALTER TABLE worker_leaves ADD COLUMN pdf_url TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN document_number TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN remarks TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN created_by TEXT", () => {});
+    db.run("ALTER TABLE attendance ADD COLUMN status TEXT DEFAULT 'ASISTIO'", () => {});
+    db.run("ALTER TABLE attendance ADD COLUMN admin_note TEXT", () => {});
+    db.run("ALTER TABLE attendance ADD COLUMN modified_by_admin INTEGER DEFAULT 0", () => {});
+
     // Migración de columna work_days en users si no existe
     db.run("ALTER TABLE users ADD COLUMN work_days TEXT DEFAULT '[\"mon\",\"tue\",\"wed\",\"thu\",\"fri\"]'", (err) => {
       // Ignorar si ya existe
