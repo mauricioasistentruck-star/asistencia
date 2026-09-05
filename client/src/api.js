@@ -336,7 +336,7 @@ export const apiGetGpsRoute = (userId, date) => apiRequest('/api/gps/route/' + u
 export const apiStartGpsRoute = (payload) => apiRequest('/api/gps/routes/start', { method: 'POST', body: JSON.stringify(payload) });
 export const apiFinishGpsRoute = (payload) => apiRequest('/api/gps/routes/finish', { method: 'POST', body: JSON.stringify(payload) });
 export const apiAdminStartRoute = (userId, latitude, longitude, name) => apiRequest('/api/gps/admin-start-route', { method: 'POST', body: JSON.stringify({ userId, latitude, longitude, name }) });
-export const apiAdminFinishRoute = (userId) => apiRequest('/api/gps/admin-finish-route', { method: 'POST', body: JSON.stringify({ userId }) });
+export const apiAdminFinishRoute = (userId, points = []) => apiRequest('/api/gps/admin-finish-route', { method: 'POST', body: JSON.stringify({ userId, points }) });
 export const apiAdminGetActiveRoute = (userId) => apiRequest('/api/gps/admin-active-route/' + userId);
 
 export const apiGetActiveGpsRoute = () => apiRequest('/api/gps/routes/active');

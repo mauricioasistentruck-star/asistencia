@@ -44,15 +44,15 @@ const createMyLocationIcon = () => {
   return L.divIcon({
     className: 'custom-my-location-marker',
     html: `
-      <div style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="position: absolute; width: 48px; height: 48px; background-color: rgba(59, 130, 246, 0.35); border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <div style="width: 24px; height: 24px; background-color: #2563eb; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 15px rgba(37,99,235,0.9); z-index: 10;"></div>
-        <div style="background: #1e3a8a; color: #93c5fd; font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 6px; margin-top: 24px; border: 1px solid #3b82f6; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
-          📍 Mi Ubicación Física
+      <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; width: 48px; height: 48px; background-color: rgba(59, 130, 246, 0.4); border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+        <div style="width: 22px; height: 22px; background-color: #2563eb; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 14px rgba(37,99,235,0.9); z-index: 10;"></div>
+        <div style="position: absolute; top: 38px; background: #1e3a8a; color: #93c5fd; font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 6px; border: 1px solid #3b82f6; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.8); z-index: 11;">
+          📍 Tu Ubicación
         </div>
       </div>
     `,
-    iconSize: [48, 56],
+    iconSize: [48, 48],
     iconAnchor: [24, 24]
   });
 };
@@ -217,14 +217,33 @@ export default function AdminGpsView({ theme }) {
     }
   };
 
-  // Geolocalización física del dispositivo
+  // Geolocalización física precisa del dispositivo (Soporte Nativo Capacitor + HTML5)
   const locateMe = async (forceCenter = true) => {
     setIsLocating(true);
     setGeoError('');
     try {
       let lat, lng, acc;
 
-      if ('geolocation' in navigator) {
+      // 1. Si es dispositivo móvil Android (Capacitor), usar GPS nativo de alta precisión
+      if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+        try {
+          const capPos = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 1000
+          });
+          if (capPos && capPos.coords) {
+            lat = capPos.coords.latitude;
+            lng = capPos.coords.longitude;
+            acc = Math.round(capPos.coords.accuracy || 5);
+          }
+        } catch (capErr) {
+          console.warn('Capacitor getCurrentPosition falló, reintentando:', capErr);
+        }
+      }
+
+      // 2. Si no se obtuvo o está en navegador web, usar Geolocation HTML5
+      if ((lat === undefined || lng === undefined) && 'geolocation' in navigator) {
         const pos = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(
             resolve,
@@ -244,11 +263,9 @@ export default function AdminGpsView({ theme }) {
         setMyLocationAccuracy(acc);
         setLocationTimestamp(new Date());
 
-// locateMe es para centrar la vista del supervisor en el mapa, no transmite como móvil de flota
-
         if (forceCenter) {
           setTargetCenter([lat, lng]);
-          setTargetZoom(17);
+          setTargetZoom(16);
           setTargetBounds(null);
           setMoveTrigger(t => t + 1);
         }
@@ -258,21 +275,37 @@ export default function AdminGpsView({ theme }) {
       }
     } catch (err) {
       console.warn('Geolocalización error:', err.message);
-      setGeoError('Active el GPS para ver su ubicación física.');
+      setGeoError('Active el sensor GPS de su dispositivo para ver su ubicación.');
     } finally {
       setIsLocating(false);
     }
   };
 
   useEffect(() => {
-    locateMe(false);
+    locateMe(true);
   }, []);
 
   // Escuchar posición en tiempo real para mantener el punto azul siempre al día
   useEffect(() => {
     let watchId = null;
-    try {
-      if ('geolocation' in navigator) {
+    let capWatchId = null;
+
+    if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+      Geolocation.watchPosition(
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
+        (p) => {
+          if (p && p.coords) {
+            const nLat = p.coords.latitude;
+            const nLng = p.coords.longitude;
+            const nAcc = Math.round(p.coords.accuracy || 5);
+            setMyLocation([nLat, nLng]);
+            setMyLocationAccuracy(nAcc);
+            setLocationTimestamp(new Date());
+          }
+        }
+      ).then(id => { capWatchId = id; }).catch(() => {});
+    } else if ('geolocation' in navigator) {
+      try {
         watchId = navigator.geolocation.watchPosition(
           (p) => {
             if (p && p.coords) {
@@ -285,12 +318,15 @@ export default function AdminGpsView({ theme }) {
             }
           },
           () => {},
-          { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+          { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
         );
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
 
     return () => {
+      if (capWatchId !== null) {
+        Geolocation.clearWatch({ id: capWatchId }).catch(() => {});
+      }
       if (watchId !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchId);
       }
@@ -437,19 +473,9 @@ export default function AdminGpsView({ theme }) {
       return;
     }
 
-    // Seleccionar y activar GPS si estaba inactivo
+    // Seleccionar trabajador para inspeccionar su recorrido (SIN alterar su interruptor GPS)
     setSelectedUser(worker);
     setSelectedSavedRoute(null);
-
-    if (!isCurrentlyActive) {
-      try {
-        await apiToggleGps(worker.id, true);
-        setAllUsers(prev => prev.map(u => u.id === worker.id ? { ...u, gps_tracking_enabled: 1 } : u));
-        setSelectedUser(prev => prev && prev.id === worker.id ? { ...prev, gps_tracking_enabled: 1 } : prev);
-      } catch (err) {
-        console.warn('Error al activar GPS:', err);
-      }
-    }
 
     checkActiveRoute(worker.id);
     fetchRoute(worker.id);
@@ -488,7 +514,8 @@ export default function AdminGpsView({ theme }) {
 
     setActionLoading(true);
     try {
-      await apiAdminFinishRoute(selectedUser.id);
+      const ptsToSend = (displayPoints && displayPoints.length > 0) ? displayPoints : routePoints;
+      await apiAdminFinishRoute(selectedUser.id, ptsToSend);
       setActiveRouteInfo(null);
 
       setAllUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, gps_tracking_enabled: 0 } : u));

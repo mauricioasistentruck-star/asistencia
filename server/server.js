@@ -2016,24 +2016,103 @@ app.post('/api/gps/admin-start-route', authenticateToken, requireAdmin, (req, re
   });
 });
 
-// Guardar y finalizar ruta de un trabajador por parte del Admin
+// Guardar y finalizar ruta de un trabajador por parte del Admin recopilando todos los puntos reales
 app.post('/api/gps/admin-finish-route', authenticateToken, requireAdmin, (req, res) => {
-  const { userId } = req.body;
+  const { userId, points: clientPoints } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId requerido' });
 
+  const today = getLocalDateString();
   const endTime = getLocalTimeString();
 
-  // Desactivar GPS del usuario
-  db.run('UPDATE users SET gps_tracking_enabled = 0 WHERE id = ?', [userId], () => {
-    db.run(
-      'UPDATE gps_routes SET status = "completed", end_time = ? WHERE user_id = ? AND status = "active"',
-      [endTime, userId],
-      function (updErr) {
-        if (updErr) return res.status(500).json({ error: 'Error al finalizar ruta: ' + updErr.message });
-        io.emit('gps_route_finished', { userId, endTime });
-        io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 0 });
-        io.emit('routes_updated');
-        res.json({ success: true, message: 'Ruta guardada y finalizada correctamente' });
+  db.get('SELECT id, name FROM users WHERE id = ?', [userId], (uErr, user) => {
+    if (uErr || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    // 1. Consultar todos los puntos registrados en gps_logs hoy para este usuario
+    db.all(
+      'SELECT latitude, longitude, accuracy, speed, timestamp FROM gps_logs WHERE user_id = ? AND date = ? ORDER BY id ASC',
+      [userId, today],
+      (logsErr, logRows) => {
+        const rawPoints = (logRows || []).map(r => ({
+          latitude: Number(r.latitude),
+          longitude: Number(r.longitude),
+          accuracy: r.accuracy || 10,
+          speed: r.speed || 0,
+          timestamp: r.timestamp
+        })).filter(p => p.latitude && p.longitude && Math.abs(p.latitude) > 0.01 && Math.abs(p.longitude) > 0.01);
+
+        // 2. Consultar si hay una ruta activa en gps_routes
+        db.get(
+          'SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
+          [userId],
+          (routeErr, activeRoute) => {
+            let existingPoints = [];
+            if (activeRoute && activeRoute.points_json) {
+              try { existingPoints = JSON.parse(activeRoute.points_json); } catch(e) {}
+            }
+
+            const clientPts = Array.isArray(clientPoints) ? clientPoints.filter(p => p && p.latitude && p.longitude) : [];
+
+            // Seleccionar la lista de puntos más completa y fidedigna
+            let finalPoints = rawPoints;
+            if (existingPoints.length > finalPoints.length) finalPoints = existingPoints;
+            if (clientPts.length > finalPoints.length) finalPoints = clientPts;
+
+            // Calcular distancia acumulada real en km
+            let totalDist = 0;
+            if (finalPoints.length > 1) {
+              for (let i = 1; i < finalPoints.length; i++) {
+                totalDist += calculateDistanceBetween(
+                  finalPoints[i-1].latitude, finalPoints[i-1].longitude,
+                  finalPoints[i].latitude, finalPoints[i].longitude
+                );
+              }
+            }
+            const totalDistKm = Number(totalDist.toFixed(2));
+            const startLat = finalPoints.length > 0 ? finalPoints[0].latitude : 0;
+            const startLng = finalPoints.length > 0 ? finalPoints[0].longitude : 0;
+            const endLat = finalPoints.length > 0 ? finalPoints[finalPoints.length - 1].latitude : 0;
+            const endLng = finalPoints.length > 0 ? finalPoints[finalPoints.length - 1].longitude : 0;
+            const startTime = activeRoute?.start_time || '08:00';
+            const finalRouteName = activeRoute?.name || ('Ruta ' + user.name + ' - ' + today + ' ' + startTime);
+
+            // Desactivar GPS del usuario al guardar y archivar
+            db.run('UPDATE users SET gps_tracking_enabled = 0 WHERE id = ?', [userId]);
+
+            if (activeRoute) {
+              db.run(
+                `UPDATE gps_routes 
+                 SET name = ?, end_time = ?, start_lat = ?, start_lng = ?, end_lat = ?, end_lng = ?, 
+                     total_distance_km = ?, total_points = ?, points_json = ?, status = 'completed' 
+                 WHERE id = ?`,
+                [finalRouteName, endTime, startLat, startLng, endLat, endLng, totalDistKm, finalPoints.length, JSON.stringify(finalPoints), activeRoute.id],
+                function(updErr) {
+                  if (updErr) return res.status(500).json({ error: 'Error al finalizar ruta: ' + updErr.message });
+                  io.emit('gps_route_finished', { userId, endTime, routeId: activeRoute.id });
+                  io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 0 });
+                  io.emit('routes_updated');
+                  savePersistentBackup();
+                  return res.json({ success: true, message: 'Ruta guardada y archivada con éxito', routeId: activeRoute.id, total_distance_km: totalDistKm, total_points: finalPoints.length });
+                }
+              );
+            } else {
+              db.run(
+                `INSERT INTO gps_routes 
+                 (user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, points_json, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`,
+                [userId, user.name, finalRouteName, today, startTime, endTime, startLat, startLng, endLat, endLng, totalDistKm, finalPoints.length, JSON.stringify(finalPoints)],
+                function(insErr) {
+                  if (insErr) return res.status(500).json({ error: 'Error al archivar ruta: ' + insErr.message });
+                  const newRouteId = this.lastID;
+                  io.emit('gps_route_finished', { userId, endTime, routeId: newRouteId });
+                  io.emit('user_gps_toggled', { userId, gps_tracking_enabled: 0 });
+                  io.emit('routes_updated');
+                  savePersistentBackup();
+                  return res.json({ success: true, message: 'Ruta guardada y archivada con éxito', routeId: newRouteId, total_distance_km: totalDistKm, total_points: finalPoints.length });
+                }
+              );
+            }
+          }
+        );
       }
     );
   });
