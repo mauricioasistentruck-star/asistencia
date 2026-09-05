@@ -792,3 +792,5 @@ export function isMobileDevice() {
 }
 
 export const apiTurnOffAllGps = () => apiRequest('/api/gps/turn-off-all', { method: 'POST' });
+
+export const apiAttachLeaveDocument = (leaveId, payload) => apiRequest('/api/admin/worker-leaves/' + leaveId + '/attachment', { method: 'PATCH', body: JSON.stringify(payload) });

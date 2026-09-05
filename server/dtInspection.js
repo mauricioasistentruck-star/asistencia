@@ -745,6 +745,83 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
     }
   });
 
+    // 7.1. Adjuntar o actualizar archivo de respaldo a un justificativo ya creado
+  app.patch('/api/admin/worker-leaves/:id/attachment', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const leaveId = Number(req.params.id);
+      const { pdf_base64, pdf_filename, document_number, remarks } = req.body;
+
+      db.get("SELECT * FROM worker_leaves WHERE id = ?", [leaveId], async (err, leave) => {
+        if (err || !leave) {
+          return res.status(404).json({ error: 'Justificativo no encontrado' });
+        }
+
+        let pdfUrl = leave.pdf_url;
+        if (pdf_base64) {
+          try {
+            const uploadsLeavesDir = path.join(__dirname, 'uploads', 'leaves');
+            if (!fs.existsSync(uploadsLeavesDir)) {
+              fs.mkdirSync(uploadsLeavesDir, { recursive: true });
+            }
+            const matches = String(pdf_base64).match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+            const rawBase64 = matches ? matches[2] : (pdf_base64.includes('base64,') ? pdf_base64.split('base64,')[1] : pdf_base64);
+            const buffer = Buffer.from(rawBase64, 'base64');
+            const ext = (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf')) ? '.pdf' : (pdf_filename ? path.extname(pdf_filename) || '.pdf' : '.pdf');
+            const fileName = `licencia_${Date.now()}_u${leave.user_id}${ext}`;
+            const filePath = path.join(uploadsLeavesDir, fileName);
+            fs.writeFileSync(filePath, buffer);
+            pdfUrl = `/uploads/leaves/${fileName}`;
+          } catch (pdfErr) {
+            console.error('Error al guardar archivo adjunto:', pdfErr);
+            return res.status(500).json({ error: 'Error al procesar archivo adjunto: ' + (pdfErr.message || pdfErr) });
+          }
+        }
+
+        const finalDocNumber = (document_number !== undefined && document_number !== null && String(document_number).trim() !== '') 
+          ? String(document_number).trim() 
+          : leave.document_number;
+        const finalRemarks = (remarks !== undefined && remarks !== null && String(remarks).trim() !== '') 
+          ? String(remarks).trim() 
+          : leave.remarks;
+
+        db.run(
+          "UPDATE worker_leaves SET pdf_url = ?, document_number = ?, remarks = ? WHERE id = ?",
+          [pdfUrl, finalDocNumber, finalRemarks, leaveId],
+          function(upErr) {
+            if (upErr) {
+              return res.status(500).json({ error: 'Error al actualizar documento: ' + upErr.message });
+            }
+
+            // Actualizar notas en el historial de asistencia si cambió el folio
+            if (finalDocNumber !== leave.document_number) {
+              const leaveNote = `Justificado: ${leave.leave_type}${finalDocNumber ? ` (Doc Nº ${finalDocNumber})` : ''}`;
+              db.run(
+                "UPDATE attendance SET admin_note = ? WHERE user_id = ? AND date >= ? AND date <= ? AND status = 'JUSTIFICADO'",
+                [leaveNote, leave.user_id, leave.date_from, leave.date_to]
+              );
+            }
+
+            if (io) {
+              io.emit('leaves_updated', { user_id: leave.user_id, leave_id: leaveId, pdf_url: pdfUrl });
+            }
+
+            res.json({
+              success: true,
+              id: leaveId,
+              pdf_url: pdfUrl,
+              document_number: finalDocNumber,
+              remarks: finalRemarks,
+              message: 'Documento de respaldo agregado exitosamente al justificativo.'
+            });
+          }
+        );
+      });
+    } catch (err) {
+      console.error('Error al adjuntar archivo a justificativo:', err);
+      res.status(500).json({ error: 'Error al actualizar justificativo: ' + (err.message || err) });
+    }
+  });
+
   app.delete('/api/admin/worker-leaves/:id', authenticateToken, requireAdmin, (req, res) => {
     // Consultar detalles de la licencia antes de borrar para restaurar historial
     db.get("SELECT * FROM worker_leaves WHERE id = ?", [req.params.id], (getErr, leave) => {

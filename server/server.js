@@ -377,7 +377,18 @@ app.get('/api/users', authenticateToken, (req, res, next) => {
   const isSuper = isSuperAdminUser(req.user);
   db.all('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password, work_days, created_at FROM users ORDER BY id ASC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar usuarios' });
-    const sanitizedRows = (rows || []).map(r => {
+    const filteredRows = (rows || []).filter(r => {
+      // Ocultar usuario Supervisor de los demás administradores (solo SuperAdmin puede verlo)
+      if (!isSuper) {
+        const isSupervisor = (r.role === 'supervisor') ||
+                             (r.name && r.name.toLowerCase().includes('supervisor')) ||
+                             (r.username && r.username.toLowerCase().includes('supervisor'));
+        if (isSupervisor) return false;
+      }
+      return true;
+    });
+
+    const sanitizedRows = filteredRows.map(r => {
       if (!isSuper) {
         const { plain_password, ...rest } = r;
         return {
@@ -564,6 +575,18 @@ app.patch('/api/users/:id/toggle-gps', authenticateToken, (req, res) => {
 });
 
 // Modificar Perfil de Usuario
+app.patch('/api/admin/users/:userId/work-days', authenticateToken, requireAdmin, (req, res) => {
+  const userId = Number(req.params.userId);
+  const { work_days } = req.body;
+  const workDaysStr = Array.isArray(work_days) ? JSON.stringify(work_days) : (typeof work_days === 'string' ? work_days : '[]');
+  db.run('UPDATE users SET work_days = ? WHERE id = ?', [workDaysStr, userId], function(err) {
+    if (err) return res.status(500).json({ error: 'Error al actualizar días laborales: ' + err.message });
+    io.emit('user_updated', { id: userId, work_days: workDaysStr });
+    savePersistentBackup();
+    res.json({ success: true, work_days: workDaysStr });
+  });
+});
+
 app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
   const targetId = Number(req.params.id);
   const { username, rut, name, email, role, password, gps_tracking_enabled, has_credential } = req.body;
@@ -620,8 +643,8 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 
       const finalPhotoUrl = (req.body.photo_url || req.body.photo_base64) ? (req.body.photo_url || req.body.photo_base64) : targetUser.photo_url;
       db.run(
-        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ?, photo_url = ?, has_credential = ? WHERE id = ?',
-        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, finalPhotoUrl, assignedHasCred, targetId],
+        'UPDATE users SET username = ?, rut = ?, name = ?, email = ?, password_hash = ?, plain_password = ?, role = ?, gps_tracking_enabled = ?, photo_url = ?, has_credential = ?, work_days = ? WHERE id = ?',
+        [finalUsername, finalRut, finalName, finalEmail, passwordHash, plainPassword, assignedRole, assignedGps, finalPhotoUrl, assignedHasCred, req.body.work_days !== undefined ? (Array.isArray(req.body.work_days) ? JSON.stringify(req.body.work_days) : String(req.body.work_days)) : targetUser.work_days, targetId],
         (upErr) => {
           if (upErr) return res.status(500).json({ error: 'Error al actualizar usuario: ' + upErr.message });
           db.get('SELECT id, username, rut, name, email, role, is_superadmin, photo_url, qr_token, gps_tracking_enabled, has_credential, plain_password FROM users WHERE id = ?', [targetId], (fetchErr, updatedUser) => {
@@ -1234,7 +1257,10 @@ app.get('/api/attendance/admin/all', authenticateToken, requireAdmin, (req, res)
     WHERE 1=1
       AND LOWER(u.name) NOT LIKE '%puesto%'
       AND LOWER(u.name) NOT LIKE '%kiosco%'
-      AND u.role NOT IN ('kiosk', 'kiosco')
+      AND LOWER(u.name) NOT LIKE '%supervisor%'
+      AND LOWER(u.username) NOT LIKE '%supervisor%'
+      AND u.role NOT IN ('kiosk', 'kiosco', 'supervisor')
+      AND (u.work_days IS NULL OR (u.work_days != '[]' AND u.work_days != ''))
       AND u.id NOT IN (20)
   `;
   const params = [];
@@ -1267,7 +1293,10 @@ app.get('/api/attendance/records', authenticateToken, requireAdmin, (req, res) =
     WHERE 1=1
       AND LOWER(u.name) NOT LIKE '%puesto%'
       AND LOWER(u.name) NOT LIKE '%kiosco%'
-      AND u.role NOT IN ('kiosk', 'kiosco')
+      AND LOWER(u.name) NOT LIKE '%supervisor%'
+      AND LOWER(u.username) NOT LIKE '%supervisor%'
+      AND u.role NOT IN ('kiosk', 'kiosco', 'supervisor')
+      AND (u.work_days IS NULL OR (u.work_days != '[]' AND u.work_days != ''))
       AND u.id NOT IN (20)
   `;
   const params = [];
@@ -1454,7 +1483,7 @@ const handleExportExcel = (req, res) => {
   const { date_from, date_to, user_id } = req.query;
 
   // 1. Obtener los trabajadores contratados reales (excluyendo cuentas de kiosco)
-  let userSql = "SELECT id, name, rut, role, work_days FROM users WHERE role != 'kiosk' AND username != 'kiosco' AND name NOT LIKE '%kiosco%'";
+  let userSql = "SELECT id, name, rut, role, work_days FROM users WHERE role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(username) NOT LIKE '%supervisor%' AND LOWER(name) NOT LIKE '%supervisor%' AND LOWER(name) NOT LIKE '%kiosco%' AND (work_days IS NOT NULL AND work_days != '[]' AND work_days != '')";
   const userParams = [];
   if (user_id) {
     userSql += " AND id = ?";

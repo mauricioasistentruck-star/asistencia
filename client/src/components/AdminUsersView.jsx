@@ -188,6 +188,18 @@ export default function AdminUsersView({ currentUser, theme }) {
     }
 
     setEditingUser(u);
+    let parsedWorkDays = ['mon', 'tue', 'wed', 'thu', 'fri'];
+    try {
+      if (typeof u.work_days === 'string') parsedWorkDays = JSON.parse(u.work_days);
+      else if (Array.isArray(u.work_days)) parsedWorkDays = u.work_days;
+    } catch(e) {}
+
+    // Si es Supervisor, por defecto no tiene días laborales
+    const isSup = (u.role === 'supervisor') || (u.name || '').toLowerCase().includes('supervisor') || (u.username || '').toLowerCase().includes('supervisor');
+    if (isSup && (!u.work_days || parsedWorkDays.length === 0)) {
+      parsedWorkDays = [];
+    }
+
     setEditForm({
       username: u.username || '',
       name: u.name || '',
@@ -196,7 +208,8 @@ export default function AdminUsersView({ currentUser, theme }) {
       password: '',
       role: u.role || 'worker',
       gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled),
-      has_credential: (u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0' && u.has_credential !== 'false' && u.has_credential !== null)
+      has_credential: (u.has_credential !== 0 && u.has_credential !== false && u.has_credential !== '0' && u.has_credential !== 'false' && u.has_credential !== null),
+      work_days: parsedWorkDays
     });
     setEditError('');
     setShowEditModal(true);
@@ -216,7 +229,7 @@ export default function AdminUsersView({ currentUser, theme }) {
         role: editForm.role,
         gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0,
         has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : (editForm.role === 'kiosk' ? 0 : 1),
-        work_days: JSON.stringify(editForm.work_days || ['mon','tue','wed','thu','fri'])
+        work_days: Array.isArray(editForm.work_days) ? JSON.stringify(editForm.work_days) : (editForm.work_days || '[]')
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();
@@ -400,15 +413,29 @@ export default function AdminUsersView({ currentUser, theme }) {
             >
               {/* Etiqueta de Rol */}
               <div className="flex items-center justify-between mb-3">
-                <span className={'text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ' + (
-                  showSuperBadge ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : isKioskRole
-                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                      : isAdminRole
-                      ? (hasCred ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
-                      : 'bg-orange-500/20 text-orange-400 border-orange-500/40'
-                )}>
-                  {showSuperBadge ? 'SUPERADMIN' : isKioskRole ? 'PUESTO KIOSCO QR' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={'text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ' + (
+                    showSuperBadge ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : isKioskRole
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                        : isAdminRole
+                        ? (hasCred ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
+                        : 'bg-orange-500/20 text-orange-400 border-orange-500/40'
+                  )}>
+                    {showSuperBadge ? 'SUPERADMIN' : isKioskRole ? 'PUESTO KIOSCO QR' : isAdminRole ? (hasCred ? 'ADMIN CON QR' : 'ADMIN REPORTES') : 'TRABAJADOR'}
+                  </span>
+                  {(() => {
+                    let d = null;
+                    try { if (typeof u.work_days === 'string') d = JSON.parse(u.work_days); else if (Array.isArray(u.work_days)) d = u.work_days; } catch(e){}
+                    if (Array.isArray(d) && d.length === 0) {
+                      return (
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-zinc-800 text-amber-400 border border-amber-500/30">
+                          Sin Marcación
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
 
                 <div className="flex items-center gap-1">
                   <button
@@ -786,6 +813,63 @@ export default function AdminUsersView({ currentUser, theme }) {
                 <label htmlFor="edit-gps" className="text-xs font-bold text-zinc-400 cursor-pointer">
                   Activar Rastreo GPS Satelital
                 </label>
+              </div>
+
+              {/* Configuración de Días Laborales Asignados */}
+              <div className="pt-2 border-t border-zinc-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider">
+                    Días Laborales Asignados:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEditForm(prev => ({
+                      ...prev,
+                      work_days: (Array.isArray(prev.work_days) && prev.work_days.length > 0) ? [] : ['mon','tue','wed','thu','fri']
+                    }))}
+                    className="text-[10px] font-bold text-orange-400 hover:text-orange-300 underline cursor-pointer"
+                  >
+                    {(Array.isArray(editForm.work_days) && editForm.work_days.length > 0)
+                      ? 'Desmarcar Todos (Sin Marcación / Puesto Especial)'
+                      : 'Asignar Lunes a Viernes'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-7 gap-1 bg-black/60 p-2 rounded-xl border border-zinc-800">
+                  {[
+                    { id: 'mon', label: 'Lu' },
+                    { id: 'tue', label: 'Ma' },
+                    { id: 'wed', label: 'Mi' },
+                    { id: 'thu', label: 'Ju' },
+                    { id: 'fri', label: 'Vi' },
+                    { id: 'sat', label: 'Sá' },
+                    { id: 'sun', label: 'Do' }
+                  ].map(d => {
+                    const isChecked = Array.isArray(editForm.work_days) && editForm.work_days.includes(d.id);
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          const cur = Array.isArray(editForm.work_days) ? [...editForm.work_days] : [];
+                          const next = isChecked ? cur.filter(x => x !== d.id) : [...cur, d.id];
+                          setEditForm(prev => ({ ...prev, work_days: next }));
+                        }}
+                        className={'py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ' + (
+                          isChecked
+                            ? 'bg-orange-500 text-black shadow-md'
+                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        )}
+                      >
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {Array.isArray(editForm.work_days) && editForm.work_days.length === 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1.5 font-bold flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg">
+                    ⚠️ Puesto sin días laborales asignados (no marcará horario de trabajo ni generará inasistencias).
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-3">

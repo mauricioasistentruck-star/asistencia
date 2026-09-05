@@ -4,7 +4,7 @@ import {
   X, FileBadge, Calendar, Plus, Trash2, CheckCircle2, AlertCircle, User, ShieldCheck, 
   Upload, FileText, Download, ExternalLink, Search, Filter, Clock, Eye, ListFilter, Users
 } from 'lucide-react';
-import { apiGetWorkerLeaves, apiCreateWorkerLeave, apiDeleteWorkerLeave, getApiBaseUrl } from '../api';
+import { apiGetWorkerLeaves, apiCreateWorkerLeave, apiDeleteWorkerLeave, apiAttachLeaveDocument, getApiBaseUrl } from '../api';
 
 const LEAVE_TYPES = [
   'Licencia Médica (FONASA / ISAPRE)',
@@ -39,6 +39,67 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
   const [pdfBase64, setPdfBase64] = useState('');
   const [pdfFileName, setPdfFileName] = useState('');
   const [pdfFileSize, setPdfFileSize] = useState(0);
+
+  // Estados para adjuntar documento a justificativos pasados
+  const [attachingLeave, setAttachingLeave] = useState(null);
+  const [attachBase64, setAttachBase64] = useState('');
+  const [attachFileName, setAttachFileName] = useState('');
+  const [attachDocNumber, setAttachDocNumber] = useState('');
+  const [attachRemarks, setAttachRemarks] = useState('');
+  const [attachLoading, setAttachLoading] = useState(false);
+  const [attachError, setAttachError] = useState('');
+
+  const handleOpenAttachModal = (leave) => {
+    setAttachingLeave(leave);
+    setAttachBase64('');
+    setAttachFileName('');
+    setAttachDocNumber(leave.document_number || '');
+    setAttachRemarks(leave.remarks || '');
+    setAttachError('');
+  };
+
+  const handleAttachFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setAttachError('El archivo excede el tamaño máximo permitido de 10 MB.');
+      return;
+    }
+    setAttachFileName(file.name);
+    setAttachError('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachBase64(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveAttachment = async (e) => {
+    e.preventDefault();
+    if (!attachBase64 && !attachDocNumber && !attachRemarks) {
+      setAttachError('Seleccione un archivo de respaldo o ingrese un número de folio.');
+      return;
+    }
+    setAttachLoading(true);
+    setAttachError('');
+    try {
+      await apiAttachLeaveDocument(attachingLeave.id, {
+        pdf_base64: attachBase64 || undefined,
+        pdf_filename: attachFileName || undefined,
+        document_number: attachDocNumber || undefined,
+        remarks: attachRemarks || undefined
+      });
+      setSuccessMsg('Documento adjuntado exitosamente al justificativo.');
+      setAttachingLeave(null);
+      await loadLeaves();
+      if (onLeaveUpdated) onLeaveUpdated();
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err) {
+      setAttachError(err.message || 'Error al adjuntar documento');
+    } finally {
+      setAttachLoading(false);
+    }
+  };
 
   // Filtrar solo trabajadores contratados reales
   const contractedWorkers = workers.filter(w => {
@@ -484,8 +545,8 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
                         </div>
 
                         {/* Botones de Acción */}
-                        <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
-                          {pdfFullUrl ? (
+                        <div className="flex flex-wrap items-center gap-2 self-end md:self-center flex-shrink-0">
+                          {pdfFullUrl && (
                             <a
                               href={pdfFullUrl}
                               target="_blank"
@@ -494,14 +555,23 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
                               title="Ver documento PDF o imagen de respaldo"
                             >
                               <FileText className="w-4 h-4 text-indigo-400" />
-                              <span>Ver Respaldo PDF</span>
+                              <span>Ver Documento</span>
                             </a>
-                          ) : (
-                            <span className="text-[11px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 rounded-xl flex items-center gap-1">
-                              <FileText className="w-3.5 h-3.5 text-zinc-600" />
-                              <span>Sin archivo</span>
-                            </span>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAttachModal(l)}
+                            className={"text-xs font-black px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer border " + (
+                              pdfFullUrl
+                                ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700"
+                                : "bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 hover:text-white border-emerald-500/40"
+                            )}
+                            title={pdfFullUrl ? "Actualizar o reemplazar documento de respaldo" : "Adjuntar licencia médica o papel justificativo a este registro"}
+                          >
+                            <Upload className="w-4 h-4 text-emerald-400" />
+                            <span>{pdfFullUrl ? "Cambiar Archivo" : "📎 Adjuntar Licencia / Papel"}</span>
+                          </button>
 
                           <button
                             type="button"
@@ -521,7 +591,105 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
           )}
 
           {/* ========================================================================= */}
-          {/* PESTAÑA 2: FORMULARIO DE INGRESO */}
+          {/* MODAL PARA ADJUNTAR ARCHIVO A JUSTIFICATIVO PASADO */}
+      {attachingLeave && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-zinc-950 border border-zinc-800 text-white rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-emerald-400" />
+                <h4 className="text-sm font-black">Adjuntar Licencia o Papel Médico</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttachingLeave(null)}
+                className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-zinc-900/60 p-3.5 rounded-2xl border border-zinc-800 space-y-1 text-xs">
+              <div><strong className="text-zinc-400">Trabajador:</strong> <span className="font-bold text-white">{attachingLeave.user_name || workers.find(w => String(w.id) === String(attachingLeave.user_id))?.name || `ID #${attachingLeave.user_id}`}</span></div>
+              <div><strong className="text-zinc-400">Tipo de Justificación:</strong> <span className="font-bold text-indigo-400">{attachingLeave.leave_type}</span></div>
+              <div><strong className="text-zinc-400">Período Justificado:</strong> <span className="font-bold text-orange-400 font-mono">{attachingLeave.date_from} al {attachingLeave.date_to}</span></div>
+            </div>
+
+            <form onSubmit={handleSaveAttachment} className="space-y-3.5">
+              {attachError && (
+                <div className="p-3 rounded-xl bg-red-950/50 border border-red-800/80 text-red-300 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{attachError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-black uppercase text-zinc-400 mb-1">
+                  Seleccionar Licencia Médica o Papel Justificativo (PDF o Imagen)
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={handleAttachFileChange}
+                  className="w-full text-xs text-zinc-300 bg-black border border-zinc-800 rounded-xl file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer"
+                />
+                {attachFileName && (
+                  <div className="mt-1 text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Archivo cargado: {attachFileName}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-black uppercase text-zinc-400 mb-1">
+                  N° de Folio / Licencia (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={attachDocNumber}
+                  onChange={(e) => setAttachDocNumber(e.target.value)}
+                  placeholder="Ej: LM-84920412"
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-bold text-white focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-black uppercase text-zinc-400 mb-1">
+                  Observaciones o Notas Adicionales (Opcional)
+                </label>
+                <textarea
+                  value={attachRemarks}
+                  onChange={(e) => setAttachRemarks(e.target.value)}
+                  placeholder="Ej: Licencia médica presentada con fecha posterior..."
+                  rows={2}
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-bold text-white focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setAttachingLeave(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={attachLoading}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-black text-white flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+                >
+                  {attachLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  <span>{attachLoading ? 'Guardando...' : 'Guardar y Adjuntar'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PESTAÑA 2: FORMULARIO DE INGRESO */}
           {/* ========================================================================= */}
           {activeTab === 'create' && (
             <form onSubmit={handleCreateLeave} className="p-5 rounded-2xl border border-zinc-800 bg-zinc-900/60 space-y-4">
