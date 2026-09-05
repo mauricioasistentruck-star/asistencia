@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { 
-  Navigation, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, 
+import {
+  Navigation, Power, Calendar, RefreshCw, Users, Radio, Gauge, Clock, Layers, Crosshair, 
   MapPin, Route, Eye, Trash2, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, Play, 
   Square, Save, UserCheck, Activity, ChevronRight, AlertCircle, Compass, Wifi, WifiOff
 } from 'lucide-react';
@@ -742,97 +742,113 @@ export default function AdminGpsView({ theme }) {
           </div>
         </div>
 
-        {/* GRUPO UNIFICADO DE BOTONES (ORDENADOS, COHERENTES Y ALINEADOS) */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* GRUPO UNIFICADO DE BOTONES: DISEÑO EXECUTIVE COMMAND CENTER */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 bg-zinc-900/60 p-1.5 rounded-2xl border border-zinc-800/80 backdrop-blur-md shadow-inner">
           
+          {/* Subgrupo Flota */}
           <button
             type="button"
             onClick={handleTurnOffAllGps}
-            className="bg-zinc-900 hover:bg-red-950 text-red-400 hover:text-red-300 border border-red-500/40 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-            title="Apagar el rastreo GPS de todos los trabajadores de la flota simultáneamente"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/40 active:scale-95 shadow-sm"
+            title="Apagar el rastreo GPS de toda la flota simultáneamente"
           >
-            <Radio className="w-3.5 h-3.5" />
-            <span>Apagar Flota Completa</span>
+            <Power className="w-3.5 h-3.5 text-rose-500/80" />
+            <span>Apagar Flota</span>
           </button>
 
-          {/* Botón 1: Ver Todos en Vivo */}
           <button
             type="button"
             onClick={handleRequestFleetPing}
-            className="bg-zinc-900 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-emerald-950/40 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/60 active:scale-95 shadow-sm"
             title="Solicitar ubicación en tiempo real a todos los trabajadores en terreno"
           >
-            <Radio className="w-3.5 h-3.5 animate-pulse" />
-            <span>Solicitar Señal Flota</span>
+            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span>Solicitar Señal</span>
           </button>
 
+          {/* Divisor sutil */}
+          <div className="hidden md:block w-px h-5 bg-zinc-800/90 mx-0.5" />
+
+          {/* Subgrupo Visualización Mapa */}
           <button
             type="button"
             onClick={() => handleSelectWorker(null)}
-            className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer border ' + (
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 shadow-sm ' + (
               !selectedUser && !selectedSavedRoute
-                ? 'bg-orange-500 text-black border-orange-400 shadow-lg shadow-orange-500/30'
-                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:text-white'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-zinc-950 border-orange-400/80 shadow-orange-500/20 font-black'
+                : 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border-zinc-800'
             )}
             title="Ver todos los trabajadores activos en el mapa simultáneamente"
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Ver Todos en Vivo ({activeLiveMarkers.length})</span>
+            <span>Ver Todos</span>
+            <span className={'px-1.5 py-0.5 rounded-full text-[10px] font-black ' + (
+              !selectedUser && !selectedSavedRoute ? 'bg-black/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'
+            )}>
+              {activeLiveMarkers.length}
+            </span>
           </button>
 
-          {/* Botón 2: Mi Ubicación */}
           <button
             type="button"
             onClick={() => locateMe(true)}
             title="Localizar y centrar en mi posición actual exacta"
-            className={'px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer border ' + (
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 shadow-sm ' + (
               myLocation
-                ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 shadow-lg shadow-blue-600/30'
-                : 'bg-zinc-900 hover:bg-zinc-800 text-blue-400 border-zinc-800 hover:text-blue-300'
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white border-blue-400/80 shadow-blue-500/20 font-black'
+                : 'bg-zinc-950/80 hover:bg-zinc-800/90 text-blue-400 hover:text-blue-300 border-zinc-800'
             )}
           >
             <Crosshair className={'w-3.5 h-3.5 ' + (isLocating ? 'animate-spin' : '')} />
-            <span>{isLocating ? 'Localizando...' : myLocationAccuracy ? `Mi Ubicación (±${myLocationAccuracy}m)` : 'Mi Ubicación'}</span>
+            <span>Mi Ubicación</span>
+            {myLocationAccuracy ? (
+              <span className={'px-1.5 py-0.5 rounded-full text-[10px] font-bold ' + (
+                myLocation ? 'bg-white/20 text-white' : 'bg-blue-500/10 text-blue-400'
+              )}>
+                ±{myLocationAccuracy}m
+              </span>
+            ) : null}
           </button>
 
-          {/* Botón 3: Historial de Rutas */}
-          
-
-          <button
-            type="button"
-            onClick={() => setShowHistoryModal(true)}
-            className="bg-zinc-900 hover:bg-zinc-800 text-orange-400 hover:text-orange-300 border border-orange-500/30 text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-            title="Ver rutas archivadas de días anteriores o completadas"
-          >
-            <Route className="w-3.5 h-3.5" />
-            <span>Historial Rutas ({savedRoutes.length})</span>
-          </button>
-
-          {/* Botón 4: Satelital / Calles */}
           <button
             type="button"
             onClick={() => setMapLayer(mapLayer === 'street' ? 'satellite' : 'street')}
-            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Cambiar vista de mapa satelital o callejero"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border border-zinc-800 active:scale-95 shadow-sm"
+            title="Alternar entre mapa satelital y callejero"
           >
             <Layers className="w-3.5 h-3.5 text-zinc-400" />
             <span>{mapLayer === 'street' ? 'Satelital' : 'Calles'}</span>
           </button>
 
-          {/* Botón 5: Actualizar */}
+          {/* Divisor sutil */}
+          <div className="hidden md:block w-px h-5 bg-zinc-800/90 mx-0.5" />
+
+          {/* Subgrupo Utilidades & Historial */}
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-orange-400 border border-zinc-800 hover:border-orange-500/30 active:scale-95 shadow-sm"
+            title="Ver rutas archivadas o completadas"
+          >
+            <Route className="w-3.5 h-3.5 text-orange-400" />
+            <span>Historial</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-[10px] font-bold">
+              {savedRoutes.length}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={handleManualRefresh}
-            className="bg-orange-500 hover:bg-orange-600 active:scale-95 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-orange-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-200 hover:text-white border border-zinc-800 hover:border-zinc-700 active:scale-95 shadow-sm"
             title="Actualizar inmediatamente datos GPS y rutas"
           >
-            <RefreshCw className={'w-3.5 h-3.5 ' + (isRefreshing ? 'animate-spin' : '')} />
+            <RefreshCw className={'w-3.5 h-3.5 text-orange-400 ' + (isRefreshing ? 'animate-spin' : '')} />
             <span>Actualizar</span>
           </button>
+
         </div>
       </div>
-
-      
 
       {/* Banner de Aviso de Mi Ubicación o Error */}
       {geoError && (
