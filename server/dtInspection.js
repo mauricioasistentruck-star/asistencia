@@ -16,14 +16,46 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
       remarks TEXT,
       pdf_url TEXT,
       created_by TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      document_data TEXT,
+      file_mime TEXT,
+      file_name TEXT
     )
   `, () => {
     db.run("ALTER TABLE worker_leaves ADD COLUMN pdf_url TEXT", () => {});
     db.run("ALTER TABLE worker_leaves ADD COLUMN document_number TEXT", () => {});
     db.run("ALTER TABLE worker_leaves ADD COLUMN remarks TEXT", () => {});
     db.run("ALTER TABLE worker_leaves ADD COLUMN created_by TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN document_data TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN file_mime TEXT", () => {});
+    db.run("ALTER TABLE worker_leaves ADD COLUMN file_name TEXT", () => {});
   });
+
+  // Migración automática: Si hay archivos locales en disco pero no en la base de datos en la nube, sincronizarlos
+  setTimeout(() => {
+    try {
+      db.all("SELECT id, pdf_url, document_data FROM worker_leaves WHERE pdf_url IS NOT NULL", (err, rows) => {
+        if (!err && Array.isArray(rows)) {
+          rows.forEach(r => {
+            if (!r.document_data && r.pdf_url) {
+              const filename = path.basename(r.pdf_url);
+              const localFile = path.join(__dirname, 'uploads', 'leaves', filename);
+              if (fs.existsSync(localFile)) {
+                try {
+                  const buf = fs.readFileSync(localFile);
+                  const ext = path.extname(filename).toLowerCase();
+                  const mime = ext === '.pdf' ? 'application/pdf' : (ext === '.png' ? 'image/png' : 'image/jpeg');
+                  const b64 = `data:${mime};base64,` + buf.toString('base64');
+                  db.run("UPDATE worker_leaves SET document_data = ?, file_mime = ?, file_name = ? WHERE id = ?", [b64, mime, filename, r.id]);
+                  console.log(`[DT LEAVES] Archivo respaldado a base de datos persistente: ${filename}`);
+                } catch (e) {}
+              }
+            }
+          });
+        }
+      });
+    } catch (migErr) {}
+  }, 2000);
   db.run("ALTER TABLE attendance ADD COLUMN status TEXT DEFAULT 'ASISTIO'", () => {});
   db.run("ALTER TABLE attendance ADD COLUMN admin_note TEXT", () => {});
   db.run("ALTER TABLE attendance ADD COLUMN modified_by_admin INTEGER DEFAULT 0", () => {});
@@ -634,10 +666,107 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   });
 
   // 7. Módulo Administrativo: Licencias Médicas y Justificativos Legales
-      // 7. Módulo Administrativo: Licencias Médicas y Justificativos Legales
+
+  // 7.0. Servidor Dinámico Inteligente de Archivos de Licencias (Nube + Caché Local)
+  app.get('/uploads/leaves/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const localPath = path.join(__dirname, 'uploads', 'leaves', filename);
+
+    // 1. Si existe físicamente en caché local de disco, enviarlo inmediatamente
+    if (fs.existsSync(localPath)) {
+      return res.sendFile(localPath);
+    }
+
+    // 2. Si no está en disco (ej. contenedor Render reiniciado o nuevo deploy),
+    // recuperarlo desde la base de datos persistente en la nube (TURSO / SQLite)
+    db.get(
+      "SELECT id, pdf_url, document_data, file_name, file_mime FROM worker_leaves WHERE pdf_url LIKE ? OR file_name = ? ORDER BY id DESC LIMIT 1",
+      [`%${filename}%`, filename],
+      (err, row) => {
+        if (row && row.document_data) {
+          try {
+            const matches = String(row.document_data).match(/^data:([A-Za-z-+/0-9]+);base64,(.+)$/);
+            const mimeType = matches ? matches[1] : (row.file_mime || (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'));
+            const rawB64 = matches ? matches[2] : (row.document_data.includes('base64,') ? row.document_data.split('base64,')[1] : row.document_data);
+            const buffer = Buffer.from(rawB64, 'base64');
+
+            // Restaurar en disco local para acelerar próximas peticiones
+            try {
+              const dir = path.join(__dirname, 'uploads', 'leaves');
+              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+              fs.writeFileSync(localPath, buffer);
+            } catch (e) {}
+
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Disposition', `inline; filename="${row.file_name || filename}"`);
+            return res.send(buffer);
+          } catch (e) {
+            console.error('Error al decodificar documento desde BD:', e);
+          }
+        }
+
+        // Si no se encuentra ni en disco ni en BD
+        return res.status(404).send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documento no disponible</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #f4f4f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 20px; padding: 32px; max-width: 500px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+    .icon { width: 56px; height: 56px; border-radius: 16px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; font-size: 24px; color: #ef4444; }
+    h2 { font-size: 18px; font-weight: 800; color: #fff; margin: 0 0 10px 0; }
+    p { font-size: 13px; color: #a1a1aa; line-height: 1.6; margin: 0 0 20px 0; }
+    .btn { background: #ea580c; color: #fff; border: none; padding: 12px 24px; border-radius: 12px; font-size: 13px; font-weight: 800; cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn:hover { background: #f97316; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">⚠️</div>
+    <h2>Archivo anterior no disponible en la nube</h2>
+    <p>El archivo adjunto (<strong>${filename}</strong>) fue subido antes de la activación del respaldo permanente y se eliminó durante el último reinicio del servidor.</p>
+    <p>Para solucionarlo de forma permanente, ingrese a <strong>Licencias DT</strong> en el panel de administración y presione <strong>"📎 Adjuntar Licencia / Papel"</strong> para cargar nuevamente la fotografía o PDF. El nuevo archivo quedará respaldado para siempre en la base de datos de la nube y se podrá consultar desde cualquier dispositivo.</p>
+    <button class="btn" onclick="window.close()">Entendido / Cerrar</button>
+  </div>
+</body>
+</html>`);
+      }
+    );
+  });
+
+  // 7.0.1. Endpoint para obtener documento por ID de Justificativo
+  app.get('/api/admin/worker-leaves/:id/document', (req, res) => {
+    const leaveId = Number(req.params.id);
+    db.get("SELECT * FROM worker_leaves WHERE id = ?", [leaveId], (err, row) => {
+      if (err || !row) return res.status(404).send('Documento no encontrado');
+      if (row.document_data) {
+        try {
+          const matches = String(row.document_data).match(/^data:([A-Za-z-+/0-9]+);base64,(.+)$/);
+          const mimeType = matches ? matches[1] : (row.file_mime || 'application/pdf');
+          const rawB64 = matches ? matches[2] : (row.document_data.includes('base64,') ? row.document_data.split('base64,')[1] : row.document_data);
+          const buffer = Buffer.from(rawB64, 'base64');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Content-Disposition', `inline; filename="${row.file_name || `licencia_${leaveId}`}"`);
+          return res.send(buffer);
+        } catch (e) {
+          console.error('Error al enviar documento por ID:', e);
+        }
+      }
+      if (row.pdf_url) {
+        const filename = path.basename(row.pdf_url);
+        const localPath = path.join(__dirname, 'uploads', 'leaves', filename);
+        if (fs.existsSync(localPath)) return res.sendFile(localPath);
+      }
+      return res.status(404).send('El archivo no está disponible.');
+    });
+  });
+
+  // 7.1. Listar licencias médicas
   app.get('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     db.all(
-      "SELECT wl.*, u.name as user_name, u.rut as user_rut FROM worker_leaves wl LEFT JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
+      "SELECT wl.id, wl.user_id, wl.date_from, wl.date_to, wl.leave_type, wl.document_number, wl.remarks, wl.pdf_url, wl.file_name, wl.file_mime, wl.created_by, wl.created_at, (CASE WHEN wl.document_data IS NOT NULL AND wl.document_data != '' THEN 1 ELSE 0 END) as has_cloud_backup, u.name as user_name, u.rut as user_rut FROM worker_leaves wl LEFT JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
       (err, rows) => {
         if (err) return res.status(500).json({ error: 'Error al consultar licencias: ' + (err.message || err) });
         res.json(rows || []);
@@ -645,6 +774,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
     );
   });
 
+  // 7.2. Crear nueva licencia médica o justificativo con respaldo en la nube
   app.post('/api/admin/worker-leaves', authenticateToken, requireAdmin, async (req, res) => {
     try {
       const { user_id, date_from, date_to, leave_type, document_number, remarks, pdf_base64, pdf_filename } = req.body;
@@ -655,31 +785,46 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
 
       const adminName = req.user ? (req.user.name || req.user.username || 'Administrador') : 'Administrador';
 
-      // 1. Guardar archivo PDF o comprobante en servidor si fue adjuntado
+      // 1. Guardar archivo con respaldo permanente en la nube (document_data)
       let pdfUrl = null;
+      let documentData = null;
+      let fileMime = null;
+      let originalFileName = pdf_filename || null;
+
       if (pdf_base64) {
+        documentData = String(pdf_base64);
+        const matches = documentData.match(/^data:([A-Za-z-+/0-9]+);base64,(.+)$/);
+        fileMime = matches ? matches[1] : (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+        const rawBase64 = matches ? matches[2] : (documentData.includes('base64,') ? documentData.split('base64,')[1] : documentData);
+        const buffer = Buffer.from(rawBase64, 'base64');
+
+        let ext = '.pdf';
+        if (fileMime.includes('jpeg') || fileMime.includes('jpg')) ext = '.jpeg';
+        else if (fileMime.includes('png')) ext = '.png';
+        else if (fileMime.includes('webp')) ext = '.webp';
+        else if (pdf_filename) ext = path.extname(pdf_filename) || '.pdf';
+
+        const fileName = `licencia_${Date.now()}_u${targetUserId}${ext}`;
+        originalFileName = pdf_filename || fileName;
+        pdfUrl = `/uploads/leaves/${fileName}`;
+
+        // Intentar guardar en disco local como caché rápido
         try {
           const uploadsLeavesDir = path.join(__dirname, 'uploads', 'leaves');
           if (!fs.existsSync(uploadsLeavesDir)) {
             fs.mkdirSync(uploadsLeavesDir, { recursive: true });
           }
-          const matches = String(pdf_base64).match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-          const rawBase64 = matches ? matches[2] : (pdf_base64.includes('base64,') ? pdf_base64.split('base64,')[1] : pdf_base64);
-          const buffer = Buffer.from(rawBase64, 'base64');
-          const ext = (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf')) ? '.pdf' : (pdf_filename ? path.extname(pdf_filename) || '.pdf' : '.pdf');
-          const fileName = `licencia_${Date.now()}_u${targetUserId}${ext}`;
           const filePath = path.join(uploadsLeavesDir, fileName);
           fs.writeFileSync(filePath, buffer);
-          pdfUrl = `/uploads/leaves/${fileName}`;
         } catch (pdfErr) {
-          console.error('Error al guardar archivo de licencia:', pdfErr);
+          console.warn('Aviso: no se pudo escribir en disco local, se guarda en la nube:', pdfErr.message);
         }
       }
 
-      // 2. Registrar en worker_leaves
+      // 2. Registrar en worker_leaves con documento persistido permanentemente en la nube
       db.run(
-        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [targetUserId, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName],
+        "INSERT INTO worker_leaves (user_id, date_from, date_to, leave_type, document_number, remarks, pdf_url, created_by, document_data, file_mime, file_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [targetUserId, date_from, date_to, leave_type, document_number || null, remarks || null, pdfUrl, adminName, documentData, fileMime, originalFileName],
         async function(err) {
           if (err) {
             console.error('Error guardando worker_leave:', err);
@@ -735,7 +880,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
             success: true,
             id: leaveId,
             pdf_url: pdfUrl,
-            message: 'Licencia registrada y días justificados exitosamente en el historial de asistencia.'
+            message: 'Licencia registrada y respaldada exitosamente en la nube.'
           });
         }
       );
@@ -745,7 +890,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
     }
   });
 
-    // 7.1. Adjuntar o actualizar archivo de respaldo a un justificativo ya creado
+  // 7.3. Adjuntar o actualizar archivo de respaldo a un justificativo ya creado
   app.patch('/api/admin/worker-leaves/:id/attachment', authenticateToken, requireAdmin, async (req, res) => {
     try {
       const leaveId = Number(req.params.id);
@@ -757,23 +902,36 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
         }
 
         let pdfUrl = leave.pdf_url;
+        let documentData = leave.document_data || null;
+        let fileMime = leave.file_mime || null;
+        let originalFileName = leave.file_name || pdf_filename || null;
+
         if (pdf_base64) {
+          documentData = String(pdf_base64);
+          const matches = documentData.match(/^data:([A-Za-z-+/0-9]+);base64,(.+)$/);
+          fileMime = matches ? matches[1] : (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+          const rawBase64 = matches ? matches[2] : (documentData.includes('base64,') ? documentData.split('base64,')[1] : documentData);
+          const buffer = Buffer.from(rawBase64, 'base64');
+
+          let ext = '.pdf';
+          if (fileMime.includes('jpeg') || fileMime.includes('jpg')) ext = '.jpeg';
+          else if (fileMime.includes('png')) ext = '.png';
+          else if (fileMime.includes('webp')) ext = '.webp';
+          else if (pdf_filename) ext = path.extname(pdf_filename) || '.pdf';
+
+          const fileName = `licencia_${Date.now()}_u${leave.user_id}${ext}`;
+          originalFileName = pdf_filename || fileName;
+          pdfUrl = `/uploads/leaves/${fileName}`;
+
           try {
             const uploadsLeavesDir = path.join(__dirname, 'uploads', 'leaves');
             if (!fs.existsSync(uploadsLeavesDir)) {
               fs.mkdirSync(uploadsLeavesDir, { recursive: true });
             }
-            const matches = String(pdf_base64).match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-            const rawBase64 = matches ? matches[2] : (pdf_base64.includes('base64,') ? pdf_base64.split('base64,')[1] : pdf_base64);
-            const buffer = Buffer.from(rawBase64, 'base64');
-            const ext = (pdf_filename && pdf_filename.toLowerCase().endsWith('.pdf')) ? '.pdf' : (pdf_filename ? path.extname(pdf_filename) || '.pdf' : '.pdf');
-            const fileName = `licencia_${Date.now()}_u${leave.user_id}${ext}`;
             const filePath = path.join(uploadsLeavesDir, fileName);
             fs.writeFileSync(filePath, buffer);
-            pdfUrl = `/uploads/leaves/${fileName}`;
           } catch (pdfErr) {
-            console.error('Error al guardar archivo adjunto:', pdfErr);
-            return res.status(500).json({ error: 'Error al procesar archivo adjunto: ' + (pdfErr.message || pdfErr) });
+            console.warn('Aviso: no se pudo escribir en disco local, se guarda en la nube:', pdfErr.message);
           }
         }
 
@@ -785,8 +943,8 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
           : leave.remarks;
 
         db.run(
-          "UPDATE worker_leaves SET pdf_url = ?, document_number = ?, remarks = ? WHERE id = ?",
-          [pdfUrl, finalDocNumber, finalRemarks, leaveId],
+          "UPDATE worker_leaves SET pdf_url = ?, document_number = ?, remarks = ?, document_data = ?, file_mime = ?, file_name = ? WHERE id = ?",
+          [pdfUrl, finalDocNumber, finalRemarks, documentData, fileMime, originalFileName, leaveId],
           function(upErr) {
             if (upErr) {
               return res.status(500).json({ error: 'Error al actualizar documento: ' + upErr.message });
@@ -811,7 +969,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
               pdf_url: pdfUrl,
               document_number: finalDocNumber,
               remarks: finalRemarks,
-              message: 'Documento de respaldo agregado exitosamente al justificativo.'
+              message: 'Documento de respaldo guardado permanentemente en la nube.'
             });
           }
         );
@@ -822,8 +980,8 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
     }
   });
 
+  // 7.4. Eliminar justificativo
   app.delete('/api/admin/worker-leaves/:id', authenticateToken, requireAdmin, (req, res) => {
-    // Consultar detalles de la licencia antes de borrar para restaurar historial
     db.get("SELECT * FROM worker_leaves WHERE id = ?", [req.params.id], (getErr, leave) => {
       if (getErr || !leave) {
         return res.status(404).json({ error: 'Justificativo no encontrado' });
@@ -832,7 +990,6 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
       db.run("DELETE FROM worker_leaves WHERE id = ?", [req.params.id], function(delErr) {
         if (delErr) return res.status(500).json({ error: 'Error al eliminar justificativo' });
 
-        // Consultar las licencias que aún quedan para este trabajador
         db.all(
           "SELECT date_from, date_to FROM worker_leaves WHERE user_id = ?",
           [leave.user_id],
@@ -847,7 +1004,6 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
 
             while (cur <= stop) {
               const dStr = cur.toISOString().split('T')[0];
-              // SOLO eliminar o revertir días que NO estén cubiertos por otra licencia vigente
               if (!isCovered(dStr)) {
                 cleanupPromises.push(new Promise((resolve) => {
                   db.run(
@@ -867,7 +1023,6 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
             }
 
             Promise.all(cleanupPromises).then(() => {
-              // Sincronizar para garantizar que los días de las demás licencias sigan firmes
               syncWorkerLeavesToAttendance(() => {
                 if (io) {
                   io.emit('attendance_updated', { user_id: leave.user_id, deleted: true });

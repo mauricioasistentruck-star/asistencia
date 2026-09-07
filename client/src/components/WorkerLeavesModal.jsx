@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  RefreshCw,
+  Cloud, ZoomIn, Maximize2, RefreshCw,
   X, FileBadge, Calendar, Plus, Trash2, CheckCircle2, AlertCircle, User, ShieldCheck, 
   Upload, FileText, Download, ExternalLink, Search, Filter, Clock, Eye, ListFilter, Users
 } from 'lucide-react';
@@ -15,6 +15,55 @@ const LEAVE_TYPES = [
   'Capacitación / Comisión de Servicio',
   'Otro Justificativo Acreditado'
 ];
+
+
+// Función para comprimir y redimensionar fotos de celular (de 5MB a ~250KB JPEG con alta nitidez)
+const compressImageFile = (file) => {
+  return new Promise((resolve) => {
+    if (!file.type || !file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ base64: reader.result, name: file.name, size: file.size, mime: file.type || 'application/pdf' });
+      reader.readAsDataURL(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+        const approxSize = Math.round((compressedBase64.length * 3) / 4);
+        resolve({
+          base64: compressedBase64,
+          name: file.name.replace(/\.[^.]+$/, '.jpeg'),
+          size: approxSize,
+          mime: 'image/jpeg'
+        });
+      };
+      img.onerror = () => {
+        resolve({ base64: e.target.result, name: file.name, size: file.size, mime: file.type });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
 export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLeaveUpdated }) {
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'create'
@@ -48,6 +97,8 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
   const [attachRemarks, setAttachRemarks] = useState('');
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachError, setAttachError] = useState('');
+  const [previewLeave, setPreviewLeave] = useState(null);
+  const [docLoadError, setDocLoadError] = useState(false);
 
   const handleOpenAttachModal = (leave) => {
     setAttachingLeave(leave);
@@ -58,20 +109,21 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
     setAttachError('');
   };
 
-  const handleAttachFileChange = (e) => {
+  const handleAttachFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setAttachError('El archivo excede el tamaño máximo permitido de 10 MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      setAttachError('El archivo excede el tamaño máximo permitido de 15 MB.');
       return;
     }
-    setAttachFileName(file.name);
     setAttachError('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAttachBase64(reader.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const res = await compressImageFile(file);
+      setAttachFileName(res.name);
+      setAttachBase64(res.base64);
+    } catch (err) {
+      setAttachError('Error al leer el archivo.');
+    }
   };
 
   const handleSaveAttachment = async (e) => {
@@ -132,24 +184,24 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      setErrorMsg('El archivo excede el tamaño máximo permitido de 10 MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMsg('El archivo excede el tamaño máximo permitido de 15 MB.');
       return;
     }
 
-    setPdfFileName(file.name);
-    setPdfFileSize(file.size);
     setErrorMsg('');
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPdfBase64(reader.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const res = await compressImageFile(file);
+      setPdfFileName(res.name);
+      setPdfFileSize(res.size);
+      setPdfBase64(res.base64);
+    } catch (err) {
+      setErrorMsg('Error al procesar el archivo seleccionado.');
+    }
   };
 
   const handleCreateLeave = async (e) => {
@@ -530,6 +582,12 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
                                 N° Folio: {l.document_number}
                               </span>
                             )}
+                            {l.has_cloud_backup ? (
+                              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1" title="Documento respaldado permanentemente en la nube">
+                                <Cloud className="w-3 h-3 text-emerald-400" />
+                                <span>En Nube</span>
+                              </span>
+                            ) : null}
                           </div>
 
                           {l.remarks && (
@@ -547,16 +605,18 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
                         {/* Botones de Acción */}
                         <div className="flex flex-wrap items-center gap-2 self-end md:self-center flex-shrink-0">
                           {pdfFullUrl && (
-                            <a
-                              href={pdfFullUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-black px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
-                              title="Ver documento PDF o imagen de respaldo"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDocLoadError(false);
+                                setPreviewLeave(l);
+                              }}
+                              className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-black px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                              title="Ver documento en visor integrado de la aplicación"
                             >
                               <FileText className="w-4 h-4 text-indigo-400" />
                               <span>Ver Documento</span>
-                            </a>
+                            </button>
                           )}
 
                           <button
@@ -845,6 +905,138 @@ export default function WorkerLeavesModal({ isOpen, onClose, workers = [], onLea
 
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* VISOR INTEGRADO DE DOCUMENTO (IMAGEN O PDF) CON RESPALDO EN LA NUBE       */}
+      {/* ========================================================================= */}
+      {previewLeave && (() => {
+        const docUrl = previewLeave.pdf_url 
+          ? (previewLeave.pdf_url.startsWith('http') ? previewLeave.pdf_url : getApiBaseUrl() + previewLeave.pdf_url) 
+          : (getApiBaseUrl() + '/api/admin/worker-leaves/' + previewLeave.id + '/document');
+        const isPdf = previewLeave.file_mime === 'application/pdf' || (previewLeave.pdf_url && previewLeave.pdf_url.toLowerCase().endsWith('.pdf')) || (previewLeave.file_name && previewLeave.file_name.toLowerCase().endsWith('.pdf'));
+
+        return (
+          <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in">
+              {/* Encabezado */}
+              <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 flex-shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="truncate">
+                    <h4 className="text-sm font-black text-white truncate flex items-center gap-2">
+                      <span>Documento de Respaldo</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-300">
+                        {previewLeave.leave_type}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-zinc-400 truncate mt-0.5">
+                      {previewLeave.user_name || workers.find(w => String(w.id) === String(previewLeave.user_id))?.name || `Trabajador #${previewLeave.user_id}`}
+                      {previewLeave.document_number ? ` • Folio: ${previewLeave.document_number}` : ''}
+                      {` • ${previewLeave.date_from} al ${previewLeave.date_to}`}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewLeave(null)}
+                  className="p-2 rounded-xl hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+                  title="Cerrar visor"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenedor del Documento */}
+              <div className="flex-1 overflow-auto p-4 flex items-center justify-center min-h-[350px] bg-zinc-900/30">
+                {docLoadError ? (
+                  <div className="max-w-md text-center p-6 bg-zinc-900/80 border border-amber-500/30 rounded-2xl space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto text-xl">
+                      ⚠️
+                    </div>
+                    <h5 className="text-sm font-black text-white">Archivo anterior no disponible en la nube</h5>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Este archivo fue creado antes de la activación del respaldo permanente en la nube y se perdió al reiniciar el servidor.
+                    </p>
+                    <p className="text-xs text-emerald-400 font-semibold">
+                      Presione el botón inferior para volver a adjuntar la foto o PDF. El nuevo archivo quedará respaldado para siempre.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = previewLeave;
+                        setPreviewLeave(null);
+                        handleOpenAttachModal(target);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-lg transition-all flex items-center gap-2 mx-auto"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>📎 Adjuntar Licencia Ahora</span>
+                    </button>
+                  </div>
+                ) : isPdf ? (
+                  <iframe
+                    src={docUrl}
+                    title="Visor PDF Licencia"
+                    className="w-full h-[65vh] rounded-2xl border border-zinc-800 bg-white"
+                    onError={() => setDocLoadError(true)}
+                  />
+                ) : (
+                  <div className="max-w-full max-h-[70vh] flex items-center justify-center overflow-auto">
+                    <img
+                      src={docUrl}
+                      alt="Licencia Médica o Justificativo"
+                      className="max-w-full max-h-[68vh] object-contain rounded-2xl shadow-xl border border-zinc-800"
+                      onError={() => setDocLoadError(true)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Barra de Acciones Inferior */}
+              <div className="p-3.5 border-t border-zinc-800 bg-zinc-900/90 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <a
+                    href={docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <ExternalLink className="w-4 h-4 text-indigo-400" />
+                    <span>Abrir en Pestaña Nueva / Descargar</span>
+                  </a>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = previewLeave;
+                      setPreviewLeave(null);
+                      handleOpenAttachModal(target);
+                    }}
+                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    <span>Cambiar / Reemplazar Archivo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewLeave(null)}
+                    className="bg-orange-500 hover:bg-orange-600 text-black font-black text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
