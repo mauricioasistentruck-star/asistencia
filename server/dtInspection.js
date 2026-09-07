@@ -314,7 +314,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   
   // Endpoint directo de trabajadores para el fiscalizador DT
   app.get('/api/dt/workers', authenticateDtOrAdmin, (req, res) => {
-    db.all("SELECT id, name, rut, email, role, work_days FROM users WHERE role != 'kiosk' ORDER BY id ASC", (err, rows) => {
+    db.all("SELECT id, name, rut, email, role, work_days FROM users WHERE role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(name) NOT LIKE '%supervis%' AND LOWER(username) NOT LIKE '%supervis%' ORDER BY id ASC", (err, rows) => {
       if (err) return res.status(500).json({ error: 'Error al consultar trabajadores' });
       res.json(rows || []);
     });
@@ -358,7 +358,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
       const fromDate = date_from || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const toDate = date_to || new Date().toISOString().split('T')[0];
 
-      db.all("SELECT id, name, rut, email, role, work_days FROM users WHERE role != 'kiosk'", (uErr, users) => {
+      db.all("SELECT id, name, rut, email, role, work_days FROM users WHERE role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(name) NOT LIKE '%supervis%' AND LOWER(username) NOT LIKE '%supervis%'", (uErr, users) => {
         if (uErr) return res.status(500).json({ error: 'Error al consultar trabajadores' });
 
         let userList = users || [];
@@ -767,7 +767,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   // 7.1. Listar licencias médicas
   app.get('/api/admin/worker-leaves', authenticateToken, requireAdmin, (req, res) => {
     db.all(
-      "SELECT wl.id, wl.user_id, wl.date_from, wl.date_to, wl.leave_type, wl.document_number, wl.remarks, wl.pdf_url, wl.file_name, wl.file_mime, wl.created_by, wl.created_at, (CASE WHEN wl.document_data IS NOT NULL AND wl.document_data != '' THEN 1 ELSE 0 END) as has_cloud_backup, u.name as user_name, u.rut as user_rut FROM worker_leaves wl LEFT JOIN users u ON wl.user_id = u.id ORDER BY wl.date_from DESC",
+      "SELECT wl.id, wl.user_id, wl.date_from, wl.date_to, wl.leave_type, wl.document_number, wl.remarks, wl.pdf_url, wl.file_name, wl.file_mime, wl.created_by, wl.created_at, (CASE WHEN wl.document_data IS NOT NULL AND wl.document_data != '' THEN 1 ELSE 0 END) as has_cloud_backup, u.name as user_name, u.rut as user_rut FROM worker_leaves wl LEFT JOIN users u ON wl.user_id = u.id WHERE (u.role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(u.name) NOT LIKE '%supervis%' AND LOWER(u.username) NOT LIKE '%supervis%') ORDER BY wl.date_from DESC",
       (err, rows) => {
         if (err) return res.status(500).json({ error: 'Error al consultar licencias: ' + (err.message || err) });
         res.json(rows || []);

@@ -163,7 +163,7 @@ export default function AdminUsersView({ currentUser, theme }) {
       const payload = {
         ...newUser,
         gps_tracking_enabled: newUser.gps_tracking_enabled ? 1 : 0,
-        has_credential: newUser.role === 'admin' ? (newUser.has_credential ? 1 : 0) : (newUser.role === 'kiosk' ? 0 : 1)
+        has_credential: (newUser.role === 'supervisor' || (newUser.name || '').toLowerCase().includes('supervis') || (newUser.username || '').toLowerCase().includes('supervis') || newUser.role === 'kiosk') ? 0 : (newUser.role === 'admin' ? (newUser.has_credential ? 1 : 0) : 1)
       };
       const res = await apiCreateUser(payload);
       const created = res?.user || res;
@@ -228,7 +228,7 @@ export default function AdminUsersView({ currentUser, theme }) {
         email: editForm.email,
         role: editForm.role,
         gps_tracking_enabled: editForm.gps_tracking_enabled ? 1 : 0,
-        has_credential: editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : (editForm.role === 'kiosk' ? 0 : 1),
+        has_credential: (editForm.role === 'supervisor' || (editForm.name || '').toLowerCase().includes('supervis') || (editForm.username || '').toLowerCase().includes('supervis') || editForm.role === 'kiosk') ? 0 : (editForm.role === 'admin' ? (editForm.has_credential ? 1 : 0) : 1),
         work_days: Array.isArray(editForm.work_days) ? JSON.stringify(editForm.work_days) : (editForm.work_days || '[]')
       };
       if (editForm.password && editForm.password.trim() !== '') {

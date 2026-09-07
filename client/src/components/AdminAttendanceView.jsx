@@ -28,6 +28,7 @@ function isExcludedFromAttendance(u) {
   if (name.includes('puesto') || name.includes('kiosco')) return true;
   if (username === 'kiosco') return true;
   if (role === 'kiosk' || role === 'kiosco') return true;
+  if (role === 'supervisor' || name.includes('supervis') || username.includes('supervis')) return true;
   return false;
 }
 

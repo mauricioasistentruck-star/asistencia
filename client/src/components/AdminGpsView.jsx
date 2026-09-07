@@ -153,7 +153,14 @@ export default function AdminGpsView({ theme }) {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const isDark = theme === 'dark';
-  const workersList = allUsers.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco');
+  const isSupervisorUser = (u) => {
+    if (!u) return false;
+    const name = String(u.name || u.user_name || '').toLowerCase();
+    const username = String(u.username || '').toLowerCase();
+    const role = String(u.role || u.user_role || '').toLowerCase();
+    return role === 'supervisor' || name.includes('supervis') || username.includes('supervis');
+  };
+  const workersList = allUsers.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco' && !isSupervisorUser(u));
 
   // Integración de puntos de ruta activa y ruta guardada
   const activeRoutePoints = useMemo(() => {
@@ -712,6 +719,7 @@ export default function AdminGpsView({ theme }) {
       if (Math.abs(g.latitude) < 0.01 || Math.abs(g.longitude) < 0.01) return false;
       // Buscar usuario en allUsers para respetar su estado GPS actualizado
       const user = allUsers.find(u => u.id === g.user_id);
+      if (isSupervisorUser(user) || isSupervisorUser(g)) return false;
       const isGpsOn = user ? isGpsActive(user.gps_tracking_enabled) : isGpsActive(g.gps_tracking_enabled);
       return Boolean(isGpsOn);
     });

@@ -282,13 +282,21 @@ export default function DtReportsView({ onExit, dtSession }) {
 
   const currentReport = REPORT_TYPES.find(r => r.id === selectedReportId) || REPORT_TYPES[0];
 
-  // Cargar lista de trabajadores reales
+  // Cargar lista de trabajadores reales (excluyendo Kiosco y perfil de Supervisión)
+  const isSupervisorUser = (u) => {
+    if (!u) return false;
+    const name = String(u.name || u.user_name || '').toLowerCase();
+    const username = String(u.username || '').toLowerCase();
+    const role = String(u.role || u.user_role || '').toLowerCase();
+    return role === 'supervisor' || name.includes('supervis') || username.includes('supervis');
+  };
+
   useEffect(() => {
     const loadWorkers = async () => {
       try {
         const dtWorkers = await apiDtGetWorkers();
         if (Array.isArray(dtWorkers) && dtWorkers.length > 0) {
-          const valid = dtWorkers.filter(u => u.role !== 'kiosk');
+          const valid = dtWorkers.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco' && !isSupervisorUser(u));
           setAllWorkers(valid);
           setSelectedWorkers(valid);
           return;
@@ -298,7 +306,7 @@ export default function DtReportsView({ onExit, dtSession }) {
       try {
         const users = await apiGetUsers();
         if (Array.isArray(users) && users.length > 0) {
-          const valid = users.filter(u => u.role !== 'kiosk');
+          const valid = users.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco' && !isSupervisorUser(u));
           setAllWorkers(valid);
           setSelectedWorkers(valid);
         }

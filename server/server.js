@@ -382,8 +382,8 @@ app.get('/api/users', authenticateToken, (req, res, next) => {
       // Ocultar usuario Supervisor de los demás administradores (solo SuperAdmin puede verlo)
       if (!isSuper) {
         const isSupervisor = (r.role === 'supervisor') ||
-                             (r.name && r.name.toLowerCase().includes('supervisor')) ||
-                             (r.username && r.username.toLowerCase().includes('supervisor'));
+                             (r.name && r.name.toLowerCase().includes('supervis')) ||
+                             (r.username && r.username.toLowerCase().includes('supervis'));
         if (isSupervisor) return false;
       }
       return true;
@@ -441,7 +441,7 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
   const rawPassword = password || '123';
   const salt = bcrypt.genSaltSync(10);
   const password_hash = bcrypt.hashSync(rawPassword, salt);
-  const userRole = (role === 'superadmin') ? 'superadmin' : (role === 'admin' ? 'admin' : (role === 'kiosk' ? 'kiosk' : 'worker'));
+  const userRole = (role === 'superadmin') ? 'superadmin' : (role === 'admin' ? 'admin' : (role === 'kiosk' ? 'kiosk' : (role === 'supervisor' ? 'supervisor' : 'worker')));
   const qr_token = 'QR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9).toUpperCase();
   const gps_enabled = (gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0;
   const userHasCred = (has_credential === false || has_credential === 0 || has_credential === '0' || has_credential === 'false') ? 0 : 1;
@@ -617,7 +617,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
         plainPassword = password.trim();
       }
     }
-    const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role === 'admin' ? 'admin' : (role === 'kiosk' ? 'kiosk' : 'worker'));
+    const assignedRole = isTargetSuperAdmin ? 'superadmin' : (role === 'admin' ? 'admin' : (role === 'kiosk' ? 'kiosk' : (role === 'supervisor' ? 'supervisor' : 'worker')));
     const assignedGps = gps_tracking_enabled !== undefined 
       ? ((gps_tracking_enabled === true || gps_tracking_enabled === 1 || gps_tracking_enabled === '1' || gps_tracking_enabled === 'true') ? 1 : 0) 
       : targetUser.gps_tracking_enabled;
@@ -1134,6 +1134,13 @@ app.post('/api/attendance/scan', (req, res) => {
   db.get('SELECT id, rut, name, role, photo_url, qr_token FROM users WHERE qr_token = ?', [qr_token.trim()], (err, user) => {
     if (err) return res.status(500).json({ error: 'Error en la base de datos' });
     if (!user) return res.status(404).json({ error: 'Código QR no reconocido en el sistema' });
+
+    const isSupervisor = (user.role === 'supervisor') ||
+                         (user.name && user.name.toLowerCase().includes('supervis')) ||
+                         (user.username && user.username.toLowerCase().includes('supervis'));
+    if (isSupervisor) {
+      return res.status(400).json({ error: 'El perfil de supervisión no registra marcaciones de asistencia' });
+    }
     const today = getLocalDateString();
     const currentTime = getLocalTimeString();
     db.get('SELECT * FROM attendance WHERE user_id = ? AND date = ?', [user.id, today], (attErr, record) => {
@@ -1468,7 +1475,7 @@ const handleExportExcel = (req, res) => {
   const { date_from, date_to, user_id } = req.query;
 
   // 1. Obtener los trabajadores contratados reales (excluyendo cuentas de kiosco)
-  let userSql = "SELECT id, name, rut, role, work_days FROM users WHERE role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(username) NOT LIKE '%supervisor%' AND LOWER(name) NOT LIKE '%supervisor%' AND LOWER(name) NOT LIKE '%kiosco%' AND (work_days IS NOT NULL AND work_days != '[]' AND work_days != '')";
+  let userSql = "SELECT id, name, rut, role, work_days FROM users WHERE role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(username) NOT LIKE '%supervis%' AND LOWER(name) NOT LIKE '%supervis%' AND LOWER(name) NOT LIKE '%kiosco%' AND (work_days IS NOT NULL AND work_days != '[]' AND work_days != '')";
   const userParams = [];
   if (user_id) {
     userSql += " AND id = ?";
@@ -1953,7 +1960,7 @@ app.get('/api/gps/live', authenticateToken, requireAdmin, (req, res) => {
         SELECT user_id, MAX(id) as max_id FROM gps_logs GROUP BY user_id
       ) g2 ON g1.id = g2.max_id
     ) g ON u.id = g.user_id 
-    WHERE u.role != 'kiosk' AND u.role != 'kiosco'
+    WHERE u.role NOT IN ('kiosk', 'kiosco', 'supervisor') AND LOWER(u.name) NOT LIKE '%supervis%' AND LOWER(u.username) NOT LIKE '%supervis%'
   `;
   db.all(query, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Error al consultar GPS' });
@@ -2005,8 +2012,15 @@ app.post('/api/gps/admin-start-route', authenticateToken, requireAdmin, (req, re
   const { userId, latitude, longitude, name } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId requerido' });
 
-  db.get('SELECT id, name FROM users WHERE id = ?', [userId], (err, user) => {
+  db.get('SELECT id, name, role, username FROM users WHERE id = ?', [userId], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const isSupervisor = (user.role === 'supervisor') ||
+                         (user.name && user.name.toLowerCase().includes('supervis')) ||
+                         (user.username && user.username.toLowerCase().includes('supervis'));
+    if (isSupervisor) {
+      return res.status(400).json({ error: 'El perfil de supervisión no realiza rutas en terreno ni rastreo GPS' });
+    }
 
     // Activar GPS del usuario
     db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [userId]);
@@ -2251,7 +2265,10 @@ app.get('/api/gps/routes/active', authenticateToken, (req, res) => {
 app.get('/api/gps/routes', authenticateToken, requireAdmin, (req, res) => {
   const { date, user_id } = req.query;
   let query = 'SELECT id, user_id, user_name, name, date, start_time, end_time, start_lat, start_lng, end_lat, end_lng, total_distance_km, total_points, status, created_at FROM gps_routes';
-  const conditions = [];
+  const conditions = [
+    "LOWER(user_name) NOT LIKE '%supervis%'",
+    "user_id NOT IN (SELECT id FROM users WHERE role = 'supervisor' OR LOWER(username) LIKE '%supervis%' OR LOWER(name) LIKE '%supervis%')"
+  ];
   const params = [];
 
   if (date) {
