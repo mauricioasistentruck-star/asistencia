@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
@@ -1773,97 +1774,137 @@ function fetchOsrmDrivingRoute(coordinates) {
   });
 }
 
-// GPS
+// GPS - RASTREO PRECISO Y CONTINUO
 app.post('/api/gps/track', authenticateToken, (req, res) => {
-  const userId = req.user.id;
-  const { latitude, longitude, accuracy, speed } = req.body;
-  if (!latitude || !longitude) return res.status(400).json({ error: 'Coordenadas requeridas' });
+  // Permitir que administradores transmitan o sincronicen coordenadas para un trabajador o vehiculo especifico
+  const effectiveUserId = ((req.user.role === 'admin' || req.user.role === 'superadmin') && req.body.userId)
+    ? Number(req.body.userId)
+    : req.user.id;
 
-  db.get('SELECT id, name, gps_tracking_enabled FROM users WHERE id = ?', [userId], (err, user) => {
+  const { latitude, longitude, accuracy, speed, points: batchPoints } = req.body;
+
+  // Preparar lista de puntos a registrar (soporta punto individual o lote sincronizado tras reconexion)
+  let pointsToProcess = [];
+  if (Array.isArray(batchPoints) && batchPoints.length > 0) {
+    pointsToProcess = batchPoints.filter(p => p && p.latitude && p.longitude);
+  } else if (latitude && longitude) {
+    pointsToProcess = [{
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      accuracy: accuracy ? Number(accuracy) : 10,
+      speed: speed ? Number(speed) : 0,
+      timestamp: req.body.timestamp || new Date().toISOString()
+    }];
+  }
+
+  if (pointsToProcess.length === 0) {
+    return res.status(400).json({ error: 'Coordenadas requeridas' });
+  }
+
+  db.get('SELECT id, name, gps_tracking_enabled, role FROM users WHERE id = ?', [effectiveUserId], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    const isGpsActiveForUser = user.gps_tracking_enabled === 1 || 
-      user.gps_tracking_enabled === true || 
-      user.gps_tracking_enabled === '1' || 
-      user.gps_tracking_enabled === 'true';
 
-    // Si el usuario o administrador apagó el GPS, respetar su decisión y descartar el punto
-    if (!isGpsActiveForUser) {
-      return res.status(403).json({ error: 'Rastreo GPS desactivado', disabled: true });
-    }
+    // Consultar si el usuario tiene una ruta activa en curso
+    db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [effectiveUserId], (rErr, activeRoute) => {
+      const isGpsActiveForUser = user.gps_tracking_enabled === 1 || 
+        user.gps_tracking_enabled === true || 
+        user.gps_tracking_enabled === '1' || 
+        user.gps_tracking_enabled === 'true';
 
-    // Aceptar todas las lecturas reales en carretera y ciudad (descartar solo error grosero > 350m)
-    if (accuracy && accuracy > 350) {
-      return res.json({ success: true, message: 'Punto descartado por precisión GPS insuficiente (> 350m)' });
-    }
+      // REGLA CRITICA: Si hay una ruta activa en ejecucion, NUNCA rechazar con 403. El viaje debe grabarse completo.
+      if (!isGpsActiveForUser && !activeRoute) {
+        return res.status(403).json({ error: 'Rastreo GPS desactivado', disabled: true });
+      }
 
-    const today = getLocalDateString();
-    const currentTime = getLocalTimeString();
-    const utcIso = new Date().toISOString();
-    const query = 'INSERT INTO gps_logs (user_id, latitude, longitude, accuracy, speed, date, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)';
+      const today = getLocalDateString();
+      const currentTime = getLocalTimeString();
 
-    db.run(query, [userId, latitude, longitude, accuracy || null, speed || null, today, utcIso], function (insErr) {
-      if (insErr) return res.status(500).json({ error: 'Error al registrar GPS' });
+      let activeRoutePoints = [];
+      if (activeRoute && activeRoute.points_json) {
+        try { activeRoutePoints = JSON.parse(activeRoute.points_json); } catch(e) { activeRoutePoints = []; }
+      }
 
-      const newPoint = { latitude, longitude, timestamp: utcIso, time: currentTime, speed: speed || 0, accuracy: accuracy || 10 };
-      const gpsData = { userId, userName: user.name, latitude, longitude, accuracy, speed, time: currentTime, timestamp: utcIso, date: today };
-      io.emit('gps_position_updated', gpsData);
+      let lastPoint = activeRoutePoints[activeRoutePoints.length - 1];
+      let addedDistTotal = 0;
+      let newPointsForRoute = 0;
 
-      // Registrar en ruta activa SOLAMENTE si hay una ruta explícitamente iniciada
-      db.get('SELECT * FROM gps_routes WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1', [userId], (routeErr, activeRoute) => {
-        if (!activeRoute) {
-          // NO auto-crear rutas por simples pings aislados para evitar líneas rectas de la casa al trabajo
-          return;
-        }
+      // Procesar cada punto recibido
+      pointsToProcess.forEach(pt => {
+        const pLat = Number(pt.latitude);
+        const pLng = Number(pt.longitude);
+        const pAcc = pt.accuracy ? Number(pt.accuracy) : 10;
+        const pSpeed = pt.speed ? Number(pt.speed) : 0;
+        const pIso = pt.timestamp || new Date().toISOString();
 
-        let points = [];
-        try {
-          points = JSON.parse(activeRoute.points_json || '[]');
-        } catch (e) {
-          points = [];
-        }
+        // Descartar solo lecturas con error grosero (> 350m)
+        if (pAcc > 350) return;
 
-        const lastPoint = points[points.length - 1];
+        // 1. Insertar en gps_logs
+        db.run(
+          'INSERT INTO gps_logs (user_id, latitude, longitude, accuracy, speed, date, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [effectiveUserId, pLat, pLng, pAcc, pSpeed, today, pIso]
+        );
 
-        // Si han transcurrido más de 45 minutos sin señal, concluir la ruta anterior para no trazar líneas irreales
-        if (lastPoint && lastPoint.timestamp) {
-          const gapMs = new Date().getTime() - new Date(lastPoint.timestamp).getTime();
-          if (gapMs > 45 * 60 * 1000) {
-            db.run('UPDATE gps_routes SET status = "completed", end_time = ? WHERE id = ?', [currentTime, activeRoute.id], () => {
-              io.emit('routes_updated');
-            });
-            return;
+        // 2. Si hay ruta activa, acumular en la ruta
+        if (activeRoute) {
+          let shouldAdd = true;
+          let addedDist = 0;
+          if (lastPoint) {
+            addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, pLat, pLng);
+            const gapMs = new Date(pIso).getTime() - new Date(lastPoint.timestamp || pIso).getTime();
+            // Evitar puntos duplicados exactamente en el mismo milimetro (< 3m en menos de 5 seg)
+            if (addedDist < 0.003 && gapMs < 5000) {
+              shouldAdd = false;
+            }
           }
-        }
 
-        const startLat = (activeRoute.start_lat && activeRoute.start_lat !== 0) ? activeRoute.start_lat : latitude;
-        const startLng = (activeRoute.start_lng && activeRoute.start_lng !== 0) ? activeRoute.start_lng : longitude;
-        let addedDist = 0;
-        let shouldAddPoint = true;
-
-        if (lastPoint) {
-          addedDist = calculateDistanceBetween(lastPoint.latitude, lastPoint.longitude, latitude, longitude);
-          const timeSinceLastPoint = lastPoint.timestamp ? (new Date().getTime() - new Date(lastPoint.timestamp).getTime()) : 99999;
-          // Guardar si se movió al menos 4 metros o cada 15 segundos
-          if (addedDist < 0.004 && timeSinceLastPoint < 15000) {
-            shouldAddPoint = false;
+          if (shouldAdd) {
+            const pointObj = { latitude: pLat, longitude: pLng, timestamp: pIso, time: currentTime, speed: pSpeed, accuracy: pAcc };
+            activeRoutePoints.push(pointObj);
+            lastPoint = pointObj;
+            if (addedDist > 0.003) addedDistTotal += addedDist;
+            newPointsForRoute++;
           }
-        }
-
-        if (shouldAddPoint) {
-          points.push(newPoint);
-          const newDist = Number(((activeRoute.total_distance_km || 0) + (addedDist > 0.004 ? addedDist : 0)).toFixed(2));
-          db.run(
-            'UPDATE gps_routes SET start_lat = ?, start_lng = ?, end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
-            [startLat, startLng, currentTime, latitude, longitude, newDist, points.length, JSON.stringify(points), activeRoute.id]
-          );
         }
       });
 
-      res.json({ success: true, message: 'Posición actualizada' });
+      // Emitir socket con el ultimo punto recibido
+      const latestPt = pointsToProcess[pointsToProcess.length - 1];
+      const gpsData = {
+        userId: effectiveUserId,
+        userName: user.name,
+        latitude: latestPt.latitude,
+        longitude: latestPt.longitude,
+        accuracy: latestPt.accuracy,
+        speed: latestPt.speed,
+        time: currentTime,
+        timestamp: latestPt.timestamp || new Date().toISOString(),
+        date: today
+      };
+      io.emit('gps_position_updated', gpsData);
+
+      // Si hay ruta activa y se agregaron puntos, actualizar gps_routes
+      if (activeRoute && newPointsForRoute > 0) {
+        const startLat = (activeRoute.start_lat && activeRoute.start_lat !== 0) ? activeRoute.start_lat : pointsToProcess[0].latitude;
+        const startLng = (activeRoute.start_lng && activeRoute.start_lng !== 0) ? activeRoute.start_lng : pointsToProcess[0].longitude;
+        const newDist = Number(((activeRoute.total_distance_km || 0) + addedDistTotal).toFixed(2));
+        const endLat = latestPt.latitude;
+        const endLng = latestPt.longitude;
+
+        db.run(
+          'UPDATE gps_routes SET start_lat = ?, start_lng = ?, end_time = ?, end_lat = ?, end_lng = ?, total_distance_km = ?, total_points = ?, points_json = ? WHERE id = ?',
+          [startLat, startLng, currentTime, endLat, endLng, newDist, activeRoutePoints.length, JSON.stringify(activeRoutePoints), activeRoute.id],
+          () => {
+            io.emit('gps_route_updated', { routeId: activeRoute.id, userId: effectiveUserId, totalPoints: activeRoutePoints.length, totalDistanceKm: newDist });
+            io.emit('routes_updated');
+          }
+        );
+      }
+
+      return res.json({ success: true, message: 'Coordenadas registradas con exito', pointsProcessed: pointsToProcess.length });
     });
   });
 });
-
 
 app.post('/api/gps/snap-roads', authenticateToken, async (req, res) => {
   const { coordinates } = req.body;

@@ -217,6 +217,22 @@ export default function AdminGpsView({ theme }) {
     }
   };
 
+  const activeRouteInfoRef = useRef(null);
+  const selectedUserRef = useRef(null);
+  const routePointsRef = useRef([]);
+
+  useEffect(() => {
+    activeRouteInfoRef.current = activeRouteInfo;
+  }, [activeRouteInfo]);
+
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    routePointsRef.current = routePoints;
+  }, [routePoints]);
+
   // Geolocalización física precisa del dispositivo (Soporte Nativo Capacitor + HTML5)
   const locateMe = async (forceCenter = true) => {
     setIsLocating(true);
@@ -285,40 +301,74 @@ export default function AdminGpsView({ theme }) {
     locateMe(true);
   }, []);
 
-  // Escuchar posición en tiempo real para mantener el punto azul siempre al día
+  // Escuchar posición en tiempo real: actualiza Mi Ubicación y acumula puntos en ruta activa en vivo
   useEffect(() => {
     let watchId = null;
     let capWatchId = null;
 
+    const handleNewLocation = (p) => {
+      if (!p || !p.coords) return;
+      const nLat = p.coords.latitude;
+      const nLng = p.coords.longitude;
+      const nAcc = Math.round(p.coords.accuracy || 5);
+      const nSpeed = p.coords.speed || 0;
+
+      if (!nLat || !nLng || isNaN(nLat) || isNaN(nLng) || nAcc > 350) return;
+
+      setMyLocation([nLat, nLng]);
+      setMyLocationAccuracy(nAcc);
+      setLocationTimestamp(new Date());
+
+      // Si este dispositivo tiene una ruta iniciada y activa, acumular y transmitir en tiempo real
+      if (activeRouteInfoRef.current) {
+        const pts = routePointsRef.current || [];
+        let shouldAdd = true;
+        if (pts.length > 0) {
+          const lastP = pts[pts.length - 1];
+          const dist = calculateDistanceBetween(lastP.latitude, lastP.longitude, nLat, nLng);
+          const timeSinceLast = lastP.timestamp ? (Date.now() - new Date(lastP.timestamp).getTime()) : 99999;
+          // Guardar si se desplazó más de 4 metros o cada 10 segundos
+          if (dist < 0.004 && timeSinceLast < 10000) {
+            shouldAdd = false;
+          }
+        }
+
+        if (shouldAdd) {
+          const newPt = {
+            latitude: nLat,
+            longitude: nLng,
+            accuracy: nAcc,
+            speed: nSpeed,
+            timestamp: new Date().toISOString(),
+            time: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+          };
+
+          setRoutePoints(prev => [...prev, newPt]);
+
+          apiSendGpsPoint({
+            latitude: nLat,
+            longitude: nLng,
+            accuracy: nAcc,
+            speed: nSpeed,
+            userId: activeRouteInfoRef.current.user_id || selectedUserRef.current?.id
+          }).catch(() => {});
+        }
+      }
+    };
+
     if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
       Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
-        (p) => {
-          if (p && p.coords) {
-            const nLat = p.coords.latitude;
-            const nLng = p.coords.longitude;
-            const nAcc = Math.round(p.coords.accuracy || 5);
-            setMyLocation([nLat, nLng]);
-            setMyLocationAccuracy(nAcc);
-            setLocationTimestamp(new Date());
-          }
+        { enableHighAccuracy: true, timeout: 25000, maximumAge: 1000 },
+        (p, err) => {
+          if (p && p.coords) handleNewLocation(p);
         }
       ).then(id => { capWatchId = id; }).catch(() => {});
     } else if ('geolocation' in navigator) {
       try {
         watchId = navigator.geolocation.watchPosition(
-          (p) => {
-            if (p && p.coords) {
-              const nLat = p.coords.latitude;
-              const nLng = p.coords.longitude;
-              const nAcc = Math.round(p.coords.accuracy || 10);
-              setMyLocation([nLat, nLng]);
-              setMyLocationAccuracy(nAcc);
-              setLocationTimestamp(new Date());
-            }
-          },
+          handleNewLocation,
           () => {},
-          { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 25000 }
         );
       } catch (e) {}
     }

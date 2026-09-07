@@ -224,6 +224,34 @@ export default function App() {
 
     socket.on('user_gps_toggled', handleGpsToggled);
 
+    socket.on('gps_route_started', (payload) => {
+      if (payload && payload.userId) {
+        setUser(prev => {
+          if (!prev) return prev;
+          if (prev.id === payload.userId || String(prev.id) === String(payload.userId)) {
+            const merged = { ...prev, gps_tracking_enabled: 1 };
+            localStorage.setItem('asistencia_user', JSON.stringify(merged));
+            return merged;
+          }
+          return prev;
+        });
+      }
+    });
+
+    socket.on('gps_route_finished', (payload) => {
+      if (payload && payload.userId) {
+        setUser(prev => {
+          if (!prev) return prev;
+          if (prev.id === payload.userId || String(prev.id) === String(payload.userId)) {
+            const merged = { ...prev, gps_tracking_enabled: 0 };
+            localStorage.setItem('asistencia_user', JSON.stringify(merged));
+            return merged;
+          }
+          return prev;
+        });
+      }
+    });
+
     const handleFleetPingRequest = () => {
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
@@ -582,8 +610,12 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
     };
   }, [user]);
 
-  // Transmisión GPS continua, precisa y silenciosa en segundo plano
+  // Transmisión GPS continua, precisa y con búfer anti-desconexión en segundo plano
   // REGLA CRÍTICA: Solo transmitir si es un celular móvil (evita que un PC/página web sobreescriba con Wi-Fi)
+  const gpsBufferRef = useRef([]);
+  const lastSentTimestampRef = useRef(0);
+  const lastSentCoordsRef = useRef(null);
+
   useEffect(() => {
     if (!user || !isGpsActive(user.gps_tracking_enabled)) {
       if (watchIdRef.current !== null) {
@@ -599,7 +631,6 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       return;
     }
 
-    // Si es un computador de escritorio o laptop en web, NO enviar pings de Wi-Fi como si fuera el vehículo
     if (!isMobileDevice()) {
       if (watchIdRef.current !== null) {
         try {
@@ -614,51 +645,74 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       return;
     }
 
-    let lastSentCoords = null;
-    let lastSentTimestamp = 0;
-    const sendCoordsSilently = (pos) => {
-      if (pos && pos.coords) {
-        const accuracy = pos.coords.accuracy || 10;
-        // Filtrar unicamente lecturas con error grosero (> 80m)
-        if (accuracy > 300) return;
+    let isSubscribed = true;
 
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
-
-        const now = Date.now();
-        const timeSinceLastSent = now - lastSentTimestamp;
-
-        if (lastSentCoords) {
-          const latDiff = Math.abs(lat - lastSentCoords.lat);
-          const lngDiff = Math.abs(lng - lastSentCoords.lng);
-          const speed = pos.coords.speed || 0;
-          // Si esta detenido o sin movimiento, enviar heartbeat cada 20 segundos
-          if (latDiff < 0.00003 && lngDiff < 0.00003 && speed < 0.3) {
-            if (timeSinceLastSent < 20000) {
-              return;
-            }
-          }
-        }
-
-        lastSentCoords = { lat, lng };
-        lastSentTimestamp = now;
-        apiSendGpsPoint({
-          latitude: lat,
-          longitude: lng,
-          accuracy: Math.round(accuracy),
-          speed: pos.coords.speed || 0,
-          heading: pos.coords.heading || null
-        }).then(() => {
-          setGpsTransmitting(true);
-        }).catch((err) => {
-          // Si el servidor indica que el GPS está desactivado, apagar localmente
-          if (err && (err.status === 403 || err.disabled || err.message?.includes('desactivado'))) {
-            setGpsTransmitting(false);
-            setUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
-          }
+    // Enviar lote acumulado de coordenadas (resistente a zonas de baja señal 4G o túneles)
+    const flushGpsBuffer = async () => {
+      if (!isSubscribed || gpsBufferRef.current.length === 0) return;
+      const batchToSend = [...gpsBufferRef.current];
+      try {
+        await apiSendGpsPoint({
+          points: batchToSend,
+          latitude: batchToSend[batchToSend.length - 1].latitude,
+          longitude: batchToSend[batchToSend.length - 1].longitude,
+          accuracy: batchToSend[batchToSend.length - 1].accuracy,
+          speed: batchToSend[batchToSend.length - 1].speed
         });
+        setGpsTransmitting(true);
+        // Remover del búfer los puntos enviados exitosamente
+        gpsBufferRef.current = gpsBufferRef.current.filter(p => !batchToSend.includes(p));
+      } catch (err) {
+        // Si el servidor indica que el GPS está expresamente desactivado en BD, apagar localmente
+        if (err && (err.status === 403 || err.disabled || err.message?.includes('desactivado'))) {
+          setGpsTransmitting(false);
+          setUser(prev => prev ? { ...prev, gps_tracking_enabled: 0 } : null);
+        }
+        // Si fue fallo de red (sin 4G momentáneo en ruta), los puntos se mantienen en gpsBufferRef para el siguiente reintento
       }
+    };
+
+    const sendCoordsSilently = (pos) => {
+      if (!isSubscribed || !pos || !pos.coords) return;
+      const accuracy = pos.coords.accuracy || 10;
+      if (accuracy > 350) return; // Descartar solo error grosero
+
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+      const now = Date.now();
+      const timeSinceLast = now - lastSentTimestampRef.current;
+
+      if (lastSentCoordsRef.current) {
+        const latDiff = Math.abs(lat - lastSentCoordsRef.current.lat);
+        const lngDiff = Math.abs(lng - lastSentCoordsRef.current.lng);
+        const speed = pos.coords.speed || 0;
+        // Si el vehículo o trabajador está completamente detenido, emitir heartbeat cada 20 segundos
+        if (latDiff < 0.00003 && lngDiff < 0.00003 && speed < 0.3) {
+          if (timeSinceLast < 20000) return;
+        }
+      }
+
+      lastSentCoordsRef.current = { lat, lng };
+      lastSentTimestampRef.current = now;
+
+      const pointItem = {
+        latitude: lat,
+        longitude: lng,
+        accuracy: Math.round(accuracy),
+        speed: pos.coords.speed || 0,
+        heading: pos.coords.heading || null,
+        timestamp: new Date().toISOString()
+      };
+
+      // Agregar al búfer y limitar tamaño máximo de cola
+      gpsBufferRef.current.push(pointItem);
+      if (gpsBufferRef.current.length > 50) {
+        gpsBufferRef.current = gpsBufferRef.current.slice(-50);
+      }
+
+      flushGpsBuffer();
     };
 
     let wakeLockSentinel = null;
@@ -668,36 +722,45 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
       }).catch(() => {});
     }
 
-    // 1. Solicitar permisos de GPS explícitos en Android nativo y Web
-    const initGps = async () => {
+    // Inicializar rastreador continuo nativo con autorecuperación automática
+    const startWatcher = async () => {
+      if (!isSubscribed) return;
+
       try {
         await Geolocation.requestPermissions();
       } catch (e) {}
 
-      // 2. Obtener primera posición inmediata
+      // 1. Obtener primera posición inmediata
       try {
         const initialPos = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
+          timeout: 12000,
+          maximumAge: 1000
         });
         if (initialPos && initialPos.coords) sendCoordsSilently(initialPos);
       } catch (e) {
         if ('geolocation' in navigator) {
           navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
             enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
+            timeout: 12000,
+            maximumAge: 1000
           });
         }
       }
 
-      // 3. Activar escucha continua por hardware GPS nativo
+      // 2. Iniciar escucha por hardware con auto-rearranque en caso de timeout
       try {
         const watchId = await Geolocation.watchPosition(
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 },
+          { enableHighAccuracy: true, timeout: 30000, maximumAge: 1000 },
           (pos, err) => {
-            if (pos && pos.coords) sendCoordsSilently(pos);
+            if (pos && pos.coords) {
+              sendCoordsSilently(pos);
+            } else if (err) {
+              // Si ocurre timeout en carretera, reiniciar escucha
+              setTimeout(() => {
+                if (isSubscribed) startWatcher();
+              }, 3000);
+            }
           }
         );
         watchIdRef.current = watchId;
@@ -705,36 +768,46 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
         if ('geolocation' in navigator) {
           watchIdRef.current = navigator.geolocation.watchPosition(
             sendCoordsSilently,
-            () => {},
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+            () => {
+              setTimeout(() => {
+                if (isSubscribed) startWatcher();
+              }, 3000);
+            },
+            { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 }
           );
         }
       }
     };
 
-    initGps();
+    startWatcher();
 
-    // 4. Intervalo de respaldo periódico cada 8 segundos para evitar desconexiones
+    // 3. Intervalo de respaldo periódico cada 10 segundos (para no perder nunca la señal)
     const backupInterval = setInterval(async () => {
+      if (!isSubscribed) return;
       try {
         const pos = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          timeout: 8000,
-          maximumAge: 2000
+          timeout: 15000,
+          maximumAge: 3000
         });
         if (pos && pos.coords) sendCoordsSilently(pos);
       } catch (e) {
         if ('geolocation' in navigator) {
           navigator.geolocation.getCurrentPosition(sendCoordsSilently, () => {}, {
             enableHighAccuracy: true,
-            timeout: 8000,
-            maximumAge: 0
+            timeout: 15000,
+            maximumAge: 3000
           });
         }
       }
-    }, 8000);
+      // Reintentar vaciar puntos del búfer si quedaron pendientes
+      if (gpsBufferRef.current.length > 0) {
+        flushGpsBuffer();
+      }
+    }, 10000);
 
     return () => {
+      isSubscribed = false;
       if (wakeLockSentinel) {
         try { wakeLockSentinel.release().catch(() => {}); } catch(e) {}
       }
