@@ -496,20 +496,23 @@ export const deduplicateUsers = (userList) => {
 
     if (map.has(key)) {
       const existing = map.get(key);
+      const resolvedPlainPassword = (u.plain_password !== undefined && u.plain_password !== null && u.plain_password !== '')
+        ? u.plain_password
+        : existing.plain_password;
       map.set(key, {
         ...existing,
         ...u,
         id: u.id || existing.id,
         photo_url: u.photo_url || existing.photo_url || null,
-        plain_password: (u.plain_password && u.plain_password !== '123') ? u.plain_password : (existing.plain_password || '123'),
-        password_hash: (u.plain_password && u.plain_password !== '123') ? (u.password_hash || existing.password_hash) : (existing.password_hash || u.password_hash),
+        plain_password: resolvedPlainPassword,
+        password_hash: u.password_hash || existing.password_hash,
         gps_tracking_enabled: (u.gps_tracking_enabled !== undefined && u.gps_tracking_enabled !== null) ? (isGpsActive(u.gps_tracking_enabled) ? 1 : 0) : (isGpsActive(existing.gps_tracking_enabled) ? 1 : 0),
         has_credential: u.has_credential !== undefined ? u.has_credential : (existing.has_credential !== undefined ? existing.has_credential : 1)
       });
     } else {
       map.set(key, {
         ...u,
-        plain_password: u.plain_password || '123',
+        plain_password: (u.plain_password !== undefined && u.plain_password !== null && u.plain_password !== '') ? u.plain_password : undefined,
         gps_tracking_enabled: isGpsActive(u.gps_tracking_enabled) ? 1 : 0,
         has_credential: u.has_credential !== undefined ? u.has_credential : 1
       });
@@ -662,7 +665,7 @@ export const autoRestoreAndSyncWithServer = async () => {
           needsSync = true;
           break;
         }
-        if (vu.plain_password && vu.plain_password !== su.plain_password) {
+        if (su.plain_password && vu.plain_password && vu.plain_password !== su.plain_password) {
           needsSync = true;
           break;
         }

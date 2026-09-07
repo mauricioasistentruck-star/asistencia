@@ -3,7 +3,7 @@ import {
   UserCheck, QrCode, MapPin, Users, FileSpreadsheet, LogOut, Sun, Moon, 
   Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key, Database
 } from 'lucide-react';
-import { getFullPhotoUrl, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio, isGpsScheduleAllowed } from '../api';
+import { getFullPhotoUrl, getMasterVault, saveMasterVault, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio, isGpsScheduleAllowed } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
 import IphoneModal from './IphoneModal.jsx';
 import WalkieTalkieModal from './WalkieTalkieModal.jsx';
@@ -54,6 +54,18 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
     setChangePassLoading(true);
     try {
       await apiChangeMyPassword(newPassword);
+      try {
+        const currentUser = JSON.parse(localStorage.getItem('asistencia_user') || '{}');
+        if (currentUser && currentUser.id) {
+          currentUser.plain_password = newPassword.trim();
+          localStorage.setItem('asistencia_user', JSON.stringify(currentUser));
+        }
+        const vault = getMasterVault();
+        if (vault && Array.isArray(vault.users)) {
+          vault.users = vault.users.map(u => (u.id === user?.id || u.username === user?.username) ? { ...u, plain_password: newPassword.trim() } : u);
+          saveMasterVault(vault);
+        }
+      } catch (e) {}
       setChangePassSuccess('¡Contraseña actualizada con éxito!');
       setTimeout(() => {
         setShowChangePasswordModal(false);

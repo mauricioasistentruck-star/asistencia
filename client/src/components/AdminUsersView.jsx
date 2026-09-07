@@ -233,9 +233,13 @@ export default function AdminUsersView({ currentUser, theme }) {
       };
       if (editForm.password && editForm.password.trim() !== '') {
         payload.password = editForm.password.trim();
+        payload.plain_password = editForm.password.trim();
       }
 
       const updatedUser = { ...editingUser, ...payload };
+      if (editForm.password && editForm.password.trim() !== '') {
+        updatedUser.plain_password = editForm.password.trim();
+      }
       setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUser : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
 
       const vault = getMasterVault();
@@ -244,6 +248,9 @@ export default function AdminUsersView({ currentUser, theme }) {
 
       const res = await apiUpdateUser(editingUser.id, payload);
       const serverUser = res?.user || updatedUser;
+      if (editForm.password && editForm.password.trim() !== '') {
+        serverUser.plain_password = editForm.password.trim();
+      }
 
       setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)));
       vault.users = vault.users.map(u => u.id === editingUser.id ? { ...u, ...serverUser } : u).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
@@ -507,7 +514,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                     <span className="text-[11px]">Clave:</span>
                   </div>
                   <span className="font-mono text-xs font-black text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
-                    {u.plain_password || '123'}
+                    {u.plain_password || '••••••••'}
                   </span>
                 </div>
               )}

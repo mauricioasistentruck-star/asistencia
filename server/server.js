@@ -303,16 +303,16 @@ app.post('/api/auth/login', (req, res) => {
     if (!isMatch && user.plain_password && user.plain_password === password) {
       isMatch = true;
     }
-    if (!isMatch && password === '123') {
-      isMatch = true;
-    }
 
     if (!isMatch) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-    try {
-      const freshHash = bcrypt.hashSync(password, 10);
-      db.run('UPDATE users SET password_hash = ?, plain_password = ? WHERE id = ?', [freshHash, password, user.id]);
-    } catch (e) {}
+    // Sincronizar hash si no existía previamente (migración segura sin sobreescribir plain_password)
+    if (!user.password_hash) {
+      try {
+        const freshHash = bcrypt.hashSync(password, 10);
+        db.run('UPDATE users SET password_hash = ? WHERE id = ?', [freshHash, user.id]);
+      } catch (e) {}
+    }
 
     const isKiosk = user.role === 'kiosk' || user.role === 'kiosco' || (user.username && user.username.toLowerCase() === 'kiosco') || (user.name && user.name.toLowerCase().includes('kiosco'));
     const resolvedRole = isKiosk ? 'kiosk' : user.role;
