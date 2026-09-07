@@ -1159,14 +1159,16 @@ export default function AdminAttendanceView({ user, theme }) {
                           </td>
                           <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(r)}
-                                title="Modificar Horarios (Admin)"
-                                className={'p-1 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 cursor-pointer'}
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
+                              {isSuperAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(r)}
+                                  title="Ajustar Horario (SuperAdmin)"
+                                  className={'p-1 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 cursor-pointer'}
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1404,7 +1406,7 @@ export default function AdminAttendanceView({ user, theme }) {
                   className="px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black shadow-lg shadow-orange-500/30 flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{editLoading ? 'Guardando...' : 'Autorizar y Guardar Permanentemente'}</span>
+                  <span>{editLoading ? 'Guardando...' : 'Guardar Horario'}</span>
                 </button>
               </div>
             </form>

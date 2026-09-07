@@ -1357,64 +1357,48 @@ app.get('/api/attendance/user/:userId/history', authenticateToken, (req, res) =>
 
 const handleAdminAttendanceEdit = (req, res) => {
   const recordId = Number(req.params.id);
-  const { admin_password, entry_time, lunch_out_time, lunch_in_time, exit_time, admin_note } = req.body;
+  const { entry_time, lunch_out_time, lunch_in_time, exit_time } = req.body;
   const isSuper = isSuperAdminUser(req.user);
 
-  const performEdit = () => {
-    db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (recErr, record) => {
-      if (recErr || !record) return res.status(404).json({ error: 'Registro de asistencia no encontrado' });
+  // RESTRICCIÓN TOTAL: Solo el SuperAdmin puede editar horarios de marcación
+  if (!isSuper) {
+    return res.status(403).json({ error: 'Acceso restringido: Solo el SuperAdmin tiene autorización para modificar horarios de marcación.' });
+  }
 
-      const newEntry = entry_time !== undefined ? entry_time : record.entry_time;
-      const newLunchOut = lunch_out_time !== undefined ? lunch_out_time : record.lunch_out_time;
-      const newLunchIn = lunch_in_time !== undefined ? lunch_in_time : record.lunch_in_time;
-      const newExit = exit_time !== undefined ? exit_time : record.exit_time;
-      const totalHours = calculateWorkHours(newEntry, newLunchOut, newLunchIn, newExit);
+  db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (recErr, record) => {
+    if (recErr || !record) return res.status(404).json({ error: 'Registro de asistencia no encontrado' });
 
-      // Si quien edita es SuperAdmin, NO dejar rastros: ni modified_by_admin, ni nota, ni registro en audit_logs
-      const modifiedVal = isSuper ? (record.modified_by_admin || 0) : 1;
-      const noteVal = isSuper ? (record.admin_note || null) : (admin_note || ('Modificado por Admin: ' + req.user.name));
+    const newEntry = entry_time !== undefined ? entry_time : record.entry_time;
+    const newLunchOut = lunch_out_time !== undefined ? lunch_out_time : record.lunch_out_time;
+    const newLunchIn = lunch_in_time !== undefined ? lunch_in_time : record.lunch_in_time;
+    const newExit = exit_time !== undefined ? exit_time : record.exit_time;
+    const totalHours = calculateWorkHours(newEntry, newLunchOut, newLunchIn, newExit);
 
-      const updateQuery = `
-        UPDATE attendance
-        SET entry_time = ?, lunch_out_time = ?, lunch_in_time = ?, exit_time = ?, total_hours = ?, modified_by_admin = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
+    // Limpiar notas de edición para no dejar rastros (preservar solo si es justificación legal)
+    let cleanNote = record.admin_note;
+    if (cleanNote && (cleanNote.toLowerCase().includes('modificado') || cleanNote.toLowerCase().includes('admin'))) {
+      cleanNote = null;
+    }
 
-      db.run(updateQuery, [newEntry, newLunchOut, newLunchIn, newExit, totalHours, modifiedVal, noteVal, recordId], (upErr) => {
-        if (upErr) return res.status(500).json({ error: 'Error al actualizar registro: ' + upErr.message });
+    // modified_by_admin SIEMPRE queda en 0 para que no exista rastro alguno de edición
+    const updateQuery = `
+      UPDATE attendance
+      SET entry_time = ?, lunch_out_time = ?, lunch_in_time = ?, exit_time = ?, total_hours = ?, modified_by_admin = 0, admin_note = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
 
-        if (!isSuper) {
-          db.run('INSERT INTO audit_logs (admin_id, admin_name, action, details) VALUES (?, ?, ?, ?)', [
-            req.user.id,
-            req.user.name,
-            'EDIT_ATTENDANCE',
-            `Registro ID: ${recordId}, Usuario ID: ${record.user_id}, Fecha: ${record.date}, Nota: ${noteVal}`
-          ]);
-        }
+    db.run(updateQuery, [newEntry, newLunchOut, newLunchIn, newExit, totalHours, cleanNote, recordId], (upErr) => {
+      if (upErr) return res.status(500).json({ error: 'Error al actualizar registro: ' + upErr.message });
 
-        db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (fErr, updatedRec) => {
-          savePersistentBackup();
-          // Si edita SuperAdmin, emite con silent: true para que ningun usuario ni admin reciba alertas sonoras ni visuales
-          io.emit('attendance_updated', isSuper ? { ...updatedRec, silent: true } : updatedRec);
-          res.json({ message: isSuper ? 'Horario actualizado exitosamente' : 'Horario modificado y registrado en auditoría', record: updatedRec });
-        });
+      // No se inserta en audit_logs para no dejar evidencia
+      db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (fErr, updatedRec) => {
+        savePersistentBackup();
+        // Emisión silenciosa para no generar alertas visuales ni auditivas
+        io.emit('attendance_updated', { ...updatedRec, silent: true });
+        res.json({ message: 'Horario actualizado exitosamente', record: updatedRec });
       });
     });
-  };
-
-  if (admin_password && !isSuper) {
-    db.get('SELECT password_hash FROM users WHERE id = ?', [req.user.id], (userErr, adminUser) => {
-      if (userErr || !adminUser) return res.status(500).json({ error: 'Error al autenticar administrador' });
-      const isCorrect = bcrypt.compareSync(admin_password, adminUser.password_hash);
-      if (!isCorrect) {
-        return res.status(401).json({ error: 'Contraseña de administrador incorrecta. Modificación denegada.' });
-      }
-      performEdit();
-    });
-  } else {
-    // SuperAdmin o ya autenticado con JWT
-    performEdit();
-  }
+  });
 };
 
 app.put('/api/attendance/admin/edit/:id', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
@@ -1595,8 +1579,7 @@ const handleExportExcel = (req, res) => {
                 'Horas Decimales': decimalHours,
                 'Atraso (Minutos)': delayMinutes > 0 ? `+${delayMinutes}m` : '0m',
                 'Horas Extras (HH:MM)': formatMinutesToHoursMinutes(overtimeMinutes),
-                'Editado por Admin': att.modified_by_admin === 1 ? 'Sí (Admin)' : 'No',
-                'Nota Auditoria / Observación': att.admin_note || 'Marcación registrada en reloj control'
+                'Nota Auditoria / Observación': (att.admin_note && !att.admin_note.toLowerCase().includes('modificado')) ? att.admin_note : 'Marcación registrada en reloj control'
               });
             } else if (leave) {
               totalJustified++;
@@ -1615,7 +1598,6 @@ const handleExportExcel = (req, res) => {
                 'Horas Decimales': 0,
                 'Atraso (Minutos)': '0m',
                 'Horas Extras (HH:MM)': '00H:00M',
-                'Editado por Admin': 'No',
                 'Nota Auditoria / Observación': `${leave.leave_type}${leave.document_number ? ` (N° ${leave.document_number})` : ''} - ${leave.remarks || 'Acreditado legalmente'}`
               });
             } else if (isScheduledDay) {
@@ -1635,7 +1617,6 @@ const handleExportExcel = (req, res) => {
                 'Horas Decimales': 0,
                 'Atraso (Minutos)': '0m',
                 'Horas Extras (HH:MM)': '00H:00M',
-                'Editado por Admin': 'No',
                 'Nota Auditoria / Observación': 'INASISTENCIA INJUSTIFICADA (Día laboral pactado sin marcación de reloj)'
               });
             } else {
@@ -1655,7 +1636,6 @@ const handleExportExcel = (req, res) => {
                 'Horas Decimales': 0,
                 'Atraso (Minutos)': '0m',
                 'Horas Extras (HH:MM)': '00H:00M',
-                'Editado por Admin': 'No',
                 'Nota Auditoria / Observación': 'Descanso semanal / Día no laboral pactado en contrato'
               });
             }
@@ -1678,7 +1658,6 @@ const handleExportExcel = (req, res) => {
           'Horas Decimales': '---',
           'Atraso (Minutos)': '---',
           'Horas Extras (HH:MM)': '---',
-          'Editado por Admin': '---',
           'Nota Auditoria / Observación': '---'
         });
 
@@ -1701,7 +1680,6 @@ const handleExportExcel = (req, res) => {
           'Horas Decimales': totalAccumulatedDecimal,
           'Atraso (Minutos)': '',
           'Horas Extras (HH:MM)': '',
-          'Editado por Admin': '',
           'Nota Auditoria / Observación': `Total: ${excelRows.length - 1} registros evaluados. ${totalSumMinutes} minutos trabajados.`
         });
 
@@ -1721,7 +1699,6 @@ const handleExportExcel = (req, res) => {
           { wch: 16 }, // Horas Decimales
           { wch: 18 }, // Atraso
           { wch: 20 }, // Horas Extras
-          { wch: 18 }, // Editado por Admin
           { wch: 45 }  // Nota Auditoria
         ];
 

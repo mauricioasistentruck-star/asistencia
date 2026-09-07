@@ -61,6 +61,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
   db.run("ALTER TABLE attendance ADD COLUMN modified_by_admin INTEGER DEFAULT 0", () => {});
 
   // Función maestra: Sincronizar automáticamente todas las licencias activas con la tabla attendance
+  db.run("UPDATE attendance SET modified_by_admin = 0 WHERE modified_by_admin != 0", () => {});
   function syncWorkerLeavesToAttendance(callback) {
     db.all("SELECT * FROM worker_leaves ORDER BY date_from ASC", (err, leaves) => {
       if (err || !Array.isArray(leaves) || leaves.length === 0) {
@@ -82,7 +83,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
               if (row) {
                 if (row.status !== 'JUSTIFICADO') {
                   db.run(
-                    "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
+                    "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 0 WHERE id = ?",
                     [leaveNote, row.id],
                     () => resolve()
                   );
@@ -91,7 +92,7 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
                 }
               } else {
                 db.run(
-                  "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
+                  "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 0)",
                   [targetUserId, currentDStr, leaveNote],
                   () => resolve()
                 );
@@ -846,13 +847,13 @@ function setupDtInspection(app, db, io, JWT_SECRET, requireAdmin, authenticateTo
                 db.get("SELECT id, status, entry_time FROM attendance WHERE user_id = ? AND date = ?", [targetUserId, currentDStr], (checkErr, row) => {
                   if (row) {
                     db.run(
-                      "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 1 WHERE id = ?",
+                      "UPDATE attendance SET status = 'JUSTIFICADO', admin_note = ?, modified_by_admin = 0 WHERE id = ?",
                       [leaveNote, row.id],
                       () => resolve()
                     );
                   } else {
                     db.run(
-                      "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 1)",
+                      "INSERT INTO attendance (user_id, date, status, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, admin_note, modified_by_admin) VALUES (?, ?, 'JUSTIFICADO', '--:--', '--:--', '--:--', '--:--', 0, ?, 0)",
                       [targetUserId, currentDStr, leaveNote],
                       () => resolve()
                     );
