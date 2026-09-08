@@ -221,3 +221,11 @@ html:not(.dark) .border-zinc-800 {
 html:not(.dark) .text-zinc-700 {
   color: #0f172a !important;
 }
+
+
+/* PROTECCIÓN DE SEGURIDAD CONTRA CAPTURAS / IMPRESIÓN */
+@media print {
+  body {
+    display: none !important;
+  }
+}

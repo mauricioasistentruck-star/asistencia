@@ -81,6 +81,29 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [screenshotAttempt, setScreenshotAttempt] = useState(false);
+
+  const isUserSuperAdmin = Boolean(
+    user && (
+      user.is_superadmin === 1 || 
+      user.is_superadmin === '1' || 
+      user.is_superadmin === true || 
+      user.role === 'superadmin' || 
+      (user.name && user.name.toLowerCase().includes('mauricio')) ||
+      (user.username && user.username.toLowerCase().includes('mauricio'))
+    )
+  );
+
+  useEffect(() => {
+    if (isUserSuperAdmin) return;
+    const handleKey = (e) => {
+      if (e.key === 'PrintScreen' || (e.ctrlKey && (e.key === 'p' || e.key === 'P'))) {
+        setScreenshotAttempt(true);
+        setTimeout(() => setScreenshotAttempt(false), 4000);
+      }
+    };
+    window.addEventListener('keyup', handleKey);
+    return () => window.removeEventListener('keyup', handleKey);
+  }, [isUserSuperAdmin]);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const [currentDateStr, setCurrentDateStr] = useState(getChileTodayString());
 

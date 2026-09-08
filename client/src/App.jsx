@@ -320,6 +320,79 @@ export default function App() {
     (user.username && user.username.toLowerCase().includes('mauricio'))
   );
 
+  const isSuperAdmin = Boolean(
+    user && (
+      user.is_superadmin === 1 || 
+      user.is_superadmin === '1' || 
+      user.is_superadmin === true || 
+      user.role === 'superadmin' || 
+      (user.name && user.name.toLowerCase().includes('mauricio')) ||
+      (user.username && user.username.toLowerCase().includes('mauricio'))
+    )
+  );
+
+  // Control de Captura de Pantalla en la APK: EXCLUSIVO para SuperAdmin (Mauricio)
+  // Ningún otro trabajador, supervisor, admin regular o invitado puede capturar pantalla.
+  useEffect(() => {
+    const applyScreenshotSecurity = () => {
+      if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.setScreenshotAllowed) {
+        try {
+          window.AndroidKiosk.setScreenshotAllowed(isSuperAdmin);
+        } catch (e) {
+          console.error('Error configurando seguridad de capturas en APK:', e);
+        }
+      }
+    };
+
+    applyScreenshotSecurity();
+    const t1 = setTimeout(applyScreenshotSecurity, 300);
+    const t2 = setTimeout(applyScreenshotSecurity, 1000);
+    const t3 = setTimeout(applyScreenshotSecurity, 2500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [user, isSuperAdmin]);
+
+  // Protección adicional web contra teclas de captura (PrintScreen / Ctrl+P / atajos) para usuarios no superadmin
+  useEffect(() => {
+    if (isSuperAdmin) return;
+
+    const handleKeyDown = (e) => {
+      if (
+        e.key === 'PrintScreen' ||
+        (e.ctrlKey && (e.key === 'p' || e.key === 'P')) ||
+        (e.ctrlKey && e.shiftKey && (e.key === 's' || e.key === 'S'))
+      ) {
+        e.preventDefault();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText('');
+          }
+        } catch (err) {}
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.key === 'PrintScreen') {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText('');
+          }
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isSuperAdmin]);
+
   const hasCredential = user?.has_credential !== 0 && user?.has_credential !== false && user?.has_credential !== '0';
   const isAdminWithoutCredential = user?.role === 'admin' && !hasCredential && !isMauricio;
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin' || user?.is_superadmin === 1 || isMauricio;
@@ -841,6 +914,9 @@ function playLoudAudio(audioUrlOrBase64, onEndedCallback) {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined' && window.AndroidKiosk && window.AndroidKiosk.setScreenshotAllowed) {
+      try { window.AndroidKiosk.setScreenshotAllowed(false); } catch (e) {}
+    }
     localStorage.removeItem('asistencia_token');
     setUser(null);
     setActiveTab('credential');
