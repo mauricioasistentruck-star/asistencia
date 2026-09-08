@@ -300,24 +300,24 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             }}
           />
         ) : (
-          /* TEMA BLANCO: Ondas Metálicas Cilíndricas Curvas como la Imagen (Sin líneas diagonales del tema negro) */
+          /* TEMA BLANCO: Ondas Metálicas Cilíndricas Curvas Vistosas como la Imagen (Prismático Nítido y Vistoso) */
           <div 
             className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100 overflow-hidden"
             style={{
               background: `
-                radial-gradient(ellipse at 85% 18%, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 48%),
-                linear-gradient(${82 + ((sheenAngle - 65) * 0.25)}deg, 
-                  transparent ${sheenPos - 38}%, 
-                  rgba(216, 180, 254, 0.12) ${sheenPos - 24}%, 
-                  rgba(186, 230, 253, 0.22) ${sheenPos - 12}%, 
-                  rgba(255, 255, 255, 0.75) ${sheenPos}%, 
-                  rgba(254, 240, 138, 0.22) ${sheenPos + 12}%, 
-                  rgba(251, 207, 232, 0.14) ${sheenPos + 24}%, 
-                  transparent ${sheenPos + 38}%
+                radial-gradient(ellipse at 85% 18%, rgba(255, 255, 255, 0.8) 0%, rgba(186, 230, 253, 0.45) 25%, rgba(255, 255, 255, 0) 55%),
+                linear-gradient(${82 + ((sheenAngle - 65) * 0.28)}deg, 
+                  transparent ${sheenPos - 44}%, 
+                  rgba(192, 132, 252, 0.28) ${sheenPos - 30}%, 
+                  rgba(56, 189, 248, 0.55) ${sheenPos - 15}%, 
+                  rgba(255, 255, 255, 0.98) ${sheenPos}%, 
+                  rgba(251, 191, 36, 0.55) ${sheenPos + 15}%, 
+                  rgba(244, 114, 182, 0.30) ${sheenPos + 30}%, 
+                  transparent ${sheenPos + 44}%
                 )
               `,
-              mixBlendMode: 'overlay',
-              opacity: 0.42
+              mixBlendMode: 'screen',
+              opacity: 0.68
             }}
           />
         )}
