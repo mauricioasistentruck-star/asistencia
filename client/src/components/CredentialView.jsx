@@ -282,23 +282,45 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
       )}
 
       {/* TARJETA CREDENCIAL PRINCIPAL AUTO-AJUSTABLE */}
-      <div className={'w-full h-full rounded-3xl p-3 sm:p-4.5 relative overflow-hidden text-center security-watermark flex flex-col justify-between shadow-2xl transition-all ' + (isDark ? 'credential-card-dark text-white security-watermark' : 'credential-card-silver text-slate-900 brushed-metal-texture security-watermark-silver')}>
+      <div className={'w-full h-full rounded-3xl p-3 sm:p-4.5 relative overflow-hidden text-center flex flex-col justify-between shadow-2xl transition-all ' + (isDark ? 'credential-card-dark text-white security-watermark' : 'credential-card-silver text-slate-900')}>
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
         
-        {/* Capa de Brillo Metálico Holográfico en Tono Silver Suave y Claro (No Saturado) */}
-        <div 
-          className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100"
-          style={{
-            background: isDark
-              ? `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 28}%, rgba(234, 88, 12, 0.15) ${sheenPos - 14}%, rgba(255, 175, 60, 0.35) ${sheenPos}%, rgba(249, 115, 22, 0.2) ${sheenPos + 14}%, transparent ${sheenPos + 28}%)`
-              : `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 32}%, rgba(255, 255, 255, 0.15) ${sheenPos - 18}%, rgba(203, 213, 225, 0.4) ${sheenPos - 6}%, rgba(255, 255, 255, 0.75) ${sheenPos}%, rgba(203, 213, 225, 0.4) ${sheenPos + 6}%, rgba(255, 255, 255, 0.15) ${sheenPos + 18}%, transparent ${sheenPos + 32}%)`,
-            WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
-            maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
-            mixBlendMode: isDark ? 'screen' : 'overlay',
-            opacity: isDark ? 0.5 : 0.45
-          }}
-        />
+        {/* Capa de Brillo Holográfico Metálico Diferenciado */}
+        {isDark ? (
+          /* TEMA OSCURO: Destello diagonal a 45° con líneas de seguridad naranja/ámbar */
+          <div 
+            className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100"
+            style={{
+              background: `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 28}%, rgba(234, 88, 12, 0.15) ${sheenPos - 14}%, rgba(255, 175, 60, 0.35) ${sheenPos}%, rgba(249, 115, 22, 0.2) ${sheenPos + 14}%, transparent ${sheenPos + 28}%)`,
+              WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
+              maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
+              mixBlendMode: 'screen',
+              opacity: 0.5
+            }}
+          />
+        ) : (
+          /* TEMA BLANCO: Ondas Metálicas Cilíndricas Curvas como la Imagen (Sin líneas diagonales del tema negro) */
+          <div 
+            className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100 overflow-hidden"
+            style={{
+              background: `
+                radial-gradient(ellipse at 85% 18%, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 48%),
+                linear-gradient(${82 + ((sheenAngle - 65) * 0.25)}deg, 
+                  transparent ${sheenPos - 38}%, 
+                  rgba(216, 180, 254, 0.12) ${sheenPos - 24}%, 
+                  rgba(186, 230, 253, 0.22) ${sheenPos - 12}%, 
+                  rgba(255, 255, 255, 0.75) ${sheenPos}%, 
+                  rgba(254, 240, 138, 0.22) ${sheenPos + 12}%, 
+                  rgba(251, 207, 232, 0.14) ${sheenPos + 24}%, 
+                  transparent ${sheenPos + 38}%
+                )
+              `,
+              mixBlendMode: 'overlay',
+              opacity: 0.42
+            }}
+          />
+        )}
 
         {/* Encabezado Credencial */}
         <div className="flex items-center justify-between mt-0.5 flex-shrink-0">
