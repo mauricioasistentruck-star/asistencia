@@ -361,7 +361,7 @@ export default function AdminUsersView({ currentUser, theme }) {
           <button
             type="button"
             onClick={() => setShowScheduleModal(true)}
-            className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/40 font-black text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            className={'font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 border ' + (isDark ? 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border-blue-500/40' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200')}
             title="Configurar pauta de días laborales por trabajador (medio tiempo, días específicos)"
           >
             <Calendar className="w-4 h-4 text-blue-400" />
@@ -415,7 +415,7 @@ export default function AdminUsersView({ currentUser, theme }) {
             <div
               key={u.id || u.username || u.name}
               className={'border rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-xl transition-all relative overflow-hidden group ' + (
-                isDark ? 'bg-zinc-950/90 border-zinc-800/80 hover:border-orange-500/40' : 'bg-white border-orange-100 hover:border-orange-300'
+                isDark ? 'bg-zinc-950/90 border-zinc-800/80 hover:border-orange-500/40' : 'bg-white border-slate-200 hover:border-orange-300 shadow-sm'
               )}
             >
               {/* Etiqueta de Rol */}
@@ -493,7 +493,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-black text-sm tracking-tight truncate">{u.name}</h4>
+                  <h4 className={'font-black text-sm tracking-tight truncate ' + (isDark ? 'text-white' : 'text-slate-900')}>{u.name}</h4>
                   <div className="text-[11px] text-orange-500 font-mono font-bold mt-0.5 truncate">
                     Login: {u.username || 'usuario'}
                   </div>
@@ -525,7 +525,7 @@ export default function AdminUsersView({ currentUser, theme }) {
                   <button
                     onClick={() => setShowQrModal(u)}
                     className={'w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all cursor-pointer ' + (
-                      isDark ? 'bg-zinc-900 hover:bg-orange-500 hover:text-black border-zinc-700' : 'bg-orange-50 hover:bg-orange-500 hover:text-black border-orange-200'
+                      isDark ? 'bg-zinc-900 hover:bg-orange-500 hover:text-black border-zinc-700 text-zinc-300' : 'bg-slate-100 hover:bg-orange-500 hover:text-black border-slate-200 text-slate-800 font-black'
                     )}
                   >
                     <QrCode className="w-3.5 h-3.5" />

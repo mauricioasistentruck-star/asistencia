@@ -52,6 +52,9 @@
 /* ==========================================================================
    CREDENCIALES
    ========================================================================== */
+/* ==========================================================================
+   CREDENCIALES: MODO OSCURO Y MODO SILVER HOLOGRÁFICO CEPILLADO
+   ========================================================================== */
 .credential-card-dark {
   background: linear-gradient(135deg, #09090b 0%, #18181b 100%);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px 2px rgba(249, 115, 22, 0.25);
@@ -59,11 +62,58 @@
   color: #ffffff;
 }
 
+/* Tarjeta Holográfica Plateada Cepillada (Brushed Silver Metal) */
+.credential-card-silver {
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #f1f5f9 12%,
+    #e2e8f0 26%,
+    #cbd5e1 42%,
+    #f8fafc 58%,
+    #e2e8f0 74%,
+    #f1f5f9 88%,
+    #ffffff 100%
+  );
+  box-shadow: 
+    0 25px 50px -12px rgba(100, 116, 139, 0.25),
+    0 0 25px 2px rgba(203, 213, 225, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95),
+    inset 0 -1px 3px rgba(148, 163, 184, 0.25);
+  border: 2px solid #cbd5e1;
+  color: #0f172a;
+}
+
 .credential-card-light {
-  background: #ffffff !important;
-  color: #000000 !important;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.12), 0 0 25px 2px rgba(249, 115, 22, 0.2) !important;
-  border: 2.5px solid #f97316 !important;
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #f1f5f9 12%,
+    #e2e8f0 26%,
+    #cbd5e1 42%,
+    #f8fafc 58%,
+    #e2e8f0 74%,
+    #f1f5f9 88%,
+    #ffffff 100%
+  ) !important;
+  color: #0f172a !important;
+  box-shadow: 
+    0 25px 50px -12px rgba(100, 116, 139, 0.25),
+    0 0 25px 2px rgba(203, 213, 225, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95),
+    inset 0 -1px 3px rgba(148, 163, 184, 0.25) !important;
+  border: 2px solid #cbd5e1 !important;
+}
+
+/* Micro-textura cepillada metálica realista */
+.brushed-metal-texture {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.15) 0px,
+    rgba(255, 255, 255, 0.15) 1px,
+    rgba(148, 163, 184, 0.08) 1px,
+    rgba(148, 163, 184, 0.08) 2px
+  );
 }
 
 .security-watermark {
@@ -71,6 +121,16 @@
     45deg,
     rgba(255, 175, 80, 0.09) 0px,
     rgba(255, 175, 80, 0.09) 15px,
+    transparent 15px,
+    transparent 30px
+  );
+}
+
+.security-watermark-silver {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(148, 163, 184, 0.08) 0px,
+    rgba(148, 163, 184, 0.08) 15px,
     transparent 15px,
     transparent 30px
   );
@@ -129,7 +189,7 @@ svg {
 }
 
 /* ==========================================================================
-   ALTO CONTRASTE PARA TEMA BLANCO (LIGHT THEME)
+   ALTO CONTRASTE Y LEGIBILIDAD PARA TEMA BLANCO (LIGHT THEME)
    ========================================================================== */
 html:not(.dark) {
   color-scheme: light;
@@ -137,89 +197,76 @@ html:not(.dark) {
 
 html:not(.dark) body {
   background-color: #f8fafc !important;
-  color: #000000 !important;
+  color: #0f172a !important;
 }
 
-/* Encabezados y títulos principales en negro puro */
+/* Títulos con contraste nítido en modo claro */
 html:not(.dark) h1,
 html:not(.dark) h2,
 html:not(.dark) h3,
 html:not(.dark) h4,
 html:not(.dark) h5,
 html:not(.dark) h6 {
-  color: #000000 !important;
-  font-weight: 900 !important;
+  color: #0f172a;
 }
 
-html:not(.dark) p,
-html:not(.dark) label,
-html:not(.dark) td,
-html:not(.dark) th {
-  color: #000000 !important;
-}
-
-/* Textos secundarios legibles */
-html:not(.dark) .text-zinc-400,
-html:not(.dark) .text-zinc-500,
-html:not(.dark) .text-zinc-600,
-html:not(.dark) .text-slate-400,
-html:not(.dark) .text-gray-400 {
-  color: #1e293b !important;
-  font-weight: 700;
-}
-
-html:not(.dark) .text-zinc-300,
-html:not(.dark) .text-zinc-200,
-html:not(.dark) .text-zinc-100 {
-  color: #0f172a !important;
-  font-weight: 700;
-}
-
-/* Tablas en Modo Blanco */
+/* Tablas legibles en Modo Blanco */
 html:not(.dark) table {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border-color: #e2e8f0 !important;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #e2e8f0;
 }
 
 html:not(.dark) th {
-  background-color: #ffedd5 !important;
-  color: #9a3412 !important;
-  border-bottom: 2px solid #fdba74 !important;
-  font-weight: 800 !important;
-}
-
-html:not(.dark) tr {
-  border-color: #e2e8f0 !important;
+  background-color: #f8fafc;
+  color: #334155;
+  border-bottom: 2px solid #e2e8f0;
+  font-weight: 800;
 }
 
 html:not(.dark) tr:hover {
-  background-color: #fff7ed !important;
+  background-color: #f1f5f9;
 }
 
-/* Modales y Formularios en Modo Blanco */
+/* Formularios nítidos en Modo Blanco */
 html:not(.dark) input,
 html:not(.dark) select,
 html:not(.dark) textarea {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border-color: #cbd5e1 !important;
-  font-weight: 600 !important;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 
 html:not(.dark) input::placeholder,
 html:not(.dark) textarea::placeholder {
-  color: #64748b !important;
-  font-weight: 500 !important;
+  color: #94a3b8;
 }
 
-/* Botones y bordes en modo claro */
-html:not(.dark) .border-zinc-800 {
-  border-color: #cbd5e1 !important;
+/* Preservar legibilidad de botones primarios */
+.bg-orange-500,
+.bg-orange-600 {
+  color: #000000 !important;
 }
 
-html:not(.dark) .text-zinc-700 {
-  color: #0f172a !important;
+.bg-orange-500 p,
+.bg-orange-500 span,
+.bg-orange-600 p,
+.bg-orange-600 span {
+  color: #000000 !important;
+}
+
+.bg-emerald-600,
+.bg-blue-600,
+.bg-indigo-600,
+.bg-red-600 {
+  color: #ffffff !important;
+}
+
+.bg-emerald-600 span,
+.bg-blue-600 span,
+.bg-indigo-600 span,
+.bg-red-600 span {
+  color: #ffffff !important;
 }
 
 

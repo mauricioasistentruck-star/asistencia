@@ -734,17 +734,17 @@ export default function AdminAttendanceView({ user, theme }) {
         </div>
 
         {/* Barra de Acciones y Herramientas Elegante y Ordenada */}
-        <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 p-2 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-sm">
+        <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 p-2 rounded-2xl shadow-sm border ' + (isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200')">
           
           {/* GRUPO 1: Vistas y Exportación */}
           <div className="flex flex-wrap items-center gap-1.5">
             {/* Switch de Vista: Resumen / Detalle */}
-            <div className="inline-flex rounded-xl p-0.5 bg-black/70 border border-zinc-800">
+            <div className="inline-flex rounded-xl p-0.5 border ' + (isDark ? 'bg-black/70 border-zinc-800' : 'bg-slate-100 border-slate-200')">
               <button
                 type="button"
                 onClick={() => setActiveSubTab('summary')}
                 className={'px-3 py-1 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
-                  activeSubTab === 'summary' ? 'bg-orange-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                  activeSubTab === 'summary' ? 'bg-orange-500 text-black shadow-sm' : (isDark ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900 font-bold')
                 )}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
@@ -754,7 +754,7 @@ export default function AdminAttendanceView({ user, theme }) {
                 type="button"
                 onClick={() => setActiveSubTab('details')}
                 className={'px-3 py-1 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ' + (
-                  activeSubTab === 'details' ? 'bg-orange-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                  activeSubTab === 'details' ? 'bg-orange-500 text-black shadow-sm' : (isDark ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900 font-bold')
                 )}
               >
                 <Layers className="w-3.5 h-3.5" />
@@ -777,7 +777,7 @@ export default function AdminAttendanceView({ user, theme }) {
             <button
               type="button"
               onClick={handlePrint}
-              className="bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 hover:text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-zinc-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className={'active:scale-95 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ' + (isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-zinc-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 font-bold')}
               title="Imprimir reporte en papel o PDF"
             >
               <Printer className="w-3.5 h-3.5 text-orange-400" />
@@ -791,7 +791,7 @@ export default function AdminAttendanceView({ user, theme }) {
             <button
               type="button"
               onClick={() => setShowWorkerDaysModal(true)}
-              className="bg-blue-600/25 hover:bg-blue-600/40 active:scale-95 text-blue-300 hover:text-white text-xs font-black px-3 py-1.5 rounded-xl border border-blue-500/40 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              className={'active:scale-95 text-xs font-black px-3 py-1.5 rounded-xl border shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ' + (isDark ? 'bg-blue-600/25 hover:bg-blue-600/40 text-blue-300 hover:text-white border-blue-500/40' : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200')}
               title="Configurar días de trabajo específicos por trabajador (medio tiempo o turnos)"
             >
               <Calendar className="w-3.5 h-3.5 text-blue-400" />
@@ -802,7 +802,7 @@ export default function AdminAttendanceView({ user, theme }) {
             <button
               type="button"
               onClick={() => setShowLeavesModal(true)}
-              className="bg-indigo-600/25 hover:bg-indigo-600/40 active:scale-95 text-indigo-300 hover:text-white text-xs font-black px-3 py-1.5 rounded-xl border border-indigo-500/40 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              className={'active:scale-95 text-xs font-black px-3 py-1.5 rounded-xl border shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ' + (isDark ? 'bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-300 hover:text-white border-indigo-500/40' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200')}
               title="Registrar Licencias Médicas y Justificativos Legales"
             >
               <FileText className="w-3.5 h-3.5 text-indigo-400" />
@@ -860,7 +860,7 @@ export default function AdminAttendanceView({ user, theme }) {
             className={'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ' + (
               dateFrom === getChileTodayString() && dateTo === getChileTodayString()
                 ? 'bg-orange-500 text-black border-orange-500 shadow-md font-black scale-105'
-                : 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800'
+                : (isDark ? 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800' : 'bg-slate-100 text-slate-800 hover:bg-orange-500 hover:text-black border-slate-200 font-bold')
             )}
           >
             Hoy
@@ -868,21 +868,21 @@ export default function AdminAttendanceView({ user, theme }) {
           <button
             type="button"
             onClick={() => handleDatePreset('yesterday')}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
+            className={'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800' : 'bg-slate-100 text-slate-800 hover:bg-orange-500 hover:text-black border-slate-300')}
           >
             Ayer
           </button>
           <button
             type="button"
             onClick={() => handleDatePreset('week')}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
+            className={'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800' : 'bg-slate-100 text-slate-800 hover:bg-orange-500 hover:text-black border-slate-300')}
           >
             Últimos 7 Días
           </button>
           <button
             type="button"
             onClick={() => handleDatePreset('month')}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border border-zinc-800 transition-all cursor-pointer"
+            className={'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ' + (isDark ? 'bg-zinc-900 text-zinc-300 hover:bg-orange-500 hover:text-black border-zinc-800' : 'bg-slate-100 text-slate-800 hover:bg-orange-500 hover:text-black border-slate-300')}
           >
             Este Mes
           </button>

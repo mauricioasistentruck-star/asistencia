@@ -282,19 +282,21 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
       )}
 
       {/* TARJETA CREDENCIAL PRINCIPAL AUTO-AJUSTABLE */}
-      <div className={'w-full h-full rounded-3xl p-3 sm:p-4.5 relative overflow-hidden text-center security-watermark flex flex-col justify-between shadow-2xl transition-all ' + (isDark ? 'credential-card-dark text-white' : 'credential-card-light text-zinc-900')}>
+      <div className={'w-full h-full rounded-3xl p-3 sm:p-4.5 relative overflow-hidden text-center security-watermark flex flex-col justify-between shadow-2xl transition-all ' + (isDark ? 'credential-card-dark text-white security-watermark' : 'credential-card-silver text-slate-900 brushed-metal-texture security-watermark-silver')}>
         
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600"></div>
         
-        {/* Capa de Brillo Metálico Holográfico Lineal Reactivo a la Rotación e Inclinación (No Circular) */}
+        {/* Capa de Brillo Metálico Holográfico en Tono Silver Suave y Claro (No Saturado) */}
         <div 
           className="pointer-events-none absolute inset-0 rounded-3xl z-0 transition-all duration-100"
           style={{
-            background: `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 28}%, rgba(234, 88, 12, 0.2) ${sheenPos - 14}%, rgba(255, 175, 60, 0.45) ${sheenPos}%, rgba(249, 115, 22, 0.25) ${sheenPos + 14}%, transparent ${sheenPos + 28}%)`,
+            background: isDark
+              ? `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 28}%, rgba(234, 88, 12, 0.15) ${sheenPos - 14}%, rgba(255, 175, 60, 0.35) ${sheenPos}%, rgba(249, 115, 22, 0.2) ${sheenPos + 14}%, transparent ${sheenPos + 28}%)`
+              : `linear-gradient(${sheenAngle}deg, transparent ${sheenPos - 32}%, rgba(255, 255, 255, 0.15) ${sheenPos - 18}%, rgba(203, 213, 225, 0.4) ${sheenPos - 6}%, rgba(255, 255, 255, 0.75) ${sheenPos}%, rgba(203, 213, 225, 0.4) ${sheenPos + 6}%, rgba(255, 255, 255, 0.15) ${sheenPos + 18}%, transparent ${sheenPos + 32}%)`,
             WebkitMaskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
             maskImage: `repeating-linear-gradient(45deg, black 0px, black 15px, transparent 15px, transparent 30px)`,
-            mixBlendMode: 'screen',
-            opacity: 0.7
+            mixBlendMode: isDark ? 'screen' : 'overlay',
+            opacity: isDark ? 0.5 : 0.45
           }}
         />
 
@@ -316,7 +318,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
 
         {/* FOTO DEL TRABAJADOR GRANDE (DEL MISMO PORTE DEL CÓDIGO QR) */}
         <div className="relative inline-block mx-auto my-auto flex-shrink-0">
-          <div className={'w-[165px] h-[165px] xs:w-[180px] xs:h-[180px] sm:w-[195px] sm:h-[195px] rounded-3xl overflow-hidden border-4 border-orange-500 shadow-2xl mx-auto flex items-center justify-center ' + (isDark ? 'bg-zinc-900' : 'bg-orange-50')}>
+          <div className={'w-[165px] h-[165px] xs:w-[180px] xs:h-[180px] sm:w-[195px] sm:h-[195px] rounded-3xl overflow-hidden border-4 border-orange-500 shadow-2xl mx-auto flex items-center justify-center ' + (isDark ? 'bg-zinc-900' : 'bg-white')}>
             {user?.photo_url ? (
               <img
                 src={getFullPhotoUrl(user.photo_url)}
@@ -337,13 +339,13 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
 
         {/* Datos del Trabajador con Letras Grandes y Claras */}
         <div className="my-auto flex-shrink-0">
-          <h2 className={'text-xl xs:text-2xl sm:text-3xl font-black leading-tight tracking-tight ' + (isDark ? 'text-white' : 'text-black')}>
+          <h2 className={'text-xl xs:text-2xl sm:text-3xl font-black leading-tight tracking-tight ' + (isDark ? 'text-white' : 'text-slate-950')}>
             {user?.name}
           </h2>
           <p className="text-sm xs:text-base sm:text-lg text-orange-500 font-mono font-black mt-0.5">
             RUT: {user?.rut || 'S/N'}
           </p>
-          <p className={'text-xs sm:text-sm font-bold ' + (isDark ? 'text-zinc-300' : 'text-zinc-700')}>
+          <p className={'text-xs sm:text-sm font-bold ' + (isDark ? 'text-zinc-300' : 'text-slate-600 font-bold')}>
             {user?.email}
           </p>
         </div>
@@ -361,7 +363,7 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
           </div>
         </div>
 
-        <p className={'text-xs sm:text-sm font-black flex-shrink-0 ' + (isDark ? 'text-zinc-300' : 'text-zinc-900')}>
+        <p className={'text-xs sm:text-sm font-black flex-shrink-0 ' + (isDark ? 'text-zinc-300' : 'text-slate-800 font-black')}>
           Muestra este código frente a la cámara para marcar asistencia
         </p>
 
@@ -387,14 +389,14 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             {/* Entrada */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.entry_time 
-                ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
-                : 'bg-orange-500/10 border-orange-500/40'
+                ? (isDark ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' : 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-xs')
+                : (isDark ? 'bg-orange-500/10 border-orange-500/40' : 'bg-white/90 border-slate-300 shadow-xs')
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">ENTRADA</span>
+              <span className={'text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate ' + (isDark ? 'text-orange-400' : 'text-orange-600')}>ENTRADA</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.entry_time 
-                  ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
-                  : 'text-orange-500/50'
+                  ? (isDark ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'text-emerald-700 font-black')
+                  : (isDark ? 'text-zinc-500' : 'text-slate-400 font-bold')
               )}>
                 {todayRecord?.entry_time ? todayRecord.entry_time.slice(0, 5) : '--:--'}
               </span>
@@ -403,14 +405,14 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             {/* Salida Colación */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.lunch_out_time 
-                ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
-                : 'bg-orange-500/10 border-orange-500/40'
+                ? (isDark ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' : 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-xs')
+                : (isDark ? 'bg-orange-500/10 border-orange-500/40' : 'bg-white/90 border-slate-300 shadow-xs')
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">SAL. COL.</span>
+              <span className={'text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate ' + (isDark ? 'text-orange-400' : 'text-orange-600')}>SAL. COL.</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.lunch_out_time 
-                  ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
-                  : 'text-orange-500/50'
+                  ? (isDark ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'text-emerald-700 font-black')
+                  : (isDark ? 'text-zinc-500' : 'text-slate-400 font-bold')
               )}>
                 {todayRecord?.lunch_out_time ? todayRecord.lunch_out_time.slice(0, 5) : '--:--'}
               </span>
@@ -419,14 +421,14 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             {/* Entrada Colación */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.lunch_in_time 
-                ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
-                : 'bg-orange-500/10 border-orange-500/40'
+                ? (isDark ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' : 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-xs')
+                : (isDark ? 'bg-orange-500/10 border-orange-500/40' : 'bg-white/90 border-slate-300 shadow-xs')
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">ENT. COL.</span>
+              <span className={'text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate ' + (isDark ? 'text-orange-400' : 'text-orange-600')}>ENT. COL.</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.lunch_in_time 
-                  ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
-                  : 'text-orange-500/50'
+                  ? (isDark ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'text-emerald-700 font-black')
+                  : (isDark ? 'text-zinc-500' : 'text-slate-400 font-bold')
               )}>
                 {todayRecord?.lunch_in_time ? todayRecord.lunch_in_time.slice(0, 5) : '--:--'}
               </span>
@@ -435,14 +437,14 @@ export default function CredentialView({ user, theme, showHistoryModal, setShowH
             {/* Salida */}
             <div className={'border-2 rounded-2xl p-2 text-center transition-all ' + (
               todayRecord?.exit_time 
-                ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
-                : 'bg-orange-500/10 border-orange-500/40'
+                ? (isDark ? 'bg-emerald-500/15 border-emerald-500/70 shadow-lg shadow-emerald-500/10' : 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-xs')
+                : (isDark ? 'bg-orange-500/10 border-orange-500/40' : 'bg-white/90 border-slate-300 shadow-xs')
             )}>
-              <span className="text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate text-orange-500">SALIDA</span>
+              <span className={'text-[10px] sm:text-xs font-black uppercase tracking-tight block truncate ' + (isDark ? 'text-orange-400' : 'text-orange-600')}>SALIDA</span>
               <span className={'text-xs xs:text-sm sm:text-base font-black font-mono mt-0.5 block ' + (
                 todayRecord?.exit_time 
-                  ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' 
-                  : 'text-orange-500/50'
+                  ? (isDark ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'text-emerald-700 font-black')
+                  : (isDark ? 'text-zinc-500' : 'text-slate-400 font-bold')
               )}>
                 {todayRecord?.exit_time ? todayRecord.exit_time.slice(0, 5) : '--:--'}
               </span>

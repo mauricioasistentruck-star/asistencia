@@ -554,7 +554,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
       {/* MODAL / DRAWER LATERAL DE NAVEGACIÓN (ABIERTO AL TOCAR EL LOGO) */}
       {showNavDrawer && isAdmin && (
         <div 
-          className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-start justify-start overflow-hidden"
+          className={'fixed inset-0 z-[99999] flex items-start justify-start overflow-hidden transition-all ' + (isDark ? 'bg-black/85 backdrop-blur-md' : 'bg-slate-900/40 backdrop-blur-sm')}
           style={{
             paddingTop: 'max(env(safe-area-inset-top, 0px) + 8px, 14px)',
             paddingBottom: 'max(env(safe-area-inset-bottom, 0px) + 8px, 14px)',
@@ -564,7 +564,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
           onClick={() => setShowNavDrawer(false)}
         >
           <div
-            className={'w-full max-w-sm rounded-3xl p-4 sm:p-5 shadow-2xl border transition-all flex flex-col max-h-[92vh] overflow-hidden ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-orange-200 text-zinc-900')}
+            className={'w-full max-w-sm rounded-3xl p-4 sm:p-5 shadow-2xl border transition-all flex flex-col max-h-[92vh] overflow-hidden ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xl')}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header del Menú de Navegación */}
@@ -598,7 +598,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (
                       isSelected 
                         ? 'bg-orange-500 text-black border-orange-500 font-black shadow-md shadow-orange-500/30' 
-                        : (isDark ? 'bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-zinc-300' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')
+                        : (isDark ? 'bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-zinc-300' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 hover:border-orange-300 text-slate-800')
                     )}
                   >
                     <div className={'w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ' + (isSelected ? 'bg-black text-orange-400' : item.bg + ' ' + item.color)}>
@@ -608,7 +608,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                       <div className={'text-xs truncate ' + (isSelected ? 'font-black text-black' : (isDark ? 'font-bold text-white' : 'font-black text-black'))}>
                         {item.label}
                       </div>
-                      <div className={'text-[9px] leading-tight truncate ' + (isSelected ? 'text-black/80 font-bold' : (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold'))}>
+                      <div className={'text-[9px] leading-tight truncate ' + (isSelected ? 'text-black/80 font-bold' : (isDark ? 'text-zinc-400' : 'text-slate-500 font-bold'))}>
                         {item.desc}
                       </div>
                     </div>
@@ -623,7 +623,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     setShowNavDrawer(false);
                     onEnterKiosk();
                   }}
-                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900/50 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-orange-400' : 'bg-zinc-100 hover:bg-orange-50 border-zinc-300 text-zinc-800 hover:text-orange-600')}
+                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900/50 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-orange-400' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 text-slate-800 hover:text-orange-600')}
                 >
                   <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
                     <Monitor className="w-4 h-4" />
@@ -647,7 +647,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
       {/* MENÚ FLOTANTE DEL TRABAJADOR / OPCIONES */}
       {showWorkerMenu && (
         <div 
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[99999] flex items-start justify-end overflow-hidden"
+          className={'fixed inset-0 z-[99999] flex items-start justify-end overflow-hidden transition-all ' + (isDark ? 'bg-black/75 backdrop-blur-sm' : 'bg-slate-900/40 backdrop-blur-sm')}
           style={{
             paddingTop: 'max(env(safe-area-inset-top, 0px) + 8px, 14px)',
             paddingBottom: 'max(env(safe-area-inset-bottom, 0px) + 8px, 14px)',
@@ -657,7 +657,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
           onClick={() => setShowWorkerMenu(false)}
         >
           <div
-            className={'w-full max-w-xs rounded-3xl p-4 shadow-2xl border transition-all flex flex-col max-h-[92vh] overflow-hidden ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-orange-300 text-zinc-900')}
+            className={'w-full max-w-xs rounded-3xl p-4 shadow-2xl border transition-all flex flex-col max-h-[92vh] overflow-hidden ' + (isDark ? 'bg-zinc-950 border-orange-500/30 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xl')}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header del Menú */}
@@ -742,7 +742,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     setShowWorkerMenu(false);
                     setShowBackupModal(true);
                   }}
-                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer mb-1 ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-orange-500/30' : 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-zinc-900')}
+                  className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer mb-1 ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-orange-500/30 text-white' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 text-slate-900')}
                 >
                   <div className="w-7 h-7 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-500 flex-shrink-0">
                     <Database className="w-3.5 h-3.5" />
@@ -760,14 +760,14 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   setShowWorkerMenu(false);
                   if (onOpenHistory) onOpenHistory();
                 }}
-                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')}
+                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30 text-white' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 hover:border-orange-300 text-slate-900')}
               >
                 <div className="w-7 h-7 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500 flex-shrink-0">
                   <Clock className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Revisar Marcaciones</div>
-                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold')}>Historial de asistencia</div>
+                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-slate-500 font-bold')}>Historial de asistencia</div>
                 </div>
               </button>
 
@@ -776,7 +776,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                 onClick={() => {
                   toggleTheme();
                 }}
-                className={'w-full p-2.5 rounded-2xl flex items-center justify-between text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')}
+                className={'w-full p-2.5 rounded-2xl flex items-center justify-between text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30 text-white' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 hover:border-orange-300 text-slate-900')}
               >
                 <div className="flex items-center space-x-2.5">
                   <div className="w-7 h-7 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500 flex-shrink-0">
@@ -784,7 +784,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   </div>
                   <div>
                     <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Tema Visual</div>
-                    <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold')}>
+                    <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-slate-500 font-bold')}>
                       {isDark ? 'Negro' : 'Blanco'}
                     </div>
                   </div>
@@ -800,14 +800,14 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   setShowWorkerMenu(false);
                   setShowChangePasswordModal(true);
                 }}
-                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')}
+                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30 text-white' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 hover:border-orange-300 text-slate-900')}
               >
                 <div className="w-7 h-7 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500 flex-shrink-0">
                   <Key className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Cambiar Contraseña</div>
-                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold')}>Actualizar clave personal</div>
+                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-slate-500 font-bold')}>Actualizar clave personal</div>
                 </div>
               </button>
 
@@ -817,14 +817,14 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   setShowWorkerMenu(false);
                   setShowIphoneModal(true);
                 }}
-                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30' : 'bg-orange-50/80 hover:bg-orange-100 border-orange-200 text-zinc-900')}
+                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-orange-500/30 text-white' : 'bg-slate-50 hover:bg-orange-50/80 border-slate-200 hover:border-orange-300 text-slate-900')}
               >
                 <div className="w-7 h-7 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500 flex-shrink-0">
                   <Smartphone className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <div className={'text-xs ' + (isDark ? 'font-bold text-white' : 'font-black text-black')}>Link para iPhone</div>
-                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-800 font-bold')}>iOS WebApp</div>
+                  <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-slate-500 font-bold')}>iOS WebApp</div>
                 </div>
               </button>
 
@@ -834,7 +834,7 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                   setShowWorkerMenu(false);
                   onLogout();
                 }}
-                className="w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 cursor-pointer"
+                className={'w-full p-2.5 rounded-2xl flex items-center space-x-2.5 text-left transition-all border cursor-pointer ' + (isDark ? 'border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400' : 'border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-black')}
               >
                 <div className="w-7 h-7 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400 flex-shrink-0">
                   <LogOut className="w-3.5 h-3.5" />

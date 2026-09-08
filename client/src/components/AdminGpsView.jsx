@@ -778,7 +778,7 @@ export default function AdminGpsView({ theme }) {
       {/* ========================================================================= */}
       {/* 1. BARRA PRINCIPAL UNIFICADA Y ORDENADA (MEJORA DE BOTONES IMAGEN 1)     */}
       {/* ========================================================================= */}
-      <div className="bg-zinc-950/90 border border-zinc-800/80 rounded-3xl p-4 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className={'border rounded-3xl p-4 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4 ' + (isDark ? 'bg-zinc-950/90 border-zinc-800/80 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50')}>
         
         {/* Título y Estado */}
         <div className="flex items-center gap-3">
@@ -786,7 +786,7 @@ export default function AdminGpsView({ theme }) {
             <Navigation className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+            <h2 className={'text-lg sm:text-xl font-black flex items-center gap-2 ' + (isDark ? 'text-white' : 'text-slate-900')}>
               <span>Supervisión GPS & Rutas en Terreno</span>
             </h2>
             <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400 mt-0.5">
@@ -801,13 +801,13 @@ export default function AdminGpsView({ theme }) {
         </div>
 
         {/* GRUPO UNIFICADO DE BOTONES: DISEÑO EXECUTIVE COMMAND CENTER */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 bg-zinc-900/60 p-1.5 rounded-2xl border border-zinc-800/80 backdrop-blur-md shadow-inner">
+        <div className={'flex flex-wrap items-center gap-1.5 sm:gap-2 p-1.5 rounded-2xl border backdrop-blur-md shadow-inner ' + (isDark ? 'bg-zinc-900/60 border-zinc-800/80' : 'bg-slate-100 border-slate-300')}>
           
           {/* Subgrupo Flota */}
           <button
             type="button"
             onClick={handleTurnOffAllGps}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/40 active:scale-95 shadow-sm"
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border ' + (isDark ? 'bg-zinc-950/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border-zinc-800 hover:border-rose-500/40' : 'bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-600 border-slate-300 hover:border-rose-300')}
             title="Apagar el rastreo GPS de toda la flota simultáneamente"
           >
             <Power className="w-3.5 h-3.5 text-rose-500/80" />
@@ -817,7 +817,7 @@ export default function AdminGpsView({ theme }) {
           <button
             type="button"
             onClick={handleRequestFleetPing}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-emerald-950/40 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/60 active:scale-95 shadow-sm"
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border ' + (isDark ? 'bg-zinc-950/80 hover:bg-emerald-950/40 text-emerald-400 hover:text-emerald-300 border-emerald-500/30 hover:border-emerald-500/60' : 'bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 border-emerald-400 hover:border-emerald-500')}
             title="Solicitar ubicación en tiempo real a todos los trabajadores en terreno"
           >
             <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
@@ -834,14 +834,14 @@ export default function AdminGpsView({ theme }) {
             className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 shadow-sm ' + (
               !selectedUser && !selectedSavedRoute
                 ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-zinc-950 border-orange-400/80 shadow-orange-500/20 font-black'
-                : 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border-zinc-800'
+                : (isDark ? 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border-zinc-800' : 'bg-white hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-300')
             )}
             title="Ver todos los trabajadores activos en el mapa simultáneamente"
           >
             <Users className="w-3.5 h-3.5" />
             <span>Ver Todos</span>
             <span className={'px-1.5 py-0.5 rounded-full text-[10px] font-black ' + (
-              !selectedUser && !selectedSavedRoute ? 'bg-black/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'
+              !selectedUser && !selectedSavedRoute ? 'bg-black/20 text-zinc-950' : (isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-slate-200 text-slate-700')
             )}>
               {activeLiveMarkers.length}
             </span>
@@ -854,7 +854,7 @@ export default function AdminGpsView({ theme }) {
             className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 shadow-sm ' + (
               myLocation
                 ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white border-blue-400/80 shadow-blue-500/20 font-black'
-                : 'bg-zinc-950/80 hover:bg-zinc-800/90 text-blue-400 hover:text-blue-300 border-zinc-800'
+                : (isDark ? 'bg-zinc-950/80 hover:bg-zinc-800/90 text-blue-400 hover:text-blue-300 border-zinc-800' : 'bg-white hover:bg-blue-50 text-blue-700 hover:text-blue-900 border-slate-300')
             )}
           >
             <Crosshair className={'w-3.5 h-3.5 ' + (isLocating ? 'animate-spin' : '')} />
@@ -871,7 +871,7 @@ export default function AdminGpsView({ theme }) {
           <button
             type="button"
             onClick={() => setMapLayer(mapLayer === 'street' ? 'satellite' : 'street')}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border border-zinc-800 active:scale-95 shadow-sm"
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border ' + (isDark ? 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border-zinc-800' : 'bg-white hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-300')}
             title="Alternar entre mapa satelital y callejero"
           >
             <Layers className="w-3.5 h-3.5 text-zinc-400" />
@@ -885,7 +885,7 @@ export default function AdminGpsView({ theme }) {
           <button
             type="button"
             onClick={() => setShowHistoryModal(true)}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-orange-400 border border-zinc-800 hover:border-orange-500/30 active:scale-95 shadow-sm"
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border ' + (isDark ? 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-orange-400 border-zinc-800 hover:border-orange-500/30' : 'bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-600 border-slate-300 hover:border-orange-300')}
             title="Ver rutas archivadas o completadas"
           >
             <Route className="w-3.5 h-3.5 text-orange-400" />
@@ -898,7 +898,7 @@ export default function AdminGpsView({ theme }) {
           <button
             type="button"
             onClick={handleManualRefresh}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-200 hover:text-white border border-zinc-800 hover:border-zinc-700 active:scale-95 shadow-sm"
+            className={'h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border ' + (isDark ? 'bg-zinc-950/80 hover:bg-zinc-800/90 text-zinc-200 hover:text-white border-zinc-800 hover:border-zinc-700' : 'bg-white hover:bg-slate-200 text-slate-700 hover:text-slate-900 border-slate-300 hover:border-slate-400')}
             title="Actualizar inmediatamente datos GPS y rutas"
           >
             <RefreshCw className={'w-3.5 h-3.5 text-orange-400 ' + (isRefreshing ? 'animate-spin' : '')} />
@@ -947,11 +947,11 @@ export default function AdminGpsView({ theme }) {
       {/* ========================================================================= */}
       {/* 2. CARRUSEL DE PERSONAL EN TERRENO (LIMPIO, SIN BOTÓN HUÉRFANO)           */}
       {/* ========================================================================= */}
-      <div className="bg-zinc-950/80 border border-zinc-800/80 rounded-3xl p-4 shadow-xl space-y-3">
+      <div className={'border rounded-3xl p-4 shadow-xl space-y-3 ' + (isDark ? 'bg-zinc-950/80 border-zinc-800/80 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50')}>
         <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-orange-500" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400">
+            <h3 className={'text-xs font-black uppercase tracking-wider ' + (isDark ? 'text-zinc-400' : 'text-slate-600')}>
               Personal en Terreno ({workersList.length}) • Toque cualquier trabajador para seguir su recorrido
             </h3>
           </div>
@@ -1026,7 +1026,7 @@ export default function AdminGpsView({ theme }) {
                   </div>
 
                   <div className="overflow-hidden flex-1 min-w-0">
-                    <div className={'font-black text-xs truncate leading-snug ' + (isSelected ? 'text-black' : 'text-white')} title={u.name}>
+                    <div className={'font-black text-xs truncate leading-snug ' + (isSelected ? 'text-black' : (isDark ? 'text-white' : 'text-slate-900'))} title={u.name}>
                       {u.name}
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-1 text-[10px]">
@@ -1071,7 +1071,7 @@ export default function AdminGpsView({ theme }) {
       {/* ========================================================================= */}
       {/* 3. MAPA Y CUADRO DE INFORMACIÓN MEJORADO (MEJORA DE IMAGEN 2)             */}
       {/* ========================================================================= */}
-      <div className="rounded-3xl border border-zinc-800/80 bg-zinc-950 p-3 sm:p-4 shadow-2xl relative space-y-3">
+      <div className={'rounded-3xl border p-3 sm:p-4 shadow-2xl relative space-y-3 ' + (isDark ? 'border-zinc-800/80 bg-zinc-950' : 'border-slate-200 bg-white shadow-slate-200/50')}>
         <div className="w-full h-[580px] rounded-2xl overflow-hidden relative shadow-inner bg-black">
           
           {/* CUADRO FLOTANTE DE INFORMACIÓN SUPERIOR (ACTUALIZADO EN TIEMPO REAL) */}
@@ -1362,7 +1362,7 @@ export default function AdminGpsView({ theme }) {
       {/* ========================================================================= */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="bg-zinc-950 border border-zinc-800 text-white rounded-3xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl">
+          <div className={'rounded-3xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl border ' + (isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-slate-200 text-slate-900')}>
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2.5">
                 <Route className="w-5 h-5 text-orange-500" />
@@ -1376,14 +1376,14 @@ export default function AdminGpsView({ theme }) {
               </button>
             </div>
 
-            <div className="flex items-center gap-3 bg-zinc-900/60 p-3 rounded-2xl border border-zinc-800">
+            <div className={'flex items-center gap-3 p-3 rounded-2xl border ' + (isDark ? 'bg-zinc-900/60 border-zinc-800' : 'bg-slate-50 border-slate-200')}>
               <Calendar className="w-4 h-4 text-orange-400" />
               <span className="text-xs font-bold text-zinc-300">Filtrar por fecha:</span>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-black border border-zinc-700 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer"
+                className={'px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-white border-slate-300 text-slate-900')}
               />
             </div>
 
@@ -1398,16 +1398,16 @@ export default function AdminGpsView({ theme }) {
                 savedRoutes.map((r) => (
                   <div
                     key={r.id}
-                    className="p-3.5 rounded-2xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 hover:border-orange-500/50 transition-all flex items-center justify-between gap-3"
+                    className={'p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ' + (isDark ? 'border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900 hover:border-orange-500/50' : 'border-slate-200 bg-slate-50 hover:bg-orange-50/70 hover:border-orange-300')}
                   >
                     <div>
-                      <div className="font-black text-xs text-white flex items-center gap-2">
+                      <div className={'font-black text-xs flex items-center gap-2 ' + (isDark ? 'text-white' : 'text-slate-900')}>
                         <span>{r.name || 'Ruta sin nombre'}</span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
                           {r.total_distance_km} km
                         </span>
                       </div>
-                      <div className="text-[11px] text-zinc-400 mt-1 flex items-center gap-2 font-mono">
+                      <div className={'text-[11px] mt-1 flex items-center gap-2 font-mono ' + (isDark ? 'text-zinc-400' : 'text-slate-600')}>
                         <span>{r.start_time} - {r.end_time || 'En curso'}</span>
                         <span>•</span>
                         <span>{r.total_points || 0} puntos</span>
