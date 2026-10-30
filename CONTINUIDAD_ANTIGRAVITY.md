@@ -4,7 +4,7 @@
 - **ID en la Nube:** `agy-asistencia`
 - **Módulos / Apps incluidas:** `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`
 - **Ruta en este PC (DESKTOP-MRN2CP5):** `C:\Users\User\Desktop\Asistencia`
-- **Última Fecha de Modificación:** `2026-10-30 14:58:37`
+- **Última Fecha de Modificación:** `2026-10-30 15:00:14`
 - **ULTIMO_PEDIDO_USUARIO:** Permitir al SuperAdmin generar ingresos de asistencia cualquier día del mes sin requerir que otro usuario marque inicio de jornada, modificar horas sin registros de cambios en Excel ni avisos/alertas de modificaciones, y subir inmediatamente a Render.
 - **ULTIMO_AVANCE_IA:** Endpoint `/api/attendance/admin/create` implementado y modal "+ Generar Asistencia" integrado en el panel para creación de marcaciones autónomas en cualquier día del mes. Modificación y creación de horarios completamente silenciosa (sin alertas live a otros usuarios ni logs de auditoría), con sanitización de observaciones en Excel para que toda jornada figure como marcación natural de reloj control. Build de producción compilado y subido a GitHub/Render.
 
@@ -20,6 +20,7 @@
 - ✓ Último requerimiento trabajado: "Permitir al SuperAdmin generar ingresos de asistencia cualquier día del mes sin requerir que otro usuario marque inicio de jornada, modificar horas sin registros de cambios en Excel ni avisos/alertas de modificaciones, y subir inmediatamente a Render."
 
 ## 📂 Últimos Archivos Trabajados (Punto Exacto donde se dejó el proyecto)
+- `manual_imagenes\01_login_screen.png (Modificado: 30-10-2026 15:00)`
 - `client\android\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml (Modificado: 30-10-2026 14:58)`
 - `client\android\app\src\main\res\drawable-port-mdpi\splash.png (Modificado: 30-10-2026 14:58)`
 - `.gitignore (Modificado: 30-10-2026 14:58)`
@@ -27,7 +28,6 @@
 - `server\public\index.html (Modificado: 30-10-2026 14:55)`
 - `client\src\components\AdminAttendanceView.jsx (Modificado: 30-10-2026 14:55)`
 - `server\uploads\leaves\licencia_1788579584656_u8.pdf (Modificado: 30-10-2026 14:54)`
-- `server\uploads\user_nicolas.svg (Modificado: 30-10-2026 14:51)`
 
 ## 🤖 Instrucción Automática para Antigravity AI
 Cuando el usuario pida trabajar o continuar este proyecto (`Asistencia` o cualquiera de sus módulos: `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`):
