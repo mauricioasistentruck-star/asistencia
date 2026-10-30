@@ -1,12 +1,12 @@
-﻿# 🧠 MEMORIA DE CONTINUIDAD ANTIGRAVITY CLOUD HUB
+# 🧠 MEMORIA DE CONTINUIDAD ANTIGRAVITY CLOUD HUB
 
 - **Nombre Oficial del Proyecto:** `Asistencia`
 - **ID en la Nube:** `agy-asistencia`
 - **Módulos / Apps incluidas:** `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`
 - **Ruta en este PC (DESKTOP-MRN2CP5):** `C:\Users\User\Desktop\Asistencia`
-- **Última Fecha de Modificación:** `2026-10-30 17:10:17`
-- **ULTIMO_PEDIDO_USUARIO:** Si la hora de marcación de cualquier persona es cerca de las 17:45 horas, marca hora de salida; si la persona no marcó la hora de ir y volver a colación, marca solo la salida.
-- **ULTIMO_AVANCE_IA:** Modificado el procesador de escaneo `/api/attendance/scan` en `server/server.js`. Si un trabajador tiene entrada previa y realiza una marcación en el horario de final de jornada cerca de las 17:45 (desde las 16:30 en adelante), el sistema registra inmediatamente la HORA DE SALIDA de la jornada (`exit_time`), sin exigir ni forzar colación. Si el trabajador no marcó ir y volver a colación, dichos campos se conservan vacíos y se calcula la jornada laboral directa entre entrada y salida. Desplegado a Render.
+- **Última Fecha de Modificación:** `2026-10-30 17:23:00`
+- **ULTIMO_PEDIDO_USUARIO:** La regla de no marcar colación y registrar salida directa es para marcaciones después de las 17:45 horas de lunes a jueves (bajo ningún otro horario), y el viernes después de las 17:15 horas; y si en algún momento el horario de salida cambia, la regla siempre será exactamente 15 minutos antes de la hora de finalización de la jornada.
+- **ULTIMO_AVANCE_IA:** Implementada la función `getDirectExitThresholdMinutes()` en `server/server.js`, vinculada a `cachedWorkSchedule`. Calcula el umbral exactamente 15 minutos antes de la hora oficial de salida: Lunes a Jueves a partir de las 17:45 hrs (salida oficial 18:00), y Viernes a partir de las 17:15 hrs (salida oficial 17:30). Bajo cualquier horario previo o intermedio se mantiene el ciclo regular de colación. Si el horario oficial es modificado por el SuperAdmin, el umbral se recalcula dinámicamente. Desplegado a Render.
 
 ## 🛠️ Resumen de Implementaciones Generales Realizadas en el Proyecto
 - ✓ Control de asistencia de personal con lectura de código QR y validación de coordenadas GPS en tiempo real.
@@ -20,14 +20,14 @@
 - ✓ Último requerimiento trabajado: "Si la hora de marcación de cualquier persona es cerca de las 17:45 horas, marca hora de salida; si la persona no marcó la hora de ir y volver a colación, marca solo la salida."
 
 ## 📂 Últimos Archivos Trabajados (Punto Exacto donde se dejó el proyecto)
-- `server\server.js (Modificado: 30-10-2026 17:10)`
+- `client\android\app\src\main\java\com\asistencia\qrcontrol\MainActivity.java (Modificado: 30-10-2026 17:17)`
+- `server\asistencia.db-wal (Modificado: 30-10-2026 17:17)`
+- `server\asistencia.db-shm (Modificado: 30-10-2026 17:17)`
+- `server\server.js (Modificado: 30-10-2026 17:17)`
+- `client\android\app\src\main\AndroidManifest.xml (Modificado: 30-10-2026 17:16)`
+- `client\android\app\proguard-rules.pro (Modificado: 30-10-2026 17:16)`
+- `client\android\app\build.gradle (Modificado: 30-10-2026 17:16)`
 - `server\public\logo.png (Modificado: 30-10-2026 16:49)`
-- `server\public\index.html (Modificado: 30-10-2026 16:47)`
-- `client\src\components\AdminAttendanceView.jsx (Modificado: 30-10-2026 16:46)`
-- `client\android\app\capacitor.build.gradle (Modificado: 30-10-2026 16:45)`
-- `server\uploads\leaves\licencia_1788579584656_u8.pdf (Modificado: 30-10-2026 16:45)`
-- `client\src\components\Navbar.jsx (Modificado: 30-10-2026 16:43)`
-- `server\uploads\leaves\licencia_test_cloud_restore.jpeg (Modificado: 30-10-2026 15:59)`
 
 ## 🤖 Instrucción Automática para Antigravity AI
 Cuando el usuario pida trabajar o continuar este proyecto (`Asistencia` o cualquiera de sus módulos: `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`):

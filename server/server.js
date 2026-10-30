@@ -185,6 +185,29 @@ function calculateWorkHours(entry, lunchOut, lunchIn, exit) {
   return totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : 0;
 }
 
+// Calcula el umbral de marcación directa de salida (15 minutos antes del fin oficial de jornada)
+// - Lunes a Jueves: 18:00 - 15 min = 17:45
+// - Viernes: 17:30 - 15 min = 17:15
+// - Si se actualiza el horario oficial, se adapta automáticamente a 15 min antes de la hora pactada
+function getDirectExitThresholdMinutes(dateStr, schedule = cachedWorkSchedule) {
+  let exitStr = "18:00";
+  try {
+    const [y, m, d] = (dateStr || getLocalDateString()).split('-').map(Number);
+    const dayOfWeek = new Date(y, m - 1, d).getDay(); // 0=Dom, 1=Lun, ..., 5=Vie, 6=Sab
+    if (dayOfWeek === 5) {
+      exitStr = schedule?.friday?.exit || "17:30";
+    } else {
+      exitStr = schedule?.monday_thursday?.exit || "18:00";
+    }
+  } catch (e) {
+    exitStr = "18:00";
+  }
+
+  const exitMins = parseTimeToMinutes(exitStr);
+  if (exitMins === null) return 1065; // Fallback: 17:45
+  return exitMins - 15;
+}
+
 function calculateDelayMinutesServer(record, schedule = cachedWorkSchedule) {
   if (!record) return 0;
   let stdEntry = '09:00';
@@ -1161,10 +1184,12 @@ app.post('/api/attendance/scan', (req, res) => {
         });
       } else {
         const currentMinutes = parseTimeToMinutes(currentTime);
-        // Si la marcación es cerca de las 17:45 horas (desde las 16:30 en adelante, fin de jornada)
-        // y el trabajador ya tiene entrada registrada pero no tiene salida:
-        // Se registra DIRECTAMENTE la HORA DE SALIDA, omitiendo la colación si no la marcó.
-        const isNearExitTime = currentMinutes !== null && currentMinutes >= 990; // 16:30 hrs en adelante
+        // Regla de marcación directa de salida (siempre 15 minutos antes del término de la jornada):
+        // - Lunes a Jueves: marcaciones después de las 17:45 horas (bajo ningún otro horario).
+        // - Viernes: marcaciones después de las 17:15 horas (la jornada finaliza antes).
+        // - Dinámico: si el horario oficial cambia, siempre será 15 minutos antes de la salida fijada.
+        const exitThresholdMinutes = getDirectExitThresholdMinutes(today, cachedWorkSchedule);
+        const isNearExitTime = currentMinutes !== null && currentMinutes >= exitThresholdMinutes;
 
         if (!record.entry_time || record.entry_time === "--:--" || record.entry_time === "--:--:--") {
           markType = 'entry_time';
