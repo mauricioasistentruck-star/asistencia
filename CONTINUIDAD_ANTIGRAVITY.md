@@ -1,12 +1,12 @@
-﻿# 🧠 MEMORIA DE CONTINUIDAD ANTIGRAVITY CLOUD HUB
+# 🧠 MEMORIA DE CONTINUIDAD ANTIGRAVITY CLOUD HUB
 
 - **Nombre Oficial del Proyecto:** `Asistencia`
 - **ID en la Nube:** `agy-asistencia`
 - **Módulos / Apps incluidas:** `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`
 - **Ruta en este PC (DESKTOP-MRN2CP5):** `C:\Users\User\Desktop\Asistencia`
-- **Última Fecha de Modificación:** `2026-10-30 15:00:14`
-- **ULTIMO_PEDIDO_USUARIO:** Permitir al SuperAdmin generar ingresos de asistencia cualquier día del mes sin requerir que otro usuario marque inicio de jornada, modificar horas sin registros de cambios en Excel ni avisos/alertas de modificaciones, y subir inmediatamente a Render.
-- **ULTIMO_AVANCE_IA:** Endpoint `/api/attendance/admin/create` implementado y modal "+ Generar Asistencia" integrado en el panel para creación de marcaciones autónomas en cualquier día del mes. Modificación y creación de horarios completamente silenciosa (sin alertas live a otros usuarios ni logs de auditoría), con sanitización de observaciones en Excel para que toda jornada figure como marcación natural de reloj control. Build de producción compilado y subido a GitHub/Render.
+- **Última Fecha de Modificación:** `2026-10-30 16:05:00`
+- **ULTIMO_PEDIDO_USUARIO:** El panel de registro de asistencia y reportes no debe verse las marcaciones con scroll horizontal, muestra en la pantalla completa el registro individual de asistencia de todos los trabajadores.
+- **ULTIMO_AVANCE_IA:** Eliminado el scroll horizontal en el panel de asistencia y reportes. Se expandió el contenedor a ancho de pantalla completo (`w-full px-2 sm:px-4 md:px-6`), se configuró la pestaña de 'Registro Individual' (`details`) como vista predeterminada, se removieron anchos mínimos rígidos (`min-w-[920px]` y anchos forzados por columna) y `whitespace-nowrap` en celdas para que las columnas se distribuyan proporcionalmente sin desbordamiento. Frontend compilado y desplegado a Render.
 
 ## 🛠️ Resumen de Implementaciones Generales Realizadas en el Proyecto
 - ✓ Control de asistencia de personal con lectura de código QR y validación de coordenadas GPS en tiempo real.
@@ -20,14 +20,14 @@
 - ✓ Último requerimiento trabajado: "Permitir al SuperAdmin generar ingresos de asistencia cualquier día del mes sin requerir que otro usuario marque inicio de jornada, modificar horas sin registros de cambios en Excel ni avisos/alertas de modificaciones, y subir inmediatamente a Render."
 
 ## 📂 Últimos Archivos Trabajados (Punto Exacto donde se dejó el proyecto)
-- `manual_imagenes\01_login_screen.png (Modificado: 30-10-2026 15:00)`
-- `client\android\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml (Modificado: 30-10-2026 14:58)`
-- `client\android\app\src\main\res\drawable-port-mdpi\splash.png (Modificado: 30-10-2026 14:58)`
-- `.gitignore (Modificado: 30-10-2026 14:58)`
-- `server\public\silver-metal-card.png (Modificado: 30-10-2026 14:56)`
-- `server\public\index.html (Modificado: 30-10-2026 14:55)`
-- `client\src\components\AdminAttendanceView.jsx (Modificado: 30-10-2026 14:55)`
-- `server\uploads\leaves\licencia_1788579584656_u8.pdf (Modificado: 30-10-2026 14:54)`
+- `server\public\index.html (Modificado: 30-10-2026 16:00)`
+- `client\src\components\AdminAttendanceView.jsx (Modificado: 30-10-2026 16:00)`
+- `server\uploads\leaves\licencia_test_cloud_restore.jpeg (Modificado: 30-10-2026 15:59)`
+- `server\uploads\leaves\licencia_1788500281286_u1.pdf (Modificado: 30-10-2026 15:59)`
+- `server\uploads\leaves\licencia_1788500189403_u1.pdf (Modificado: 30-10-2026 15:59)`
+- `server\uploads\user_bastian.svg (Modificado: 30-10-2026 15:58)`
+- `server\public\silver-metal-card.png (Modificado: 30-10-2026 15:58)`
+- `client\android\app\src\main\res\drawable-land-hdpi\splash.png (Modificado: 30-10-2026 15:57)`
 
 ## 🤖 Instrucción Automática para Antigravity AI
 Cuando el usuario pida trabajar o continuar este proyecto (`Asistencia` o cualquiera de sus módulos: `iniciar_servidor, iniciar_servidor_nube_publica, iniciar_web_pc, ControlAsistencia, ControlAsistencia1`):
