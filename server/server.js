@@ -1160,6 +1160,12 @@ app.post('/api/attendance/scan', (req, res) => {
           return res.json(payload);
         });
       } else {
+        const currentMinutes = parseTimeToMinutes(currentTime);
+        // Si la marcación es cerca de las 17:45 horas (desde las 16:30 en adelante, fin de jornada)
+        // y el trabajador ya tiene entrada registrada pero no tiene salida:
+        // Se registra DIRECTAMENTE la HORA DE SALIDA, omitiendo la colación si no la marcó.
+        const isNearExitTime = currentMinutes !== null && currentMinutes >= 990; // 16:30 hrs en adelante
+
         if (!record.entry_time || record.entry_time === "--:--" || record.entry_time === "--:--:--") {
           markType = 'entry_time';
           markLabel = '1. ENTRADA';
@@ -1174,6 +1180,20 @@ app.post('/api/attendance/scan', (req, res) => {
           // Auto-activar GPS para personal en turno al marcar entrada
           db.run('UPDATE users SET gps_tracking_enabled = 1 WHERE id = ?', [user.id]);
           io.emit('user_gps_toggled', { userId: user.id, gps_tracking_enabled: 1 });
+        } else if (isNearExitTime && (!record.exit_time || record.exit_time === "--:--" || record.exit_time === "--:--:--")) {
+          // MARCAR DIRECTAMENTE HORA DE SALIDA (cerca de las 17:45 horas o fin de jornada)
+          // Si no marcó colación, solo queda registrada la salida sin alterar los campos de colación.
+          markType = 'exit_time';
+          markLabel = '4. SALIDA DE JORNADA';
+          const calculatedHours = calculateWorkHours(record.entry_time, record.lunch_out_time, record.lunch_in_time, currentTime);
+          db.run('UPDATE attendance SET exit_time = ?, total_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [currentTime, calculatedHours, record.id], () => {
+            const payload = { success: true, type: markType, label: markLabel, time: currentTime, date: today, user, userId: user.id, user_id: user.id, rut: user.rut, total_hours: calculatedHours };
+            io.emit('attendance_marked', payload);
+            io.emit('attendance_updated', payload);
+            io.emit('scan_registered', payload);
+            savePersistentBackup();
+            return res.json(payload);
+          });
         } else if (!record.lunch_out_time || record.lunch_out_time === "--:--" || record.lunch_out_time === "--:--:--") {
           markType = 'lunch_out_time';
           markLabel = '2. SALIDA A COLACIÓN';
