@@ -145,6 +145,41 @@ export default function AdminAttendanceView({ user, theme }) {
     (user.username || '').toLowerCase().includes('mauricio')
   );
 
+  // Control de Modificación y Generación de Asistencia (Exclusivo SuperAdmin)
+  const [canEditAttendance, setCanEditAttendance] = useState(() => {
+    if (!isSuperAdmin) return false;
+    try {
+      return localStorage.getItem('asistencia_superadmin_edit_mode') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const handleModeChange = (e) => {
+      if (!isSuperAdmin) {
+        setCanEditAttendance(false);
+        return;
+      }
+      if (e && e.detail && typeof e.detail.active === 'boolean') {
+        setCanEditAttendance(e.detail.active);
+      } else {
+        try {
+          setCanEditAttendance(localStorage.getItem('asistencia_superadmin_edit_mode') === 'true');
+        } catch(err) {
+          setCanEditAttendance(false);
+        }
+      }
+    };
+
+    window.addEventListener('asistencia_edit_mode_toggled', handleModeChange);
+    window.addEventListener('storage', handleModeChange);
+    return () => {
+      window.removeEventListener('asistencia_edit_mode_toggled', handleModeChange);
+      window.removeEventListener('storage', handleModeChange);
+    };
+  }, [isSuperAdmin]);
+
   const parseTimeToMinutes = (t) => {
     if (!t) return null;
     const parts = t.trim().split(':').map(Number);
@@ -587,6 +622,7 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   const handleDeleteRecord = async (recordId) => {
+    if (!canEditAttendance) return;
     if (!window.confirm('¿Está seguro de que desea eliminar permanentemente este registro de marcación?')) return;
 
     try {
@@ -601,6 +637,7 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   const openEditModal = (rec) => {
+    if (!canEditAttendance) return;
     setEditingRecord(rec);
     setEditForm({
       entry_time: rec.entry_time || '',
@@ -615,6 +652,7 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   const openCreateModal = () => {
+    if (!canEditAttendance) return;
     const defaultUserId = selectedUserId || (usersList.length > 0 ? String(usersList[0].id) : '');
     setCreateForm({
       user_id: defaultUserId,
@@ -630,6 +668,7 @@ export default function AdminAttendanceView({ user, theme }) {
   };
 
   const openCreateModalForMissing = (missingRec) => {
+    if (!canEditAttendance) return;
     setCreateForm({
       user_id: String(missingRec.user_id),
       date: missingRec.date,
@@ -877,8 +916,8 @@ export default function AdminAttendanceView({ user, theme }) {
               <span>Licencias DT</span>
             </button>
 
-            {/* Generar Asistencia (SuperAdmin) */}
-            {isSuperAdmin && (
+            {/* Generar Asistencia (SuperAdmin - Solo si está activo desde perfil) */}
+            {isSuperAdmin && canEditAttendance && (
               <button
                 type="button"
                 onClick={openCreateModal}
@@ -1131,11 +1170,11 @@ export default function AdminAttendanceView({ user, theme }) {
                             setSelectedUserId(worker.id);
                             setActiveSubTab('details');
                           }}
-                          title="Ver y Gestionar Marcaciones de este Trabajador"
+                          title={canEditAttendance ? "Ver y Gestionar Marcaciones de este Trabajador" : "Ver Marcaciones de este Trabajador"}
                           className="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 whitespace-nowrap"
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Ver / Editar</span>
+                          {canEditAttendance ? <Edit3 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                          <span>{canEditAttendance ? 'Ver / Editar' : 'Ver Registros'}</span>
                         </button>
                       </div>
                     </td>
@@ -1209,7 +1248,7 @@ export default function AdminAttendanceView({ user, theme }) {
                             </span>
                           </td>
                           <td className="py-2.5 px-2 text-right print:hidden">
-                            {isSuperAdmin ? (
+                            {isSuperAdmin && canEditAttendance ? (
                               <button
                                 type="button"
                                 onClick={() => openCreateModalForMissing(r)}
@@ -1253,7 +1292,7 @@ export default function AdminAttendanceView({ user, theme }) {
                           </td>
                           <td className="py-2.5 px-2 text-right print:hidden">
                             <div className="flex items-center justify-end gap-1">
-                              {isSuperAdmin && (
+                              {isSuperAdmin && canEditAttendance ? (
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(r)}
@@ -1262,6 +1301,8 @@ export default function AdminAttendanceView({ user, theme }) {
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
+                              ) : (
+                                <span className="text-zinc-600 text-xs font-mono">--</span>
                               )}
                             </div>
                           </td>
@@ -1340,23 +1381,29 @@ export default function AdminAttendanceView({ user, theme }) {
                         </td>
                         <td className="py-2.5 px-2 text-right print:hidden">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(r)}
-                              title="Modificar Horarios (Admin)"
-                              className="p-1.5 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {isSuperAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteRecord(r.id)}
-                                title="Eliminar Marcación (SuperAdmin)"
-                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            {canEditAttendance ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(r)}
+                                  title="Modificar Horarios (SuperAdmin)"
+                                  className="p-1.5 rounded-lg text-zinc-400 hover:text-orange-500 hover:bg-orange-500/10 cursor-pointer transition-colors"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRecord(r.id)}
+                                    title="Eliminar Marcación (SuperAdmin)"
+                                    className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-zinc-600 text-xs font-mono">--</span>
                             )}
                           </div>
                         </td>

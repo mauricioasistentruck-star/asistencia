@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   UserCheck, QrCode, MapPin, Users, FileSpreadsheet, LogOut, Sun, Moon, 
-  Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key, Database
+  Smartphone, Monitor, Clock, ChevronDown, Sparkles, X, Menu, Compass, ShieldCheck, Radio, Mic, Play, Square, CheckCircle, Key, Database, Lock, Unlock
 } from 'lucide-react';
 import { getFullPhotoUrl, getMasterVault, saveMasterVault, apiStartGpsRoute, apiFinishGpsRoute, apiGetActiveGpsRoute, apiSendGpsPoint, apiChangeMyPassword, mergeRoutesToVault, getChileTodayString, formatChileTime, unlockIOSAudio, isGpsScheduleAllowed } from '../api';
 import { Geolocation } from '@capacitor/geolocation';
@@ -28,6 +28,22 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
   const [showWalkieTalkie, setShowWalkieTalkie] = useState(false);
   const [walkieTab, setWalkieTab] = useState('walkie');
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [attendanceEditActive, setAttendanceEditActive] = useState(() => {
+    try {
+      return localStorage.getItem('asistencia_superadmin_edit_mode') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleToggleAttendanceEdit = () => {
+    const nextState = !attendanceEditActive;
+    setAttendanceEditActive(nextState);
+    try {
+      localStorage.setItem('asistencia_superadmin_edit_mode', nextState ? 'true' : 'false');
+    } catch(e) {}
+    window.dispatchEvent(new CustomEvent('asistencia_edit_mode_toggled', { detail: { active: nextState } }));
+  };
 
   // Estados Cambio de Contraseña
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -752,6 +768,76 @@ export default function Navbar({ user, activeTab, setActiveTab, onLogout, onEnte
                     <div className={'text-[9px] ' + (isDark ? 'text-zinc-400' : 'text-zinc-700 font-bold')}>Exportar e Importar todo (.json)</div>
                   </div>
                 </button>
+              )}
+
+              {/* Opción Exclusiva SuperAdmin: Activar / Desactivar Modificación y Generación de Asistencias */}
+              {isSuperAdminUser && (
+                <div className={'w-full p-2.5 rounded-2xl border transition-all mb-1 ' + (
+                  attendanceEditActive
+                    ? (isDark ? 'bg-emerald-950/30 border-emerald-500/50 shadow-lg shadow-emerald-950/20' : 'bg-emerald-50/90 border-emerald-300 shadow-sm')
+                    : (isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-slate-50 border-slate-200')
+                )}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <div className={'w-7 h-7 rounded-xl border flex items-center justify-center flex-shrink-0 transition-all ' + (
+                        attendanceEditActive
+                          ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                      )}>
+                        {attendanceEditActive ? (
+                          <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Lock className="w-3.5 h-3.5 text-zinc-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className={'text-xs font-black truncate ' + (
+                          attendanceEditActive 
+                            ? (isDark ? 'text-emerald-400' : 'text-emerald-800')
+                            : (isDark ? 'text-zinc-300' : 'text-slate-800')
+                        )}>
+                          Modificar y Crear Asistencia
+                        </div>
+                        <div className={'text-[9px] font-bold leading-tight truncate ' + (
+                          attendanceEditActive
+                            ? (isDark ? 'text-emerald-300/80' : 'text-emerald-700')
+                            : (isDark ? 'text-zinc-500' : 'text-slate-500')
+                        )}>
+                          {attendanceEditActive ? 'Botones de edición y creación activos' : 'Botones ocultos y bloqueados'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botón Switch Toggle */}
+                    <button
+                      type="button"
+                      onClick={handleToggleAttendanceEdit}
+                      title={attendanceEditActive ? 'Desactivar edición y creación' : 'Activar edición y creación'}
+                      className={'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ' + (
+                        attendanceEditActive ? 'bg-emerald-500' : 'bg-zinc-700'
+                      )}
+                    >
+                      <span
+                        className={'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ' + (
+                          attendanceEditActive ? 'translate-x-5' : 'translate-x-0'
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mt-1.5 pt-1.5 border-t border-dashed border-zinc-700/50 flex items-center justify-between text-[9px]">
+                    <span className={'font-mono font-bold uppercase ' + (isDark ? 'text-zinc-500' : 'text-zinc-600')}>
+                      Perfil SuperAdmin
+                    </span>
+                    <span className={'px-1.5 py-0.5 rounded-full font-black text-[9px] ' + (
+                      attendanceEditActive 
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse' 
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                    )}>
+                      {attendanceEditActive ? '● VISIBLES' : '○ OCULTOS'}
+                    </span>
+                  </div>
+                </div>
               )}
 
               {/* Opción 1: Revisar Marcaciones */}
