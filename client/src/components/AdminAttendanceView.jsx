@@ -2,10 +2,11 @@ import WorkerLeavesModal from './WorkerLeavesModal.jsx';
 import WorkerScheduleModal from './WorkerScheduleModal.jsx';
 import { apiDtGetActiveSession } from '../api';
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save, FileText } from 'lucide-react';
+import { FileSpreadsheet, Download, Filter, Edit3, Lock, ShieldAlert, CheckCircle2, Clock, Radio, Calendar, Trash2, Printer, AlertTriangle, User, ChevronRight, TrendingUp, AlertCircle, CheckCircle, Search, RefreshCw, BarChart3, Layers, Save, FileText, PlusCircle } from 'lucide-react';
 import { 
   apiGetAttendanceRecords, 
   apiGetUsers, 
+  apiAdminCreateAttendance,
   apiAdminEditAttendance, 
   apiDeleteAttendanceRecord, apiPurgeAllAttendance, 
   getExportExcelUrl, 
@@ -110,6 +111,20 @@ export default function AdminAttendanceView({ user, theme }) {
   const [showLeavesModal, setShowLeavesModal] = useState(false);
   const [showWorkerDaysModal, setShowWorkerDaysModal] = useState(false);
   const [dtInspectionNotice, setDtInspectionNotice] = useState(null);
+
+  // Generación Directa de Asistencia (SuperAdmin)
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    user_id: '',
+    date: getChileTodayString(),
+    entry_time: '08:30:00',
+    lunch_out_time: '13:00:00',
+    lunch_in_time: '14:00:00',
+    exit_time: '18:30:00'
+  });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createSuccess, setCreateSuccess] = useState('');
 
   // Horario Laboral Oficial
   const [workSchedule, setWorkSchedule] = useState({
@@ -599,6 +614,59 @@ export default function AdminAttendanceView({ user, theme }) {
     setEditSuccess('');
   };
 
+  const openCreateModal = () => {
+    const defaultUserId = selectedUserId || (usersList.length > 0 ? String(usersList[0].id) : '');
+    setCreateForm({
+      user_id: defaultUserId,
+      date: dateFrom || getChileTodayString(),
+      entry_time: '08:30:00',
+      lunch_out_time: '13:00:00',
+      lunch_in_time: '14:00:00',
+      exit_time: '18:30:00'
+    });
+    setCreateError('');
+    setCreateSuccess('');
+    setShowCreateModal(true);
+  };
+
+  const openCreateModalForMissing = (missingRec) => {
+    setCreateForm({
+      user_id: String(missingRec.user_id),
+      date: missingRec.date,
+      entry_time: '08:30:00',
+      lunch_out_time: '13:00:00',
+      lunch_in_time: '14:00:00',
+      exit_time: '18:30:00'
+    });
+    setCreateError('');
+    setCreateSuccess('');
+    setShowCreateModal(true);
+  };
+
+  const handleSaveCreate = async (e) => {
+    e.preventDefault();
+    if (!createForm.user_id || !createForm.date || !createForm.entry_time) {
+      setCreateError('Seleccione un trabajador, fecha y hora de entrada.');
+      return;
+    }
+    setCreateLoading(true);
+    setCreateError('');
+    setCreateSuccess('');
+    try {
+      await apiAdminCreateAttendance(createForm);
+      setCreateSuccess('Ingreso de asistencia generado exitosamente.');
+      fetchRecords(true);
+      setTimeout(() => {
+        setShowCreateModal(false);
+        setCreateSuccess('');
+      }, 1000);
+    } catch (err) {
+      setCreateError(err.message || 'Error al generar ingreso de asistencia');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   const displayedDetailsRecords = useMemo(() => {
     const realRecords = (records || [])
       .filter(r => !isExcludedFromAttendance(r))
@@ -808,6 +876,19 @@ export default function AdminAttendanceView({ user, theme }) {
               <FileText className="w-3.5 h-3.5 text-indigo-400" />
               <span>Licencias DT</span>
             </button>
+
+            {/* Generar Asistencia (SuperAdmin) */}
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-black text-xs font-black px-3.5 py-1.5 rounded-xl shadow-md shadow-emerald-500/25 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Generar ingreso de asistencia para cualquier día del mes sin requerir inicio previo de jornada"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-black" />
+                <span>+ Generar Asistencia</span>
+              </button>
+            )}
 
             {/* Horario Oficial (SuperAdmin) */}
             {isSuperAdmin && (
@@ -1128,7 +1209,19 @@ export default function AdminAttendanceView({ user, theme }) {
                             </span>
                           </td>
                           <td className="py-3.5 px-3 text-right print:hidden whitespace-nowrap">
-                            <span className="text-zinc-600 text-xs font-bold font-mono">--</span>
+                            {isSuperAdmin ? (
+                              <button
+                                type="button"
+                                onClick={() => openCreateModalForMissing(r)}
+                                title="Generar ingreso de asistencia para este día"
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500 hover:text-black transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm active:scale-95 whitespace-nowrap"
+                              >
+                                <PlusCircle className="w-3.5 h-3.5" />
+                                <span>Crear Marcación</span>
+                              </button>
+                            ) : (
+                              <span className="text-zinc-600 text-xs font-bold font-mono">--</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1415,7 +1508,163 @@ export default function AdminAttendanceView({ user, theme }) {
         </div>
       )}
 
-          {/* MODAL CONFIGURACIÓN HORARIO LABORAL OFICIAL (SUPERADMIN) */}
+          {/* MODAL GENERAR INGRESO DE ASISTENCIA (SUPERADMIN) */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4">
+          <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-emerald-500/40 text-white' : 'bg-white border-emerald-200 text-zinc-900')}>
+            <div className="flex items-center justify-between pb-3 border-b border-emerald-500/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-500 flex items-center justify-center text-black font-black">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Generar Ingreso de Asistencia</h3>
+                  <p className="text-xs text-emerald-400 font-semibold">SuperAdmin • Sin registro de cambios ni avisos</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowCreateModal(false)} 
+                className="text-zinc-400 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-zinc-800"
+              >
+                <AlertCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {createError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{createError}</span>
+              </div>
+            )}
+
+            {createSuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-2.5 rounded-xl text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{createSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveCreate} className="space-y-3.5">
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-1">
+                  Trabajador / Colaborador:
+                </label>
+                <select
+                  value={createForm.user_id}
+                  onChange={(e) => setCreateForm({ ...createForm, user_id: e.target.value })}
+                  className={'w-full rounded-xl px-3 py-2 text-xs border font-medium ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-emerald-300 text-zinc-900')}
+                  required
+                >
+                  <option value="">-- Seleccionar Trabajador --</option>
+                  {usersList.filter(u => u.role !== 'kiosk' && u.role !== 'kiosco').map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.rut || 'Sin RUT'}) - {u.role === 'admin' || u.role === 'superadmin' ? 'Administrador' : 'Trabajador'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-1">
+                  Fecha (Cualquier día del mes):
+                </label>
+                <input
+                  type="date"
+                  value={createForm.date}
+                  onChange={(e) => setCreateForm({ ...createForm, date: e.target.value })}
+                  className={'w-full rounded-xl px-3 py-2 text-xs border font-mono font-bold ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-emerald-300 text-zinc-900')}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 font-mono">
+                <div>
+                  <label className="block text-[10px] font-sans font-bold text-emerald-500 uppercase tracking-wider mb-1">
+                    1. Entrada (Obligatorio):
+                  </label>
+                  <input
+                    type="time"
+                    step="1"
+                    value={createForm.entry_time}
+                    onChange={(e) => setCreateForm({ ...createForm, entry_time: e.target.value })}
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-emerald-300 text-zinc-900')}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-sans font-bold text-amber-500 uppercase tracking-wider mb-1">
+                    2. Salida Colación:
+                  </label>
+                  <input
+                    type="time"
+                    step="1"
+                    value={createForm.lunch_out_time}
+                    onChange={(e) => setCreateForm({ ...createForm, lunch_out_time: e.target.value })}
+                    placeholder="13:00:00"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-amber-300 text-zinc-900')}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 font-mono">
+                <div>
+                  <label className="block text-[10px] font-sans font-bold text-amber-500 uppercase tracking-wider mb-1">
+                    3. Entrada Colación:
+                  </label>
+                  <input
+                    type="time"
+                    step="1"
+                    value={createForm.lunch_in_time}
+                    onChange={(e) => setCreateForm({ ...createForm, lunch_in_time: e.target.value })}
+                    placeholder="14:00:00"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-amber-300 text-zinc-900')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-sans font-bold text-blue-500 uppercase tracking-wider mb-1">
+                    4. Salida Jornada:
+                  </label>
+                  <input
+                    type="time"
+                    step="1"
+                    value={createForm.exit_time}
+                    onChange={(e) => setCreateForm({ ...createForm, exit_time: e.target.value })}
+                    placeholder="18:30:00"
+                    className={'w-full rounded-xl px-3 py-2 text-xs border ' + (isDark ? 'bg-black border-zinc-700 text-white' : 'bg-zinc-50 border-blue-300 text-zinc-900')}
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                <div className="font-bold">✓ Marcación directa y autónoma:</div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">
+                  No requiere que otro usuario marque el inicio de jornada. Se registrará como marcación natural de reloj en el sistema y planillas Excel.
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-black shadow-lg shadow-emerald-500/25 cursor-pointer disabled:opacity-50"
+                >
+                  {createLoading ? 'Generando...' : 'Crear Marcación'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN HORARIO LABORAL OFICIAL (SUPERADMIN) */}
       {showScheduleModal && scheduleForm && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999999] flex items-center justify-center p-4">
           <div className={'border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 ' + (isDark ? 'bg-zinc-950 border-orange-500/40 text-white' : 'bg-white border-orange-200 text-zinc-900')}>

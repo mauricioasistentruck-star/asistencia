@@ -1363,6 +1363,70 @@ app.get('/api/attendance/user/:userId/history', authenticateToken, (req, res) =>
   });
 });
 
+const handleAdminAttendanceCreate = (req, res) => {
+  const isSuper = isSuperAdminUser(req.user);
+  if (!isSuper) {
+    return res.status(403).json({ error: 'Acceso restringido: Solo el SuperAdmin tiene autorización para generar registros de marcación.' });
+  }
+
+  const { user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time } = req.body;
+  const targetUserId = Number(user_id);
+
+  if (!targetUserId || !date || !entry_time) {
+    return res.status(400).json({ error: 'Trabajador, Fecha y Hora de Entrada son obligatorios.' });
+  }
+
+  db.get('SELECT id, name, rut, role FROM users WHERE id = ?', [targetUserId], (uErr, user) => {
+    if (uErr || !user) {
+      return res.status(404).json({ error: 'Trabajador no encontrado en el sistema.' });
+    }
+
+    const newEntry = entry_time.trim();
+    const newLunchOut = lunch_out_time && lunch_out_time.trim() ? lunch_out_time.trim() : null;
+    const newLunchIn = lunch_in_time && lunch_in_time.trim() ? lunch_in_time.trim() : null;
+    const newExit = exit_time && exit_time.trim() ? exit_time.trim() : null;
+    const totalHours = calculateWorkHours(newEntry, newLunchOut, newLunchIn, newExit);
+
+    db.get('SELECT * FROM attendance WHERE user_id = ? AND date = ?', [targetUserId, date], (attErr, existingRecord) => {
+      if (attErr) return res.status(500).json({ error: 'Error al consultar asistencia: ' + attErr.message });
+
+      if (existingRecord) {
+        const updateSql = `
+          UPDATE attendance
+          SET entry_time = ?, lunch_out_time = ?, lunch_in_time = ?, exit_time = ?, total_hours = ?, modified_by_admin = 0, admin_note = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+        db.run(updateSql, [newEntry, newLunchOut, newLunchIn, newExit, totalHours, existingRecord.id], (upErr) => {
+          if (upErr) return res.status(500).json({ error: 'Error al actualizar marcación: ' + upErr.message });
+
+          db.get('SELECT a.*, u.name as user_name, u.rut as user_rut FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.id = ?', [existingRecord.id], (fErr, updatedRec) => {
+            savePersistentBackup();
+            // Emisión silenciosa para actualizar tablas sin generar notificaciones/avisos a otros usuarios
+            io.emit('attendance_updated', { ...updatedRec, silent: true });
+            return res.json({ success: true, message: 'Ingreso de asistencia actualizado exitosamente', record: updatedRec });
+          });
+        });
+      } else {
+        const insertSql = `
+          INSERT INTO attendance (user_id, date, entry_time, lunch_out_time, lunch_in_time, exit_time, total_hours, modified_by_admin, admin_note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL)
+        `;
+        db.run(insertSql, [targetUserId, date, newEntry, newLunchOut, newLunchIn, newExit, totalHours], function (insErr) {
+          if (insErr) return res.status(500).json({ error: 'Error al crear marcación: ' + insErr.message });
+
+          const newId = this.lastID;
+          db.get('SELECT a.*, u.name as user_name, u.rut as user_rut FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.id = ?', [newId], (fErr, insertedRec) => {
+            savePersistentBackup();
+            // Emisión silenciosa para actualizar tablas sin generar notificaciones/avisos a otros usuarios
+            io.emit('attendance_updated', { ...insertedRec, silent: true });
+            return res.json({ success: true, message: 'Ingreso de asistencia generado exitosamente', record: insertedRec });
+          });
+        });
+      }
+    });
+  });
+};
+
 const handleAdminAttendanceEdit = (req, res) => {
   const recordId = Number(req.params.id);
   const { entry_time, lunch_out_time, lunch_in_time, exit_time } = req.body;
@@ -1376,15 +1440,15 @@ const handleAdminAttendanceEdit = (req, res) => {
   db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (recErr, record) => {
     if (recErr || !record) return res.status(404).json({ error: 'Registro de asistencia no encontrado' });
 
-    const newEntry = entry_time !== undefined ? entry_time : record.entry_time;
-    const newLunchOut = lunch_out_time !== undefined ? lunch_out_time : record.lunch_out_time;
-    const newLunchIn = lunch_in_time !== undefined ? lunch_in_time : record.lunch_in_time;
-    const newExit = exit_time !== undefined ? exit_time : record.exit_time;
+    const newEntry = entry_time !== undefined ? (entry_time && entry_time.trim() ? entry_time.trim() : null) : record.entry_time;
+    const newLunchOut = lunch_out_time !== undefined ? (lunch_out_time && lunch_out_time.trim() ? lunch_out_time.trim() : null) : record.lunch_out_time;
+    const newLunchIn = lunch_in_time !== undefined ? (lunch_in_time && lunch_in_time.trim() ? lunch_in_time.trim() : null) : record.lunch_in_time;
+    const newExit = exit_time !== undefined ? (exit_time && exit_time.trim() ? exit_time.trim() : null) : record.exit_time;
     const totalHours = calculateWorkHours(newEntry, newLunchOut, newLunchIn, newExit);
 
-    // Limpiar notas de edición para no dejar rastros (preservar solo si es justificación legal)
+    // Limpiar notas de edición para no dejar rastros en base de datos ni en excel
     let cleanNote = record.admin_note;
-    if (cleanNote && (cleanNote.toLowerCase().includes('modificado') || cleanNote.toLowerCase().includes('admin'))) {
+    if (cleanNote && (cleanNote.toLowerCase().includes('modific') || cleanNote.toLowerCase().includes('admin') || cleanNote.toLowerCase().includes('superadmin'))) {
       cleanNote = null;
     }
 
@@ -1401,7 +1465,7 @@ const handleAdminAttendanceEdit = (req, res) => {
       // No se inserta en audit_logs para no dejar evidencia
       db.get('SELECT * FROM attendance WHERE id = ?', [recordId], (fErr, updatedRec) => {
         savePersistentBackup();
-        // Emisión silenciosa para no generar alertas visuales ni auditivas
+        // Emisión silenciosa para no generar alertas visuales ni auditivas a otros usuarios
         io.emit('attendance_updated', { ...updatedRec, silent: true });
         res.json({ message: 'Horario actualizado exitosamente', record: updatedRec });
       });
@@ -1409,6 +1473,8 @@ const handleAdminAttendanceEdit = (req, res) => {
   });
 };
 
+app.post('/api/attendance/admin/create', authenticateToken, requireAdmin, handleAdminAttendanceCreate);
+app.post('/api/attendance/create', authenticateToken, requireAdmin, handleAdminAttendanceCreate);
 app.put('/api/attendance/admin/edit/:id', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 app.put('/api/attendance/:id/admin-edit', authenticateToken, requireAdmin, handleAdminAttendanceEdit);
 
@@ -1572,6 +1638,14 @@ const handleExportExcel = (req, res) => {
               const delayMinutes = calculateDelayMinutesServer(att);
               const overtimeMinutes = calculateOvertimeMinutesServer(att);
 
+              let excelObservation = 'Marcación registrada en reloj control';
+              if (att.admin_note) {
+                const noteLow = att.admin_note.toLowerCase();
+                if (!noteLow.includes('modific') && !noteLow.includes('admin') && !noteLow.includes('superadmin') && !noteLow.includes('cambio') && !noteLow.includes('ajuste') && !noteLow.includes('edici')) {
+                  excelObservation = att.admin_note;
+                }
+              }
+
               excelRows.push({
                 'Fecha': dateStr,
                 'Día': dayName,
@@ -1587,7 +1661,7 @@ const handleExportExcel = (req, res) => {
                 'Horas Decimales': decimalHours,
                 'Atraso (Minutos)': delayMinutes > 0 ? `+${delayMinutes}m` : '0m',
                 'Horas Extras (HH:MM)': formatMinutesToHoursMinutes(overtimeMinutes),
-                'Nota Auditoria / Observación': (att.admin_note && !att.admin_note.toLowerCase().includes('modificado')) ? att.admin_note : 'Marcación registrada en reloj control'
+                'Nota Auditoria / Observación': excelObservation
               });
             } else if (leave) {
               totalJustified++;

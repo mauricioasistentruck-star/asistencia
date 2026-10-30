@@ -314,6 +314,7 @@ export const apiGetAttendanceRecords = (params = {}) => {
   const query = new URLSearchParams(params).toString();
   return apiRequest('/api/attendance/records?' + query);
 };
+export const apiAdminCreateAttendance = (payload) => apiRequest('/api/attendance/admin/create', { method: 'POST', body: JSON.stringify(payload) });
 export const apiAdminEditAttendance = (recordId, payload) => apiRequest('/api/attendance/' + recordId + '/admin-edit', { method: 'PUT', body: JSON.stringify(payload) });
 export const apiPurgeAllAttendance = async (superadmin_password) => {
   return apiRequest('/api/attendance/purge/all', {
